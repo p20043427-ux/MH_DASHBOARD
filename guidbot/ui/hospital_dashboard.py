@@ -68,46 +68,46 @@ _CHART_OPTIONS: Dict[str, Dict] = {
     # ── 진료과별 재원 구성 ─────────────────────────────────────────
     "dept_stay": {
         "options": [
-            ("donut",   "🍩 도넛"),      # 기본: 중앙 총계 강조
-            ("bar_h",   "📊 막대"),      # 수치 비교
-            ("treemap", "🗺 트리맵"),    # 면적 비율
+            ("donut",   "도넛"),      # 기본: 중앙 총계 강조
+            ("bar_h",   "막대"),      # 수치 비교
+            ("treemap", "트리맵"),    # 면적 비율
         ],
         "default": "donut",
     },
     # ── 주간 추이 7일 ──────────────────────────────────────────────
     "weekly_trend": {
         "options": [
-            ("table", "📋 테이블"),      # 기본: 기존 HTML 표
-            ("line",  "📈 라인"),        # 추세선
-            ("area",  "🏔 영역"),        # 볼륨 강조
-            ("bar",   "📊 막대"),        # 일별 비교
+            ("table", "테이블"),      # 기본: 기존 HTML 표
+            ("line",  "라인"),        # 추세선
+            ("area",  "영역"),        # 볼륨 강조
+            ("bar",   "막대"),        # 일별 비교
         ],
         "default": "table",
     },
     # ── 병동별 당일 현황 ───────────────────────────────────────────
     "ward_detail": {
         "options": [
-            ("table",   "📋 테이블"),    # 기본: 기존 풍부한 HTML 표
-            ("bar_h",   "📊 막대"),      # 가동률 비교
-            ("heatmap", "🔥 히트맵"),   # 병동×지표 매트릭스
+            ("table",   "테이블"),    # 기본: 기존 풍부한 HTML 표
+            ("bar_h",   "막대"),      # 가동률 비교
+            ("heatmap", "히트맵"),   # 병동×지표 매트릭스
         ],
         "default": "table",
     },
     # ── 최근 7일 주상병 분포 ───────────────────────────────────────
     "dx_7day": {
         "options": [
-            ("pie",     "🍩 파이"),      # 기본: 비율 파악
-            ("bar_h",   "📊 막대"),      # 상병명 가독성
-            ("treemap", "🗺 트리맵"),    # 빈도 강조
+            ("pie",     "파이"),      # 기본: 비율 파악
+            ("bar_h",   "막대"),      # 상병명 가독성
+            ("treemap", "트리맵"),    # 빈도 강조
         ],
         "default": "pie",
     },
     # ── 금일 vs 전일 주상병 비교 ───────────────────────────────────
     "dx_compare": {
         "options": [
-            ("overlay", "🔀 중첩막대"),  # 기본: 투명도 중첩
-            ("grouped", "📊 그룹막대"),  # 나란히 비교
-            ("bar_h",   "↔ 수평막대"),  # 상병명 공간 여유
+            ("overlay", "중첩막대"),  # 기본: 투명도 중첩
+            ("grouped", "그룹막대"),  # 나란히 비교
+            ("bar_h",   "수평막대"),  # 상병명 공간 여유
         ],
         "default": "overlay",
     },
@@ -151,33 +151,32 @@ def _chart_selector(section_key: str, title: str, subtitle: str = "") -> str:
     except ValueError:
         idx = 0
 
-    # 섹션 헤더: 제목(좌 60%) + 선택기(우 40%)
-    col_title, col_radio = st.columns([5, 5])
+    # ── 섹션 헤더: 제목(좌) + pill(우) 완전 한 줄 ─────────────────────
+    # 핵심: st.columns 로 두 영역 분리 → pill이 제목 옆에 나란히 배치
+    # 옵션 수에 따라 pill 컬럼 너비 동적 조정
+    _n_opts = len(labels)  # 옵션 개수
+    # 3개=35%, 4개=45%, 2개=25% 공간 할당
+    _pill_w  = min(45, max(25, _n_opts * 11))
+    _title_w = 100 - _pill_w
+    _col_t, _col_p = st.columns([_title_w, _pill_w], gap="small")
 
-    with col_title:
-        sub_html = (
-            f'<span style="font-size:10px;color:#94A3B8;font-weight:400;'
-            f'margin-left:8px;letter-spacing:0;">{subtitle}</span>'
-            if subtitle else ""
-        )
+    with _col_t:
+        _sub = (
+            f'<span style="font-size:10px;color:#94A3B8;margin-left:5px;">'
+            f'{subtitle}</span>'
+        ) if subtitle else ""
         st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;'
-            f'padding:6px 0 4px;border-bottom:1px solid #F1F5F9;margin-bottom:2px;">'
-            f'<span style="display:inline-block;width:3px;height:16px;'
-            f'background:linear-gradient(180deg,#1E40AF,#3B82F6);'
-            f'border-radius:2px;flex-shrink:0;"></span>'
-            f'<span style="font-size:12.5px;font-weight:700;color:#0F172A;'
-            f'letter-spacing:-0.01em;">{title}{sub_html}</span>'
-            f'</div>',
+            f'<div style="display:flex;align-items:center;gap:5px;min-height:28px;">'  
+            f'<span style="width:3px;height:13px;background:linear-gradient(180deg,#1E40AF,#3B82F6);'
+            f'border-radius:2px;display:inline-block;flex-shrink:0;"></span>'
+            f'<span style="font-size:11.5px;font-weight:700;color:#0F172A;white-space:nowrap;">'
+            f'{title}{_sub}</span></div>',
             unsafe_allow_html=True,
         )
 
-    with col_radio:
-        # label_visibility 지원 여부를 버전별로 처리
-        # "hidden": 라벨 텍스트+공간 모두 제거 (가장 깔끔)
-        # "collapsed": 텍스트만 제거, 공간은 일부 남을 수 있음
+    with _col_p:
         kw: dict = dict(
-            label="​",          # U+200B zero-width space
+            label="​",
             options=labels,
             index=idx,
             horizontal=True,
@@ -190,9 +189,13 @@ def _chart_selector(section_key: str, title: str, subtitle: str = "") -> str:
             kw.pop("label_visibility", None)
             selected_label = st.radio(**kw)
 
-        selected_value = values[labels.index(selected_label)]
-        st.session_state[state_key] = selected_value
-
+    # 섹션 전체 하단 구분선
+    st.markdown(
+        '<div style="height:1px;background:#F1F5F9;margin:2px 0 6px;"></div>',
+        unsafe_allow_html=True,
+    )
+    selected_value = values[labels.index(selected_label)]
+    st.session_state[state_key] = selected_value
     return st.session_state.get(state_key, cfg["default"])
 
 # ── 색상 체계 v4.0 ──────────────────────────────────────────────────
@@ -266,7 +269,6 @@ QUERIES: Dict[str, str] = {
     "ward_dx_today":       "SELECT * FROM JAIN_WM.V_WARD_DX_TODAY ORDER BY 기준일 DESC, 환자수 DESC",
     "ward_dx_trend":       "SELECT * FROM JAIN_WM.V_WARD_DX_TREND ORDER BY 기준일, 환자수 DESC",
     "admit_candidates":    "SELECT * FROM JAIN_WM.V_ADMIT_CANDIDATES ORDER BY 진료과명, 성별",
-    "bed_room_status":     "SELECT * FROM JAIN_WM.V_BED_ROOM_STATUS ORDER BY 병동명, 병실번호",
     "ward_room_detail":    "SELECT * FROM JAIN_WM.V_WARD_ROOM_DETAIL ORDER BY 병동명, 병실번호",
     "finance_kpi":         "SELECT * FROM JAIN_WM.V_FINANCE_TODAY WHERE ROWNUM = 1",
     "finance_overdue":     "SELECT * FROM JAIN_WM.V_OVERDUE_STAT",
@@ -387,71 +389,186 @@ _WARD_CSS = """
   padding-left: 0.75rem !important;
   padding-right: 0.75rem !important;
 }
-[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-.element-container { margin-bottom: 0 !important; }
+/* ── KPI 카드 — 주간 추이 카드와 동일 높이 ─────────────────── */
 .kpi-card {
   background: #FFFFFF;
   border: 1px solid #E8EDF2;
   border-radius: 12px;
-  padding: 16px 18px;
-  min-height: 172px;
+  padding: 14px 16px;
+  height: 100%;
+  min-height: 110px;
+  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   box-shadow: 0 1px 4px rgba(15,23,42,0.06);
-  transition: box-shadow 120ms ease;
+  transition: box-shadow 100ms ease;
 }
-.kpi-card:hover { box-shadow: 0 4px 16px rgba(15,23,42,0.1); }
-.kpi-label { font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.12em; margin-bottom:6px; }
-.kpi-value { font-size:32px; font-weight:800; color:#0F172A; font-variant-numeric:tabular-nums; line-height:1; letter-spacing:-0.03em; }
-.kpi-unit  { font-size:14px; color:#64748B; font-weight:500; margin-left:3px; }
-.kpi-sub   { font-size:12px; color:#94A3B8; }
-.kpi-delta-up { font-size:15px; font-weight:800; color:#16A34A; }
-.kpi-delta-dn { font-size:15px; font-weight:800; color:#DC2626; }
-.kpi-delta-nt { font-size:13px; font-weight:600; color:#94A3B8; }
-.kpi-bar-bg   { height:4px; background:#F1F5F9; border-radius:2px; overflow:hidden; margin:6px 0; }
+.kpi-card:hover { box-shadow: 0 3px 12px rgba(15,23,42,0.09); }
+
+/* ── KPI 타이포그래피 ───────────────────────────────────────── */
+.kpi-label { font-size:10.5px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.12em; margin-bottom:4px; }
+.kpi-value { font-size:30px; font-weight:800; color:#0F172A; font-variant-numeric:tabular-nums; line-height:1; letter-spacing:-0.03em; }
+.kpi-unit  { font-size:13px; color:#64748B; font-weight:500; margin-left:3px; }
+.kpi-sub   { font-size:11.5px; color:#94A3B8; }
+.kpi-delta-up { font-size:13px; font-weight:700; color:#16A34A; }
+.kpi-delta-dn { font-size:13px; font-weight:700; color:#DC2626; }
+.kpi-delta-nt { font-size:12px; font-weight:600; color:#94A3B8; }
+.kpi-bar-bg   { height:3px; background:#F1F5F9; border-radius:2px; overflow:hidden; margin:5px 0; }
 .kpi-bar-fill { height:100%; border-radius:2px; transition:width 400ms ease; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   KPI 스타일 전파 — 테이블/섹션에서 중요 수치에 적용
+   .kpi-num: 굵고 큰 숫자 (테이블 내 핵심 수치)
+   .kpi-badge: 상태 배지 (위험/주의/정상)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.kpi-num {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.kpi-badge-danger { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; }
+.kpi-badge-warn   { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; }
+.kpi-badge-ok     { background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; }
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   그리드 시스템 v3.0 — 병동 대시보드 전용
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   원칙:
+   1. 모든 카드는 .wd-card 클래스 통일
+   2. Row 높이는 클래스로 고정 (.wd-row-kpi / .wd-row-chart / .wd-row-free)
+   3. 카드 내부 padding 14px 16px 통일
+   4. 카드 간 gap = Streamlit gap="small" (약 10px)
+   5. 섹션 헤더 스타일 .wd-sec 통일
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* ── 기본 카드 ──────────────────────────────────────────────── */
 .wd-card {
   background: #FFFFFF;
   border: 1px solid #E8EDF2;
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 14px 16px;          /* 모든 카드 동일 내부 여백 */
   box-shadow: 0 1px 4px rgba(15,23,42,0.06);
-  height: 100%;
-  transition: box-shadow 120ms ease;
+  height: 100%;                /* Row 내 높이 통일을 위해 100% 사용 */
+  transition: box-shadow 100ms ease;
+  overflow: hidden;
 }
 .wd-card:hover {
-  box-shadow: 0 4px 16px rgba(15,23,42,0.1);
+  box-shadow: 0 3px 12px rgba(15,23,42,0.09);
 }
-.wd-topbar-accent {
-  height: 3px;
-  background: linear-gradient(90deg, #1E3A8A 0%, #2563EB 60%, #93C5FD 100%);
-  border-radius: 0;
-  margin-bottom: 0;
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Row별 높이 정렬 — KPI ↔ 주간 추이 동일 높이 핵심
+   원인: stHorizontalBlock 기본 align-items=flex-start
+         → 각 컬럼이 독립적으로 content 높이만큼만 커짐
+   해결: .wd-row-kpi 내 stHorizontalBlock = stretch
+         → 두 컬럼이 더 높은 쪽에 맞춰 동일 높이
+         → .wd-card height:100% 가 실제로 작동
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* 1. KPI Row의 외부 수평 블록: 자식 컬럼들을 같은 높이로 늘림 */
+.wd-row-kpi [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
 }
-/* 섹션 헤더 — _chart_selector가 자체 헤더를 그리므로 wd-sec는 보조용 */
+
+/* 2. KPI / 주간 추이 컬럼 자체를 flex column으로 */
+.wd-row-kpi [data-testid="stColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.wd-row-kpi [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 3. 주간 추이 카드: 컬럼 전체 높이 채움 */
+.wd-row-kpi [data-testid="stColumn"]:last-child .wd-card {
+  height: 100% !important;
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 4. KPI 컬럼 내부: 두 서브 행이 균등 분배 */
+.wd-row-kpi [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"] {
+  justify-content: space-between !important;
+}
+
+/* 5. KPI 서브 컬럼 (3×2)의 내부 카드도 꽉 채움 */
+.wd-row-kpi [data-testid="stColumn"]:first-child [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+.wd-row-kpi [data-testid="stColumn"]:first-child [data-testid="stHorizontalBlock"] [data-testid="stColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.wd-row-kpi .kpi-card {
+  flex: 1 !important;
+  height: auto !important;
+}
+
+/* 6. 차트 Row */
+.wd-row-chart [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+.wd-row-chart [data-testid="stColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.wd-row-chart .wd-card { min-height: 260px; flex: 1 !important; }
+.wd-row-free  .wd-card { height: auto; min-height: 0; }
+
+/* ── 섹션 헤더 ──────────────────────────────────────────────── */
+/* _chart_selector 헤더와 동일 스타일로 통일 */
 .wd-sec {
-  font-size:12.5px; font-weight:700; color:#1E293B;
-  margin-bottom:8px; padding-bottom:6px;
-  border-bottom:1px solid #F1F5F9;
-  display:flex; align-items:center; gap:7px;
-  line-height:1.3;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1E293B;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #F1F5F9;
+  line-height: 1.3;
 }
 .wd-sec-accent {
-  width:3px; height:14px; border-radius:2px;
-  background:linear-gradient(180deg,#1E40AF,#60A5FA);
-  flex-shrink:0;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #1E40AF, #60A5FA);
+  flex-shrink: 0;
 }
-.wd-sec-sub { font-size:10.5px; color:#94A3B8; font-weight:400; margin-left:4px; letter-spacing:0; }
-.wd-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.wd-sec-sub {
+  font-size: 10.5px;
+  color: #94A3B8;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+/* ── Row 간격 통일 ──────────────────────────────────────────── */
+/* Streamlit stVerticalBlock 기본 gap과 맞춤 */
+[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+
+/* ── 모든 element-container 하단 여백 제거 ─────────────────── */
+.element-container { margin-bottom: 0 !important; }
+
+/* ── Plotly 차트 여백 통일 ──────────────────────────────────── */
+/* 카드 내 Plotly iframe 상하 여백 제거 */
+.stPlotlyChart { margin: 0 !important; padding: 0 !important; }
+iframe.stPlotlyChart { border: none !important; }
+/* ── 데이터 테이블 통일 스타일 ─────────────────────── */
+.wd-tbl { width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
 .wd-th {
-  padding:8px 12px; font-size:11px; font-weight:700;
+  padding:7px 10px; font-size:10.5px; font-weight:700;
   text-transform:uppercase; letter-spacing:.07em;
   color:#64748B; background:#F8FAFC;
   border-bottom:1.5px solid #E2E8F0; white-space:nowrap;
 }
-.wd-td { padding:9px 12px; border-bottom:1px solid #F8FAFC; color:#334155; vertical-align:middle; font-size:13px; }
-.wd-td-num { font-variant-numeric:tabular-nums; font-family:'Consolas','SF Mono',monospace; }
+.wd-td { padding:8px 10px; border-bottom:1px solid #F8FAFC; color:#334155; vertical-align:middle; font-size:12.5px; }
+.wd-td-num { font-variant-numeric:tabular-nums; font-family:'Consolas','SF Mono',monospace; font-size:12.5px; }
 .badge-ok   { background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
 .badge-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
 .badge-err  { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
@@ -515,9 +632,10 @@ div[data-testid="stRadio"] > p {
 div[data-testid="stRadio"] > div {
   display: flex !important;
   flex-direction: row !important;
-  flex-wrap: wrap !important;
-  gap: 3px !important;
+  flex-wrap: nowrap !important;
+  gap: 2px !important;
   align-items: center !important;
+  justify-content: flex-end !important;
   padding: 0 !important;
   margin: 0 !important;
   min-height: 0 !important;
@@ -530,12 +648,12 @@ div[data-testid="stRadio"] label {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 3px 11px !important;
-  border-radius: 20px !important;
+  padding: 2px 8px !important;
+  border-radius: 14px !important;
   border: 1px solid #E2E8F0 !important;
   background: #FFFFFF !important;
   color: #64748B !important;
-  font-size: 11.5px !important;
+  font-size: 10.5px !important;
   font-weight: 500 !important;
   cursor: pointer !important;
   white-space: nowrap !important;
@@ -785,9 +903,12 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
             rows += (
                 f"<tr>"
                 f'<td style="{td}font-weight:600;color:#334155;white-space:nowrap;">{dt}</td>'
-                f'<td style="{td}text-align:right;font-weight:700;color:{oc};font-family:Consolas,monospace;">{occ:.1f}%{lbl}</td>'
-                f'<td style="{td}text-align:right;color:{C["primary_text"]};font-family:Consolas,monospace;font-weight:700;">{adm}</td>'
-                f'<td style="{td}text-align:right;color:#475569;font-family:Consolas,monospace;">{disc}</td>'
+                f'<td style="{td}text-align:right;">'  
+                f'<span style="font-size:16px;font-weight:800;color:{oc};font-family:Consolas,monospace;letter-spacing:-0.02em;">{occ:.1f}%</span>{lbl}</td>'  
+                f'<td style="{td}text-align:right;">'  
+                f'<span style="font-size:16px;font-weight:800;color:{C["primary_text"]};font-family:Consolas,monospace;">{adm}</span></td>'  
+                f'<td style="{td}text-align:right;">'  
+                f'<span style="font-size:15px;font-weight:700;color:#64748B;font-family:Consolas,monospace;">{disc}</span></td>'  
                 f"</tr>"
             )
         st.markdown(
@@ -796,12 +917,7 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
             f'<th style="{_tH2}text-align:right;">가동률</th>'
             f'<th style="{_tH2}text-align:right;color:{C["primary_text"]};">입원</th>'
             f'<th style="{_tH2}text-align:right;color:#475569;">퇴원</th>'
-            f"</tr></thead><tbody>{rows}</tbody></table>"
-            f'<div style="display:flex;gap:10px;padding:6px 0 0;border-top:1px solid #F1F5F9;margin-top:4px;">'
-            f'<span style="font-size:10.5px;color:#059669;font-weight:600;">■ &lt;80%</span>'
-            f'<span style="font-size:10.5px;color:#F59E0B;font-weight:600;">■ 80~90%</span>'
-            f'<span style="font-size:10.5px;color:#EF4444;font-weight:600;">■ ≥90% 위험</span>'
-            f"</div>",
+            f"</tr></thead><tbody>{rows}</tbody></table>",
             unsafe_allow_html=True,
         )
         return
@@ -1229,10 +1345,14 @@ def _render_ward() -> None:
     dx_trend     = _query_cached("ward_dx_trend")
     yesterday    = _query_cached("ward_yesterday")
     admit_cands  = _query_cached("admit_candidates")
-    bed_room_stat: List[Dict] = _query_cached("bed_room_status")
-
+    # ── V_WARD_ROOM_DETAIL: 병실현황 + 병상 수배 모두 이 VIEW 사용 ─────
+    # - 성별/나이/진료과 등 환자 정보 포함
+    # - 병실현황 패널, 병상 수배 성별 필터 모두 이 데이터로 처리
+    # - 조건부 로드: 패널 열림 또는 병상 수배 검색 시
     _show_room_panel = st.session_state.get("show_room_panel", False)
-    ward_room_detail = _query_cached("ward_room_detail") if _show_room_panel else []
+    _need_room_detail = _show_room_panel or st.session_state.get("asgn_result_ready", False)
+    ward_room_detail = _query_cached("ward_room_detail") if _need_room_detail else []
+    bed_room_stat: List[Dict] = ward_room_detail  # 동일 데이터 — 기존 참조 호환용 alias
 
     _adm_total = len(admit_cands)
     _adm_done  = sum(1 for r in admit_cands if r.get("수속상태", "") == "AD")
@@ -1613,7 +1733,7 @@ def _render_ward() -> None:
                         else st.session_state.get("asgn_dept_saved", "전체"))
                 _ssx = st.session_state.get("asgn_sex_saved", "전체")
 
-                # 1단계: 빈병상 + 병동/인실 조건 필터
+                # ── 1단계: 빈병상 + 병동/인실 기본 필터 ────────────────
                 _candidates_raw = [
                     r for r in ward_room_detail
                     if r.get("상태") == "빈병상"
@@ -1621,11 +1741,70 @@ def _render_ward() -> None:
                     and (_sri == "전체" or r.get("인실구분", "") == _sri)
                 ]
 
-                # 2단계: 진료과 매칭 정렬
-                # 같은 병실에 해당 진료과 환자가 이미 재원 중인 병실 우선
-                # (1인실은 진료과 무관이므로 _sdp=="전체"로 바이패스됨)
+                # ── 2단계: 성별 필터 ─────────────────────────────────────
+                # 빈병상 자체에는 환자 없음 → 같은 병실 재원 환자 성별로 판단
+                # 1인실은 성별 무관 (독립 병실), 2인실 이상만 적용
+                # 판단: 병실번호 앞 4자리(=병실) 기준으로 반대 성별 재원 시 제외
+                # 같은 병실에 아무도 없으면 → 성별 무관 허용
+                if _ssx != "전체" and _sri != "1인실":
+                    # ── 성별 정규화 함수 ────────────────────────────────────
+                    # DB 성별 값이 한글('여'/'남') 또는 영문('F'/'M') 혼재 가능
+                    # '여'.upper()[:1] = '여' ≠ 'F' → 비교 실패가 원인
+                    # → 모든 값을 'F'/'M' 단일 코드로 정규화 후 비교
+                    def _norm_sex(val: str) -> str:
+                        v = str(val).strip()
+                        if v in ("F", "f", "여"):  return "F"
+                        if v in ("M", "m", "남"):  return "M"
+                        return ""
+
+                    _opp_code = "F" if _ssx == "남" else "M"   # 반대 성별 코드
+                    _my_code  = "M" if _ssx == "남" else "F"   # 내 성별 코드
+
+                    # 성별 필터 소스: V_WARD_ROOM_DETAIL (성별 컬럼 포함)
+                    # ward_room_detail은 _need_room_detail=True 일 때 전체 병동 로드됨
+                    # 검색 대상 병동(_sw)의 재원 환자만 추출
+                    if _sw != "전체":
+                        _sex_data_src = [
+                            r for r in ward_room_detail
+                            if r.get("병동명", "") == _sw
+                        ]
+                    else:
+                        _sex_data_src = ward_room_detail
+
+                    # 반대 성별 재원/퇴원예정 환자가 있는 병실(앞4자리) 집합
+                    _blocked_rooms = {
+                        str(r.get("병실번호", "")).zfill(6)[:4]
+                        for r in _sex_data_src
+                        if r.get("상태") in ("재원", "퇴원예정")
+                        and _norm_sex(r.get("성별", "")) == _opp_code
+                    }
+                    _candidates_sex = [
+                        r for r in _candidates_raw
+                        if str(r.get("병실번호", "")).zfill(6)[:4] not in _blocked_rooms
+                    ]
+                    # 같은 성별 환자가 있는 병실을 상단 정렬
+                    _same_sex_rooms = {
+                        str(r.get("병실번호", "")).zfill(6)[:4]
+                        for r in _sex_data_src
+                        if r.get("상태") in ("재원", "퇴원예정")
+                        and _norm_sex(r.get("성별", "")) == _my_code
+                    }
+                    _candidates_sex = sorted(
+                        _candidates_sex,
+                        key=lambda r: (0 if str(r.get("병실번호","")).zfill(6)[:4] in _same_sex_rooms else 1,
+                                       r.get("병실번호","")),
+                    )
+                    # 성별 필터 결과 확정 — 폴백 제거
+                    # 기존: _candidates_sex가 [] (falsy)이면 _candidates_raw로 폴백
+                    # → 모든 후보가 차단됐을 때 필터가 완전히 무시되는 버그
+                    # 수정: 결과가 0개면 그대로 0개 유지 → '조건 맞는 병상 없음' 표시
+                    _candidates_raw = _candidates_sex
+                else:
+                    pass  # 전체 또는 1인실: 성별 필터 없음
+
+                # ── 3단계: 진료과 매칭 정렬 ──────────────────────────────
+                # 1인실은 진료과 무관이므로 _sdp=="전체"로 바이패스됨
                 if _sdp and _sdp != "전체":
-                    # 해당 진료과 재원 중인 병실번호 앞 4자리 집합
                     _dept_rooms = {
                         str(r.get("병실번호", "")).zfill(6)[:4]
                         for r in ward_room_detail
@@ -1640,7 +1819,7 @@ def _render_ward() -> None:
                         )
                     )
                 else:
-                    _candidates = _candidates_raw
+                    _candidates = sorted(_candidates_raw, key=lambda r: r.get("병실번호", ""))
                 st.markdown(
                     f'<div style="margin-top:8px;padding:10px;background:#FFFFFF;'
                     f'border:1px solid #E2E8F0;border-radius:8px;">'
@@ -1657,11 +1836,13 @@ def _render_ward() -> None:
                         _cinsl = _cr.get("인실구분", "")
                         _cfee  = _cr.get("병실료", 0) or 0
                         _cfee_s = f"{int(_cfee):,}원" if _cfee else "─"
+                        _cr_key = _cbno[:4]
                         _res_html += (
                             f'<div style="display:flex;align-items:center;justify-content:space-between;'
                             f'padding:6px 8px;border-bottom:1px solid #F1F5F9;">'
                             f'<div><span style="font-size:13px;font-weight:700;color:#1E40AF;">{_cward}</span>'
-                            f'<span style="font-size:12px;color:#64748B;margin-left:6px;">병실 {_croom} · 베드 {_cbed}</span></div>'
+                            f'<span style="font-size:12px;color:#64748B;margin-left:6px;">병실 {_croom} · 베드 {_cbed}</span>'
+                            f'</div>'
                             f'<div style="display:flex;align-items:center;gap:6px;">'
                             f'<span style="font-size:11px;color:#475569;">{_cinsl}</span>'
                             f'<span style="font-size:11px;color:#94A3B8;">{_cfee_s}</span>'
@@ -1677,10 +1858,11 @@ def _render_ward() -> None:
                     )
 
         st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════
-    # Row 1: KPI 2행×3열 | 주간 추이
+    # ── Row 1: KPI 2행×3열 | 주간 추이 ─────────────────────────
+    st.markdown('<div class="wd-row-kpi">', unsafe_allow_html=True)
     # ════════════════════════════════════════════════════════════
     if occ_rate >= 90:
         _oc_color = "#EF4444"
@@ -1700,7 +1882,7 @@ def _render_ward() -> None:
         with _r1c3:
             _kpi_card("금일 입원", str(admit_cnt), "명", f"전일 {_pa}명", C["primary_text"], delta=_ds(admit_cnt, _pa))
 
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
         _r2c1, _r2c2, _r2c3 = st.columns(3, gap="small")
         with _r2c1:
@@ -1778,7 +1960,10 @@ def _render_ward() -> None:
 
 
     # ════════════════════════════════════════════════════════════
-    # Row 3: 병동별 당일 현황 [4] | 진료과별 재원 구성 [2]
+    st.markdown('</div>', unsafe_allow_html=True)  # /wd-row-kpi
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    # ── Row 3: 병동별 당일 현황 + 진료과 재원 ───────────────────
+    st.markdown('<div class="wd-row-chart">', unsafe_allow_html=True)
     # [v2.2] 두 섹션 모두 차트 선택기 통합
     # ════════════════════════════════════════════════════════════
     col_L, col_R = st.columns([4, 2], gap="small")
@@ -1904,7 +2089,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 진료과별 재원 구성 ────────────────────────────────────
     with col_R:
-        st.markdown('<div class="wd-card" style="padding:12px 14px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
 
         _gw_p2 = st.session_state.get("ward_selected", "전체")
 
@@ -1922,7 +2107,10 @@ def _render_ward() -> None:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════
-    # Row 4: 주상병 분석
+    st.markdown('</div>', unsafe_allow_html=True)  # /wd-row-chart
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    # ── Row 4: 주상병 분석 ──────────────────────────────────────
+    st.markdown('<div class="wd-row-chart">', unsafe_allow_html=True)
     # [v2.2] 최근 7일 / 금일 vs 전일 — 차트 선택기 통합
     # ════════════════════════════════════════════════════════════
     from collections import defaultdict as _dd
@@ -1931,7 +2119,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 최근 7일 입원 주상병 분포 ─────────────────────────────
     with col_pie:
-        st.markdown('<div class="wd-card" style="padding:12px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
 
         chart_type_dx7 = _chart_selector("dx_7day", "최근 7일 입원 주상병 분포")
         _render_dx7_chart(dx_trend, chart_type_dx7)
@@ -1940,7 +2128,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 금일 vs 전일 입원 주상병 분포 ─────────────────────────
     with col_bar:
-        st.markdown('<div class="wd-card" style="padding:12px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
 
         chart_type_compare = _chart_selector("dx_compare", "금일 vs 전일 입원 주상병 분포")
         _render_dx_compare_chart(dx_today, chart_type_compare)
@@ -1950,13 +2138,15 @@ def _render_ward() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════
-    # Row 5: AI 분석 채팅
+    st.markdown('</div>', unsafe_allow_html=True)  # /wd-row-chart
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    # ── Row 5: AI 분석 채팅 ─────────────────────────────────────
     # ════════════════════════════════════════════════════════════
     # ════════════════════════════════════════════════════════════
     # 익일 입원 예약 상세 (하단 고정 표시)
     # ════════════════════════════════════════════════════════════
     st.markdown(
-        f'<div class="wd-card" style="margin-bottom:10px;">'
+        f'<div class="wd-card" style="margin-bottom:8px;">'
         f'<div class="wd-sec"><span class="wd-sec-accent"></span>'
         f'익일 입원 예약 상세<span class="wd-sec-sub">{_next_adm}명 · 진료과/성별/연령 분포</span></div>',
         unsafe_allow_html=True,
