@@ -152,7 +152,7 @@ def _chart_selector(section_key: str, title: str, subtitle: str = "") -> str:
         idx = 0
 
     # 섹션 헤더: 제목(좌 60%) + 선택기(우 40%)
-    col_title, col_radio = st.columns([6, 4])
+    col_title, col_radio = st.columns([5, 5])
 
     with col_title:
         sub_html = (
@@ -515,7 +515,7 @@ div[data-testid="stRadio"] > p {
 div[data-testid="stRadio"] > div {
   display: flex !important;
   flex-direction: row !important;
-  flex-wrap: nowrap !important;
+  flex-wrap: wrap !important;
   gap: 3px !important;
   align-items: center !important;
   padding: 0 !important;
@@ -556,26 +556,32 @@ div[data-testid="stRadio"] label:has(input:checked) {
   font-weight: 600 !important;
 }
 
-/* ── radio 원형 circle 정밀 제거 ──
-   Streamlit radio 구조:
-     label
-       input[type=radio]     ← 숨김
-       div (circle/dot)      ← input + div 로 정확히 타겟 → 숨김
-       div (text wrapper)    ← 이건 보여야 함!
+/* ── radio 원형 circle 제거 ──
+   Streamlit/BaseWeb radio 실제 DOM 구조 (2024~):
+     label[data-baseweb="radio"]
+       div[class*="radioMarkOuter"]  ← circle 외곽
+         div[class*="radioMarkInner"] ← circle 내부 점
+       div (text wrapper)
          span (실제 텍스트)
 
-   label > div 전체 숨김은 텍스트도 같이 사라지므로 금지.
-   반드시 input 다음 형제(+) div만 숨겨야 함. */
+   전략: input 숨김 + class 기반 circle div 숨김
+   → input + div (인접형제) 방식은 Streamlit 버전에 따라 텍스트 wrapper도 잡힘
+   → class 패턴 또는 aria-hidden 속성으로 circle만 정확히 타겟팅 */
+
+/* input 완전 숨김 */
 div[data-testid="stRadio"] input[type="radio"] {
   position: absolute !important;
   opacity: 0 !important;
   width: 0 !important;
   height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
   pointer-events: none !important;
 }
-/* circle indicator: input 바로 다음 div 형제만 숨김 */
-div[data-testid="stRadio"] label > input + div,
-div[data-testid="stRadio"] label > input ~ div:first-of-type {
+
+/* BaseWeb radioMarkOuter / radioMarkInner — circle 컨테이너 숨김
+   class 이름이 해시되어 있으므로 부분 일치(^=, *=) 사용 */
+div[data-testid="stRadio"] label > div:first-child {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -584,6 +590,16 @@ div[data-testid="stRadio"] label > input ~ div:first-of-type {
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
+  flex-shrink: 0 !important;
+}
+
+/* 텍스트 wrapper(두 번째 div)는 반드시 표시 */
+div[data-testid="stRadio"] label > div:last-child,
+div[data-testid="stRadio"] label > div:nth-child(2) {
+  display: inline !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 </style>
 """
@@ -1490,29 +1506,41 @@ def _render_ward() -> None:
                 'text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">🔍 병상 수배</div>',
                 unsafe_allow_html=True,
             )
-            # ── 병상 수배 조건 설정 ─────────────────────────────────
-            # 병동 선택
-            _asgn_wards   = ["전체"] + sorted({r.get("병동명", "") for r in ward_room_detail if r.get("병동명", "")})
-            _asgn_ward_sel = st.selectbox("병동", _asgn_wards, index=_asgn_wards.index(_rp_ward) if _rp_ward in _asgn_wards else 0, key="asgn_ward_sel")
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 병상 수배 조건 설정 (v2.5)
+            # 기본: 직접 입력 / 예약자 불러오기는 expander로 보조
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            # 인실 선택
-            _asgn_room_sel = st.selectbox("인실", ["전체", "1인실", "2인실", "3인실", "4인실"], key="asgn_room_sel")
+            # ── 병동 선택 ─────────────────────────────────────
+            _asgn_wards = ["전체"] + sorted({r.get("병동명", "") for r in ward_room_detail if r.get("병동명", "")})
+            _asgn_ward_sel = st.selectbox(
+                "병동",
+                _asgn_wards,
+                index=_asgn_wards.index(_rp_ward) if _rp_ward in _asgn_wards else 0,
+                key="asgn_ward_sel",
+            )
 
-            # 성별
-            _asgn_sex_sel  = st.radio("성별", ["전체", "남", "여"], horizontal=True, key="asgn_sex_sel")
+            # ── 인실 선택 ─────────────────────────────────────
+            _asgn_room_sel = st.selectbox(
+                "인실",
+                ["전체", "1인실", "2인실", "3인실", "4인실"],
+                key="asgn_room_sel",
+            )
 
-            # [v2.3] 진료과 드롭다운 — ward_room_detail의 실제 영문 코드 추출
-            # 연령대 필터 제거: 빈병상에는 환자 정보 없어 필터 의미 없음
-            # 1인실: 진료과 무관 → 진료과 선택 시 1인실 제외 안내
+            # ── 성별 ──────────────────────────────────────────
+            _asgn_sex_sel = st.radio(
+                "성별", ["전체", "남", "여"],
+                horizontal=True, key="asgn_sex_sel",
+            )
+
+            # ── 진료과 (영문코드 드롭다운) ─────────────────────
             _all_dept_codes = sorted({
                 (r.get("진료과", "") or "").strip()
                 for r in ward_room_detail
                 if r.get("진료과", "") and r.get("상태") in ("재원", "퇴원예정")
             })
-            _dept_opts = ["전체"] + [d for d in _all_dept_codes if d]
-
-            # 1인실 선택 시 진료과 필터 안내
-            _is_1insl = _asgn_room_sel == "1인실"
+            _dept_opts_base = ["전체"] + [d for d in _all_dept_codes if d]
+            _is_1insl = (_asgn_room_sel == "1인실")
             if _is_1insl:
                 st.markdown(
                     '<div style="font-size:10.5px;color:#059669;background:#DCFCE7;'
@@ -1520,25 +1548,70 @@ def _render_ward() -> None:
                     '✅ 1인실은 진료과 무관 배정 가능</div>',
                     unsafe_allow_html=True,
                 )
-                _asgn_dept_sel = "전체"  # 1인실은 진료과 무시
+                _asgn_dept_sel = "전체"
             else:
                 _asgn_dept_sel = st.selectbox(
-                    "진료과 (영문코드)",
-                    _dept_opts,
+                    "진료과",
+                    _dept_opts_base,
                     key="asgn_dept_sel",
-                    help="현재 재원 중인 환자의 진료과 코드 기준 (예: IM=내과, GS=외과, OS=정형외과)"
+                    help="재원 환자 기준 영문코드 (예: IM=내과, GS=외과, OS=정형외과)",
                 )
 
+            # ── 예약 환자에서 불러오기 (선택사항) ─────────────
+            # expander로 접어두어 필수값처럼 보이지 않게 함
+            _pt_badge_html = ""
+            if admit_cands:
+                with st.expander(f"📋 예약 환자 불러오기 ({len(admit_cands)}명)", expanded=False):
+                    _pt_opts = ["— 선택 안 함 —"] + [
+                        (
+                            f"{r.get('진료과명','?')}"
+                            f" | {'남' if r.get('성별','M')=='M' else '여'}"
+                            f" | {r.get('나이','?')}세"
+                        )
+                        for r in admit_cands
+                    ]
+                    _pt_sel = st.selectbox(
+                        "환자",
+                        _pt_opts,
+                        key="asgn_pt_sel",
+                        label_visibility="collapsed",
+                    )
+                    if _pt_sel != "— 선택 안 함 —":
+                        _pt_idx   = _pt_opts.index(_pt_sel) - 1
+                        _pt_r     = admit_cands[_pt_idx]
+                        _raw_dept = (_pt_r.get("진료과코드", "") or _pt_r.get("진료과명", "")).strip().upper()
+                        _asgn_sex_sel  = "남" if _pt_r.get("성별", "M") == "M" else "여"
+                        _asgn_dept_sel = _raw_dept if _raw_dept else "전체"
+                        _age_v    = int(_pt_r.get("나이", 0) or 0)
+                        _sx_icon  = "🔵" if _asgn_sex_sel == "남" else "🔴"
+                        _pt_badge_html = (
+                            f'<div style="margin:4px 0;padding:6px 10px;background:#EFF6FF;'
+                            f'border:1px solid #BFDBFE;border-radius:6px;font-size:11.5px;'
+                            f'line-height:1.7;color:#1E40AF;">'
+                            f'📋 <b>{_pt_r.get("진료과명", _raw_dept)}</b>'
+                            f' {_sx_icon} {_asgn_sex_sel}성 {_age_v}세 → 조건 자동 적용'
+                            f'</div>'
+                        )
+                        st.markdown(_pt_badge_html, unsafe_allow_html=True)
+
+            # ── 검색 버튼 ─────────────────────────────────
             if st.button("🔍 가용 병상 검색", key="asgn_search_btn", use_container_width=True, type="primary"):
-                st.session_state["asgn_result_ready"] = True
+                st.session_state.update({
+                    "asgn_result_ready": True,
+                    "asgn_dept_saved":   _asgn_dept_sel,
+                    "asgn_sex_saved":    _asgn_sex_sel,
+                    "asgn_room_saved":   _asgn_room_sel,
+                    "asgn_ward_saved":   _asgn_ward_sel,
+                })
             st.markdown("</div>", unsafe_allow_html=True)
 
             if st.session_state.get("asgn_result_ready"):
-                _sw  = st.session_state.get("asgn_ward_sel", "전체")
-                _sri = st.session_state.get("asgn_room_sel", "전체")
-                _sdp = ("전체" if st.session_state.get("asgn_room_sel") == "1인실"
-                        else st.session_state.get("asgn_dept_sel", "전체"))
-                _ssx = st.session_state.get("asgn_sex_sel", "전체")
+                # 검색 버튼 클릭 시 저장된 값 사용 (rerun 후에도 유지)
+                _sw  = st.session_state.get("asgn_ward_saved", "전체")
+                _sri = st.session_state.get("asgn_room_saved", "전체")
+                _sdp = ("전체" if st.session_state.get("asgn_room_saved") == "1인실"
+                        else st.session_state.get("asgn_dept_saved", "전체"))
+                _ssx = st.session_state.get("asgn_sex_saved", "전체")
 
                 # 1단계: 빈병상 + 병동/인실 조건 필터
                 _candidates_raw = [
@@ -1667,18 +1740,6 @@ def _render_ward() -> None:
 
         # ── [v2.2] 섹션 헤더 + pill 선택기 ────────────────────────────
         chart_type_trend = _chart_selector("weekly_trend", "주간 추이 7일", _g_ward)
-
-        # ── 현재 KPI 요약 (어느 타입이든 항상 표시) ─────────────────────
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;'
-            f'padding-bottom:6px;border-bottom:1px solid #F1F5F9;">'
-            f'<span style="font-size:12px;color:#64748B;">재원</span>'
-            f'<b style="font-size:14px;color:#0F172A;font-family:Consolas,monospace;">{occupied}명</b>'
-            f'<span style="font-size:12px;color:#64748B;">가동률</span>'
-            f'<b style="font-size:14px;color:{_oc_c_trend};font-family:Consolas,monospace;">{occ_rate:.1f}%</b>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
 
         if trend_f:
             # 전일 기준 7일치만 표시 — 금일(오늘)은 KPI 카드로 확인
@@ -1971,8 +2032,6 @@ def _render_ward() -> None:
             '<div style="font-size:13px;font-weight:600;color:#64748B;">예약 환자 데이터 없음</div></div>',
             unsafe_allow_html=True,
         )
-    st.markdown('<div style="border-top:1px solid #E2E8F0;margin:14px 0 10px;"></div>', unsafe_allow_html=True)
-    _render_bed_assignment(bed_detail_f, admit_cands, _ward_surg, bed_room_stat if "bed_room_stat" in dir() else [])
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -2011,428 +2070,6 @@ def _render_ward() -> None:
     _render_ward_llm_chat(kpi=_kpi_for_llm, bed_occ=[], bed_detail=bed_detail_f, op_stat=op_stat_f)
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-
-# ── 병상 배정 어시스트 ───────────────────────────────────────────────
-
-def _render_bed_assignment(
-    bed_detail: List[Dict],
-    admit_cands: List[Dict],
-    ward_surg: Dict[str, int],
-    bed_room_stat: List[Dict] = None,
-) -> None:
-    """
-    병상 배정 어시스트 v2.3 — 병실 수배 패널 스타일로 재설계
-
-    [구성]
-    좌: 조건 입력 (예약환자 선택 OR 직접 입력)
-    우: 추천 결과 테이블 (병동별 가용병상, 가동률, 병실 현황 드릴다운)
-    """
-    # ── 헤더 ──────────────────────────────────────────────────────
-    st.markdown(
-        '<div class="wd-card" style="margin-top:6px;">'
-        '<div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;'
-        'margin-bottom:10px;border-bottom:1px solid #F1F5F9;">'
-        '<span style="display:inline-block;width:3px;height:16px;background:'
-        'linear-gradient(180deg,#1E40AF,#60A5FA);border-radius:2px;"></span>'
-        '<span style="font-size:13px;font-weight:700;color:#0F172A;">병상 배정 어시스트</span>'
-        '<span style="font-size:11px;color:#94A3B8;font-weight:400;">'
-        '성별 · 연령 · 진료과 · 인실 조건으로 최적 병동 추천</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    col_f, col_r = st.columns([3, 7], gap="small")
-
-    # ── 좌: 조건 입력 패널 ────────────────────────────────────────
-    with col_f:
-        st.markdown(
-            '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;">'
-            '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;'
-            'letter-spacing:.06em;margin-bottom:10px;">🔍 조건 설정</div>',
-            unsafe_allow_html=True,
-        )
-
-        _mode = st.radio(
-            "입력 방식",
-            ["예약 환자", "직접 입력"],
-            horizontal=True,
-            key="ba_mode",
-        )
-
-        _ba_sex = _ba_age = "전체"
-        _ba_dept = ""
-        _ba_room = "전체"
-        _pt_info = ""
-
-        if _mode == "예약 환자":
-            if admit_cands:
-                _opts = ["— 환자 선택 —"] + [
-                    f"{r.get('진료과명','?')} | "
-                    f"{'남' if r.get('성별','M')=='M' else '여'} | "
-                    f"{r.get('나이','?')}세"
-                    for r in admit_cands
-                ]
-                _sel = st.selectbox("환자", _opts, key="ba_pt_sel", label_visibility="collapsed")
-                if _sel != "— 환자 선택 —":
-                    _idx = _opts.index(_sel) - 1
-                    _pt  = admit_cands[_idx]
-                    _ba_sex  = "남" if _pt.get("성별", "M") == "M" else "여"
-                    _age_val = int(_pt.get("나이", 0) or 0)
-                    _ba_age  = (
-                        "70대이상" if _age_val >= 70
-                        else f"{(_age_val // 10) * 10}대" if _age_val >= 20
-                        else "10대이하"
-                    )
-                    _ba_dept = _pt.get("진료과명", "")
-                    _sex_icon = "🔵" if _ba_sex == "남" else "🔴"
-                    _pt_info = (
-                        f'<div style="margin-top:8px;padding:8px 10px;background:#EFF6FF;'
-                        f'border-radius:6px;font-size:11.5px;color:#1E40AF;line-height:1.6;">'
-                        f'<b>{_ba_dept}</b> &nbsp;{_sex_icon} {_ba_sex}성 &nbsp; {_pt.get("나이","?")}세</div>'
-                    )
-            else:
-                st.info("예약 환자 없음")
-        else:
-            _ba_sex  = st.radio("성별", ["전체", "남", "여"], horizontal=True, key="ba_sex_r")
-            _ba_age  = st.selectbox(
-                "연령대",
-                ["전체","10대이하","20대","30대","40대","50대","60대","70대이상"],
-                key="ba_age_sel", label_visibility="collapsed",
-            )
-            _ba_dept = st.text_input("진료과", key="ba_dept_inp", placeholder="예: 내과, 외과")
-
-        _ba_room = st.selectbox(
-            "희망 인실",
-            ["전체", "1인실", "2인실", "3인실", "4인실 이상"],
-            key="ba_room_sel",
-        )
-
-        _do_search = st.button(
-            "🔍 병상 추천",
-            key="ba_search",
-            type="primary",
-            use_container_width=True,
-        )
-
-        if _pt_info:
-            st.markdown(_pt_info, unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── 우: 추천 결과 ─────────────────────────────────────────────
-    with col_r:
-        if _do_search:
-            st.session_state.update({
-                "ba_result_ready": True,
-                "ba_sex_v":  _ba_sex,
-                "ba_age_v":  _ba_age,
-                "ba_dept_v": _ba_dept,
-                "ba_room_v": _ba_room,
-            })
-
-        if not st.session_state.get("ba_result_ready"):
-            st.markdown(
-                '<div style="display:flex;flex-direction:column;align-items:center;'
-                'justify-content:center;min-height:240px;color:#CBD5E1;gap:8px;">'
-                '<div style="font-size:40px;">🏥</div>'
-                '<div style="font-size:13px;font-weight:600;color:#94A3B8;">좌측 조건 설정 후</div>'
-                '<div style="font-size:12px;color:#CBD5E1;">🔍 병상 추천을 클릭하세요</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            _sx = st.session_state.get("ba_sex_v", "전체")
-            _dp = st.session_state.get("ba_dept_v", "").strip().upper()
-            _rm = st.session_state.get("ba_room_v", "전체")
-            _is_1insl = (_rm == "1인실")
-
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 병상 추천 순서도 (v2.3)
-            #
-            # ① 기본 조건: 가용 병상(총병상-재원) > 0
-            # ② 인실 매칭: 희망 인실 있는 병동 +30점
-            #    - 1인실: 진료과 매칭 스킵 (독립 병실, 무관)
-            # ③ 진료과 매칭: bed_room_stat 재원 환자 진료과 코드 기준 +40점
-            #    - 병동명 텍스트 비교 아님, 실제 재원 환자 코드 비교
-            #    - 1인실 선택 시 이 단계 스킵
-            # ④ 성별 동일 병실: 2인실 이상에서만 +20점
-            #    - 1인실은 성별 무관이므로 스킵
-            # ⑤ 가동률 낮은 병동: (100 - 가동률) 점수화
-            # ⑥ 익일 가용 병상 수: × 2 가중치 (퇴원 예정 포함)
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            # 사전 계산: 병동별 진료과 코드 집합 (bed_room_stat 기반)
-            # {병동명: {진료과코드, ...}} — 재원/퇴원예정 환자만
-            _ward_depts: dict = {}
-            _ward_sex_rooms: dict = {}  # {병동명: {"남": [병실번호...], "여": [...]}}
-            for _r in (bed_room_stat or []):
-                _rw   = _r.get("병동명", "")
-                _rdpt = (_r.get("진료과", "") or "").strip().upper()
-                if _rdpt:
-                    _ward_depts.setdefault(_rw, set()).add(_rdpt)
-
-            # 병동별 성별 분포 (bed_room_stat에서 재원 환자 성별)
-            for _r in (bed_room_stat or []):
-                if _r.get("상태") not in ("재원", "퇴원예정"):
-                    continue
-                _rw  = _r.get("병동명", "")
-                _rsx = _r.get("성별", "")
-                _rno = str(_r.get("병실번호", "")).zfill(6)[:4]
-                if _rsx and _rw:
-                    _ward_sex_rooms.setdefault(_rw, {}).setdefault(_rsx, set()).add(_rno)
-
-            _scored = []
-            for _bd in bed_detail:
-                _wn    = _bd.get("병동명", "")
-                _total = int(_bd.get("총병상", 0) or 0)
-                _stay  = int(_bd.get("재원수", 0) or 0)
-                _avail = max(0, _total - _stay)
-                _nxt   = int(_bd.get("익일가용병상", 0) or _avail)
-                _rate  = float(_bd.get("가동률", 0) or 0)
-                _adm   = int(_bd.get("금일입원", 0) or 0)
-                _disc  = int(_bd.get("금일퇴원", 0) or 0)
-                if _avail <= 0:
-                    continue
-
-                _score = 0
-                _tags  = []
-
-                # ⑤⑥ 기본 점수: 여유 + 익일 가용
-                _score += (100 - _rate)        # 가동률 낮을수록 +
-                _score += _nxt * 2             # 익일 가용 가중
-
-                # ② 인실 매칭: 희망 인실이 있는 병동 가산
-                if _rm != "전체":
-                    _has_room_type = any(
-                        r.get("인실구분", "") == _rm and r.get("상태") == "빈병상"
-                        for r in (bed_room_stat or []) if r.get("병동명", "") == _wn
-                    )
-                    if _has_room_type:
-                        _score += 30
-                        _tags.append(f"{_rm} 가용")
-                    else:
-                        # 희망 인실 없으면 순위 대폭 하락
-                        _score -= 60
-
-                # ③ 진료과 매칭 (1인실은 스킵)
-                if _dp and not _is_1insl:
-                    _wn_depts = _ward_depts.get(_wn, set())
-                    if _dp in _wn_depts:
-                        _score += 40
-                        _tags.append(f"{_dp} 재원 병동")
-
-                # ④ 성별 동일 병실 (2인실 이상, 1인실 스킵)
-                if _sx != "전체" and not _is_1insl:
-                    _sex_rooms = _ward_sex_rooms.get(_wn, {})
-                    if _sx in _sex_rooms and _sex_rooms[_sx]:
-                        _score += 20
-                        _tags.append(f"{_sx}성 병실 있음")
-
-                _scored.append((_score, _wn, _total, _stay, _avail, _nxt, _rate, _adm, _disc, _tags))
-
-            _scored.sort(key=lambda x: -x[0])
-            _top5 = _scored[:5]
-
-            # ── 조건 태그 ────────────────────────────────────────
-            _conds = [c for c in [
-                f"성별 {_sx}" if _sx != "전체" else "",
-                f"진료과 {_dp}" if _dp and not _is_1insl else "",
-                f"{_rm}" if _rm != "전체" else "",
-                "1인실 (진료과 무관)" if _is_1insl else "",
-            ] if c]
-            _tag_html = "".join(
-                f'<span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;'
-                f'border-radius:4px;padding:1px 8px;font-size:10.5px;font-weight:600;">{c}</span> '
-                for c in _conds
-            ) if _conds else '<span style="color:#94A3B8;font-size:11px;">조건 없음 (전체 병동)</span>'
-
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">'
-                f'<span style="font-size:11px;font-weight:700;color:#475569;">추천 결과</span>'
-                f'<span style="font-size:11px;color:#94A3B8;">· 가용 병상 순</span>'
-                f'&nbsp;{_tag_html}</div>',
-                unsafe_allow_html=True,
-            )
-
-            if not _top5:
-                st.markdown(
-                    '<div style="padding:32px;text-align:center;color:#94A3B8;">'
-                    '<div style="font-size:28px;margin-bottom:8px;">⚠️</div>'
-                    '<div style="font-size:13px;font-weight:600;color:#EF4444;">조건에 맞는 가용 병동 없음</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                # ── 추천 결과 테이블 (병실 수배 스타일) ──────────
-                _TH = (
-                    "padding:7px 10px;font-size:10.5px;font-weight:700;"
-                    "text-transform:uppercase;letter-spacing:.05em;"
-                    "color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;white-space:nowrap;"
-                )
-                _tbl = (
-                    '<div style="overflow-x:auto;">'
-                    '<table style="width:100%;border-collapse:collapse;">'
-                    '<thead><tr>'
-                    f'<th style="{_TH}text-align:left;width:24px;"></th>'
-                    f'<th style="{_TH}text-align:left;">병동명</th>'
-                    f'<th style="{_TH}text-align:right;">총병상</th>'
-                    f'<th style="{_TH}text-align:right;">재원</th>'
-                    f'<th style="{_TH}text-align:right;color:#16A34A;">잔여</th>'
-                    f'<th style="{_TH}text-align:right;color:#7C3AED;">익일가용</th>'
-                    f'<th style="{_TH}text-align:right;">가동률</th>'
-                    f'<th style="{_TH}text-align:right;">금일입원</th>'
-                    f'<th style="{_TH}text-align:right;">금일퇴원</th>'
-                    f'<th style="{_TH}text-align:right;">수술</th>'
-                    f'<th style="{_TH}text-align:center;">병실</th>'
-                    '</tr></thead><tbody>'
-                )
-
-                _RANK_BG = ["#EFF6FF","#F0FDF4","#FFFBEB","#F8FAFC","#F8FAFC"]
-                _RANK_BD = ["#BFDBFE","#86EFAC","#FDE68A","#E2E8F0","#E2E8F0"]
-                _RANK_NO = ["#1E40AF","#059669","#D97706","#94A3B8","#CBD5E1"]
-
-                for _ri, (_sc, _wn, _total, _stay, _avail, _nxt, _rate, _adm, _disc, _tags) in enumerate(_top5):
-                    _rt_c   = "#EF4444" if _rate >= 90 else "#F59E0B" if _rate >= 80 else "#059669"
-                    _av_c   = "#16A34A" if _avail > 2 else "#F59E0B" if _avail > 0 else "#EF4444"
-                    _nxt_c  = "#7C3AED" if _nxt > 0 else "#94A3B8"
-                    _rbg    = _RANK_BG[min(_ri, 4)]
-                    _rbd    = _RANK_BD[min(_ri, 4)]
-                    _rno    = _RANK_NO[min(_ri, 4)]
-                    _surg   = ward_surg.get(_wn, 0)
-                    _tag_s  = " ".join(f"[{t}]" for t in _tags) if _tags else ""
-                    _rm_key = f"show_room_{_wn.replace(' ','_')}"
-                    _rm_open = st.session_state.get(_rm_key, False)
-                    _btn_lbl = "▲" if _rm_open else "🏠"
-
-                    _tbl += (
-                        f'<tr style="background:{_rbg};border-left:3px solid {_rbd};">'
-                        # 순위 배지
-                        f'<td style="padding:8px 6px;text-align:center;">'
-                        f'<span style="background:{_rno};color:#fff;border-radius:50%;'
-                        f'width:20px;height:20px;display:inline-flex;align-items:center;'
-                        f'justify-content:center;font-size:10px;font-weight:700;">{_ri+1}</span></td>'
-                        # 병동명 + 태그
-                        f'<td style="padding:8px 10px;">'
-                        f'<div style="font-size:13px;font-weight:700;color:#0F172A;">{_wn}</div>'
-                        f'{"<div style=" + chr(39) + "font-size:9.5px;color:#7C3AED;margin-top:1px;" + chr(39) + ">" + _tag_s + "</div>" if _tag_s else ""}'
-                        f'</td>'
-                        # 수치 컬럼
-                        f'<td style="padding:8px 10px;text-align:right;color:#64748B;font-family:Consolas,monospace;font-size:12px;">{_total}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:#0F172A;font-family:Consolas,monospace;font-weight:600;font-size:12px;">{_stay}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:{_av_c};font-family:Consolas,monospace;font-weight:700;font-size:13px;">{_avail}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:{_nxt_c};font-family:Consolas,monospace;font-weight:600;font-size:12px;">{_nxt if _nxt else "─"}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:{_rt_c};font-family:Consolas,monospace;font-weight:700;font-size:12px;">{_rate:.0f}%</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:#1D4ED8;font-family:Consolas,monospace;font-size:12px;">{_adm}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:#475569;font-family:Consolas,monospace;font-size:12px;">{_disc}</td>'
-                        f'<td style="padding:8px 10px;text-align:right;color:{"#8B5CF6" if _surg else "#CBD5E1"};font-family:Consolas,monospace;font-size:12px;">{_surg if _surg else "─"}</td>'
-                        # 병실 현황 버튼 (텍스트로만)
-                        f'<td style="padding:8px 6px;text-align:center;width:36px;" id="room_btn_{_ri}"></td>'
-                        f'</tr>'
-                    )
-
-                _tbl += (
-                    '<tr style="background:#F8FAFC;border-top:1.5px solid #E2E8F0;">'
-                    '<td colspan="11" style="padding:4px 10px;">'
-                    '<div style="display:flex;gap:8px;font-size:10px;">'
-                    '<span style="color:#059669;font-weight:700;">■ 잔여: 가용 병상 수</span>'
-                    '<span style="color:#EF4444;font-weight:700;">■ 가동률 ≥90% 위험</span>'
-                    '<span style="color:#F59E0B;font-weight:700;">■ 가동률 80~90% 주의</span>'
-                    '</div></td></tr>'
-                    '</tbody></table></div>'
-                )
-                st.markdown(_tbl, unsafe_allow_html=True)
-
-                # ── 병실 현황 드릴다운 (병동 선택 후 펼치기) ────
-                st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-                for _ri, (_sc, _wn, *_rest) in enumerate(_top5):
-                    _rm_key  = f"show_room_{_wn.replace(' ','_')}"
-                    _rm_open = st.session_state.get(_rm_key, False)
-                    _btn_c1, _btn_c2 = st.columns([8, 2], gap="small")
-                    with _btn_c1:
-                        st.markdown(
-                            f'<div style="font-size:12px;font-weight:600;color:#334155;'
-                            f'padding:4px 0;line-height:2;">{_wn}</div>',
-                            unsafe_allow_html=True,
-                        )
-                    with _btn_c2:
-                        if st.button(
-                            "▲ 접기" if _rm_open else "🏠 병실",
-                            key=f"ba_room_btn_{_ri}",
-                            type="secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state[_rm_key] = not _rm_open
-                            st.rerun()
-
-                    if _rm_open:
-                        _rms = [r for r in (bed_room_stat or []) if r.get("병동명", "") == _wn]
-                        if _rms:
-                            _STATUS_CLR = {
-                                "재원":    ("#1D4ED8", "#DBEAFE"),
-                                "퇴원예정":("#7C3AED", "#EDE9FE"),
-                                "빈병상":  ("#16A34A", "#DCFCE7"),
-                                "LOCK":    ("#DC2626", "#FEE2E2"),
-                            }
-                            _TH2 = (
-                                "padding:5px 8px;font-size:10px;font-weight:700;"
-                                "text-transform:uppercase;letter-spacing:.05em;"
-                                "color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
-                            )
-                            _rm_tbl = (
-                                f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;'
-                                f'border-radius:8px;padding:10px;margin:4px 0 8px;">'
-                                f'<div style="font-size:10px;font-weight:700;color:#1E40AF;'
-                                f'text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">'
-                                f'🏥 {_wn} 병실 현황</div>'
-                                f'<table style="width:100%;border-collapse:collapse;">'
-                                f'<thead><tr>'
-                                f'<th style="{_TH2}text-align:left;">병실번호</th>'
-                                f'<th style="{_TH2}text-align:center;">인실</th>'
-                                f'<th style="{_TH2}text-align:right;color:#16A34A;">빈병상</th>'
-                                f'<th style="{_TH2}text-align:right;color:#EF4444;">LOCK</th>'
-                                f'<th style="{_TH2}text-align:center;">상태</th>'
-                                f'<th style="{_TH2}text-align:left;">비고</th>'
-                                f'</tr></thead><tbody>'
-                            )
-                            for _i, _rmr in enumerate(_rms):
-                                _empty  = int(_rmr.get("빈병상수", 0) or 0)
-                                _lock   = int(_rmr.get("LOCK병상수", 0) or 0)
-                                _reason = _rmr.get("LOCK사유", "") or ""
-                                _status = _rmr.get("상태", "")
-                                _sc2, _sbg2 = _STATUS_CLR.get(_status, ("#64748B", "#F1F5F9"))
-                                _ec = "#16A34A" if _empty > 0 else "#94A3B8"
-                                _lc = "#EF4444" if _lock  > 0 else "#CBD5E1"
-                                _bg2 = "#FFFFFF" if _i % 2 == 0 else "#F8FAFC"
-                                _rm_tbl += (
-                                    f'<tr style="background:{_bg2};border-bottom:1px solid #F1F5F9;">'
-                                    f'<td style="padding:6px 8px;font-weight:600;color:#0F172A;font-size:12px;">'
-                                    f'{_rmr.get("병실번호","")}</td>'
-                                    f'<td style="padding:6px 8px;text-align:center;color:#475569;font-size:12px;">'
-                                    f'{_rmr.get("인실구분","")}</td>'
-                                    f'<td style="padding:6px 8px;text-align:right;font-weight:700;'
-                                    f'color:{_ec};font-family:Consolas,monospace;font-size:12px;">{_empty}</td>'
-                                    f'<td style="padding:6px 8px;text-align:right;font-weight:700;'
-                                    f'color:{_lc};font-family:Consolas,monospace;font-size:12px;">'
-                                    f'{str(_lock) if _lock else "─"}</td>'
-                                    f'<td style="padding:6px 8px;text-align:center;">'
-                                    f'<span style="background:{_sbg2};color:{_sc2};border-radius:4px;'
-                                    f'padding:1px 7px;font-size:10.5px;font-weight:600;">'
-                                    f'{_status if _status else "─"}</span></td>'
-                                    f'<td style="padding:6px 8px;font-size:11px;color:#F59E0B;">'
-                                    f'{"🔒 " + _reason if _reason else "─"}</td>'
-                                    f'</tr>'
-                                )
-                            _rm_tbl += '</tbody></table></div>'
-                            st.markdown(_rm_tbl, unsafe_allow_html=True)
-                        else:
-                            st.markdown(
-                                f'<div style="padding:10px 14px;background:#FFF8F0;border-radius:6px;'
-                                f'border:1px solid #FDE68A;font-size:12px;color:#92400E;margin-bottom:8px;">'
-                                f'⚠️ <b>{_wn}</b> 병실 데이터 없음 — V_BED_ROOM_STATUS VIEW 확인</div>',
-                                unsafe_allow_html=True,
-                            )
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ── LLM 채팅 ────────────────────────────────────────────────────────
