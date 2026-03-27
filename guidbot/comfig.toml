@@ -1,45 +1,71 @@
+# ══════════════════════════════════════════════════════════════
+# .streamlit/config.toml
+# 좋은문화병원 Guidbot — 운영 환경 설정 (i5-10500 / 16GB)
+#
+# [중요] 이 파일은 대시보드(8503)와 RAG챗봇(8502) 양쪽에 공통 적용됨.
+# 앱별 포트는 start.bat 의 --server.port 인자로 덮어씁니다.
+# ══════════════════════════════════════════════════════════════
+
 [server]
-# 최초 로딩 후 파일 변경 감지 비활성화 (운영 환경)
-# 개발 시에는 true 로 변경
-runOnSave = false
+# ── 포트 (start.bat에서 --server.port로 오버라이드) ──────────
+port = 8501  # 대시보드 기본값 (챗봇은 8501)
 
-# headless = true 이면 브라우저 자동 실행 안 함 (서버 운영 시 권장)
-headless = true
-
-# 접속 포트
-port = 8502
-
-# 내부망 전용 바인딩 (0.0.0.0 = 전체 허용)
+# ── 바인딩: 내부망 전체 허용 ─────────────────────────────────
+# 병원 내부 IP 대역만 접근 가능하도록 방화벽 설정과 병행 필요
 address = "0.0.0.0"
 
-# 파일 업로드 최대 크기 (MB) - PDF 업로드 시
-maxUploadSize = 200
+# ── 서버 모드 (브라우저 자동 실행 안 함) ─────────────────────
+headless = true
 
-# WebSocket 헤더 크기 제한 완화 (대용량 페이지 렌더링)
-maxMessageSize = 200
+# ── 파일 변경 감지 비활성화 (운영 환경 — CPU 절약) ───────────
+runOnSave = false
+
+# ── 업로드/메시지 크기 제한 ──────────────────────────────────
+# PDF 업로드 최대 200MB (규정집 대용량 파일 대비)
+maxUploadSize = 200
+# WebSocket 메시지 최대 크기 (Plotly 차트 데이터 포함)
+maxMessageSize = 100
+
+# ── XSRF 보호 활성화 (보안) ──────────────────────────────────
+enableXsrfProtection = true
+
+# ── CORS 설정: 내부망만 허용 ─────────────────────────────────
+# 외부 도메인에서의 API 호출 차단
+enableCORS = false
 
 [browser]
-# 사용 통계 수집 비활성화 (보안)
+# ── 사용 통계 수집 비활성화 (보안·개인정보) ──────────────────
 gatherUsageStats = false
 
-# 서버 주소 표시 안 함
+# ── 서버 주소 (클라이언트에 노출되는 주소) ───────────────────
 serverAddress = "localhost"
 
-[theme]
-# 기본 테마 (theme.py 에서 CSS 오버라이드)
-base = "light"
-primaryColor = "#2E75B6"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F4F8"
-textColor = "#1A3A5C"
-
 [runner]
-# 스크립트 재실행 시 위젯 상태 유지
+# ── 빠른 리런 활성화 (위젯 인터랙션 응답성 향상) ─────────────
+# 버튼 클릭, 선택기 변경 시 전체 재실행 없이 델타만 처리
 fastReruns = true
 
-# 매직 커맨드 비활성화 (성능 최적화)
+# ── 매직 커맨드 비활성화 (파싱 오버헤드 제거) ────────────────
 magicEnabled = false
 
+# ── 예외 처리: 운영 환경에서 전체 스택트레이스 숨김 ──────────
+# 사용자에게는 간략한 오류 메시지만 표시
+# 개발 시에는 이 줄을 제거하거나 false로 변경
+# showSensitiveErrorDetails = false  # Streamlit 1.35+ 에서 지원
+
+[theme]
+# ── 병원 내부 시스템 테마 ────────────────────────────────────
+base = "light"
+primaryColor = "#1E40AF"          # 딥블루 (대시보드 포인트 컬러)
+backgroundColor = "#F8FAFC"       # 연회색 배경
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"             # 진한 네이비 텍스트
+font = "sans serif"
+
 [logger]
-# Streamlit 내부 로그 레벨 (WARNING 이상만 표시)
+# ── Streamlit 내부 로그: WARNING 이상만 표시 (로그 노이즈 감소) ─
 level = "warning"
+
+# ── 로그 파일 출력 (운영 서버 디버깅용) ──────────────────────
+# 기본값은 stderr. 파일 저장은 start.bat에서 리다이렉션으로 처리.
+messageFormat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
