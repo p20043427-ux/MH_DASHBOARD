@@ -2080,6 +2080,48 @@ def _render_ward() -> None:
                 unsafe_allow_html=True,
             )
 
+        # ── KPI 하단: 빠른질문 버튼 + AI 채팅 ──────────────────────
+        # KPI 카드를 보고 판단한 뒤 바로 클릭 → 주간추이와 높이 자동 정렬
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # 빠른질문 버튼 5개 — 얇은 구분선 + 라벨
+        st.markdown(
+            '<div style="border-top:1px solid #E2E8F0;padding-top:8px;margin-bottom:6px;">'
+            '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
+            'text-transform:uppercase;letter-spacing:.08em;">빠른 분석</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _quick_qs2 = [
+            ("위험 병동",   "현재 가동률 90% 이상인 위험 병동이 있나요? 해당 병동 조치 방안을 알려주세요."),
+            ("입퇴원 분석", "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
+            ("병상 부족",   "현재 데이터 기준으로 내일 병상 부족 위험이 있는 병동을 예측해주세요."),
+            ("수술 부담",   "수술 건수가 많은 병동의 현황과 관리 포인트를 알려주세요."),
+            ("운영 요약",   "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
+        ]
+        _qb_cols = st.columns(len(_quick_qs2), gap="small")
+        for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
+            with _qb_cols[_qi2]:
+                if st.button(
+                    _ql2, key=f"qs_kpi_{_qi2}",
+                    use_container_width=True, type="secondary",
+                    help=_qv2[:40] + "...",
+                ):
+                    st.session_state["ward_chat_quick_input"] = _qv2
+                    st.rerun()
+
+        # AI 채팅 — KPI 컬럼 내 하단에 배치 (높이 자동 확장)
+        st.markdown(
+            '<div style="margin-top:8px;border:1px solid #E2E8F0;border-radius:10px;'
+            'padding:12px 14px;background:#FAFBFC;flex:1;">',
+            unsafe_allow_html=True,
+        )
+        _render_ward_llm_chat(
+            kpi=_kpi_for_llm, bed_occ=[],
+            bed_detail=bed_detail_f, op_stat=op_stat_f,
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
     # ════════════════════════════════════════════════════════════
     # [v2.2] 주간 추이 7일 — 차트 선택기 통합
     # 기본: 테이블 (기존 HTML 표) / 라인 / 영역 / 막대 선택 가능
@@ -2131,6 +2173,7 @@ def _render_ward() -> None:
     # ════════════════════════════════════════════════════════════
     st.markdown('</div>', unsafe_allow_html=True)  # /wd-row-kpi
     st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
     # ── Row 3: 병동별 당일 현황 + 진료과 재원 ───────────────────
     st.markdown('<div class="wd-row-chart">', unsafe_allow_html=True)
     # [v2.2] 두 섹션 모두 차트 선택기 통합
@@ -2393,41 +2436,7 @@ def _render_ward() -> None:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── AI 채팅 카드: 구분선 강조 + 상태 표시 ─────────────────────
-    _llm_avail = True
-    try:
-        from core.llm import get_llm_client as _gc; _gc()
-    except Exception:
-        _llm_avail = False
-    _ai_badge = (
-        '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;'
-        'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;'
-        'border-radius:4px;padding:1px 7px;font-weight:600;margin-left:8px;">연결됨</span>'
-        if _llm_avail else
-        '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;'
-        'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;'
-        'border-radius:4px;padding:1px 7px;font-weight:600;margin-left:8px;">미연결</span>'
-    )
-    st.markdown(
-        f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;'
-        f'box-shadow:0 2px 8px rgba(30,64,175,0.06);margin-top:8px;overflow:hidden;">'
-        f'<div style="background:linear-gradient(135deg,#1E3A8A 0%,#1E40AF 50%,#2563EB 100%);'
-        f'padding:12px 18px;display:flex;align-items:center;gap:10px;">'
-        f'<div style="width:32px;height:32px;background:rgba(255,255,255,0.15);'
-        f'border-radius:8px;display:flex;align-items:center;justify-content:center;'
-        f'font-size:18px;flex-shrink:0;">🤖</div>'
-        f'<div style="flex:1;">'
-        f'<div style="font-size:14px;font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;">AI 병동 분석 채팅{_ai_badge}</div>'
-        f'<div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:1px;">'
-        f'금일 병동 운영 데이터를 기반으로 실시간 분석 · 위험도 평가 · 운영 조언 제공</div>'
-        f'</div></div>'
-        f'<div style="padding:14px 16px;">',
-        unsafe_allow_html=True,
-    )
-    _render_ward_llm_chat(kpi=_kpi_for_llm, bed_occ=[], bed_detail=bed_detail_f, op_stat=op_stat_f)
-    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 
@@ -2497,50 +2506,9 @@ def _render_ward_llm_chat(
         st.session_state["ward_chat_history"] = []
     _history: List[Dict] = st.session_state.get("ward_chat_history", [])
 
-    # ── 상단 컨텍스트 배지 (KPI 요약) ───────────────────────────────
-    _occ_c = "#EF4444" if _occ >= 90 else "#F59E0B" if _occ >= 80 else "#059669"
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;'
-        f'background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
-        f'margin-bottom:10px;flex-wrap:wrap;">'
-        f'<span style="font-size:10px;color:#64748B;font-weight:600;text-transform:uppercase;'
-        f'letter-spacing:.06em;">현재 컨텍스트</span>'
-        f'<span style="width:1px;height:12px;background:#E2E8F0;"></span>'
-        f'<span style="font-size:11px;color:#475569;">{_ward}</span>'
-        f'<span style="font-size:11px;font-weight:700;color:{_occ_c};'
-        f'font-family:Consolas,monospace;">가동률 {_occ:.1f}%</span>'
-        f'<span style="font-size:11px;color:#475569;">재원 <b style="color:#1E40AF;">{_stay}명</b></span>'
-        f'<span style="font-size:11px;color:#475569;">입원 <b style="color:#059669;">{_adm}명</b>'
-        f' / 퇴원 <b style="color:#475569;">{_disc}명</b></span>'
-        f'<span style="margin-left:auto;font-size:10px;color:#94A3B8;">{time.strftime("%H:%M")} 기준</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
-    # ── 빠른 질문 버튼 (대화 없을 때만 표시) ─────────────────────────
-    if not _history:
-        _quick_qs = [
-            ("🔴 위험 병동 현황", "현재 가동률 90% 이상인 위험 병동이 있나요? 해당 병동 조치 방안을 알려주세요."),
-            ("📊 오늘 입퇴원 분석", "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
-            ("🏥 병상 부족 예측", "현재 데이터 기준으로 내일 병상 부족 위험이 있는 병동을 예측해주세요."),
-            ("🔪 수술 부담 현황", "수술 건수가 많은 병동의 현황과 관리 포인트를 알려주세요."),
-            ("📋 전체 운영 요약", "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
-        ]
-        st.markdown(
-            '<div style="margin-bottom:10px;">' 
-            '<div style="font-size:11px;color:#94A3B8;font-weight:600;margin-bottom:6px;'
-            'text-transform:uppercase;letter-spacing:.06em;">빠른 질문</div>',
-            unsafe_allow_html=True,
-        )
-        _qcols = st.columns(len(_quick_qs), gap="small")
-        for _qi, (_ql, _qv) in enumerate(_quick_qs):
-            with _qcols[_qi]:
-                if st.button(
-                    _ql, key=f"quick_q_{_qi}",
-                    use_container_width=True, type="secondary",
-                ):
-                    st.session_state["ward_chat_quick_input"] = _qv
-        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 빠른 질문: AI 채팅 헤더 파란바로 이동됨
 
     # ── 대화 이력 표시 ────────────────────────────────────────────────
     for _msg in _history:
@@ -2807,16 +2775,8 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
     with _c_btns:
         _b1, _b2, _b3 = st.columns(3, gap="small")
         with _b1:
-            # 새로고침 쿨다운 30초 — 동시 접속자 다수가 동시에 누르면 Oracle 쿼리 폭발
-            _last_ref = st.session_state.get(f"last_refresh_ts_{tab}", 0)
-            _elapsed  = int(time.time() - _last_ref)
-            _cd_left  = max(0, 30 - _elapsed)
-            _ref_lbl  = "🔄 새로고침" if _cd_left == 0 else f"⏳ {_cd_left}초"
-            if st.button(_ref_lbl, key=f"dash_refresh_{tab}", use_container_width=True,
-                         type="secondary", disabled=(_cd_left > 0),
-                         help="최신 데이터 재조회 · 30초 쿨다운"):
-                _ref_ts = time.time()
-                st.session_state[f"last_refresh_ts_{tab}"] = _ref_ts
+            if st.button("🔄 새로고침", key=f"dash_refresh_{tab}", use_container_width=True,
+                         type="secondary", help="최신 데이터 재조회"):
                 # Oracle 체크 만료 → 다음 렌더 시 재체크
                 st.session_state.pop("oracle_ok", None)
                 st.session_state.pop("oracle_ok_expire", None)

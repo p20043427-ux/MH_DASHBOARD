@@ -91,6 +91,18 @@ _PROJECT_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+# 병동 대시보드 사용자 로그 + 모니터링
+try:
+    from utils.dashboard_monitor import get_dash_monitor as _get_dash_monitor
+    _DASH_MON = _get_dash_monitor()
+except Exception:
+    class _NullMon:
+        def log_action(self, *a, **k): pass
+        def log_llm_query(self, *a, **k): pass
+        def log_query_fail(self, *a, **k): pass
+        def log_query_time(self, *a, **k): pass
+    _DASH_MON = _NullMon()
+
 try:
     from utils.logger import get_logger as _get_logger
     from config.settings import settings as _settings
@@ -389,6 +401,8 @@ def _query(key: str) -> List[Dict[str, Any]]:
                 )
             else:
                 logger.warning(f"[Query FAIL] {key} ({fail_cnt}/3): {type(e).__name__}: {e}")
+        # 모니터링 로그
+        _DASH_MON.log_query_fail(key, error=f"{type(e).__name__}: {e}")
         return []
 
 
@@ -752,22 +766,53 @@ iframe.stPlotlyChart { border: none !important; }
 .badge-ok   { background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
 .badge-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
 .badge-err  { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; border-radius:5px; padding:2px 9px; font-size:11px; font-weight:700; }
+/* ── 대시보드 버튼 — 세련된 pill 스타일 ────────────────── */
 button[kind="secondary"], [data-testid="stBaseButton-secondary"] {
-  font-size:12px !important; font-weight:600 !important; padding:0 8px !important;
-  height:34px !important; line-height:34px !important; border-radius:8px !important;
-  border:1px solid #E2E8F0 !important; background:#FFFFFF !important; color:#334155 !important;
-  box-shadow:0 1px 2px rgba(0,0,0,0.04) !important; transition:all 80ms ease !important;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  font-size:11.5px !important;
+  font-weight:600 !important;
+  padding:0 14px !important;
+  height:32px !important;
+  line-height:32px !important;
+  border-radius:20px !important;
+  border:1.5px solid #E2E8F0 !important;
+  background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%) !important;
+  color:#475569 !important;
+  box-shadow:0 1px 3px rgba(15,23,42,0.06),0 1px 2px rgba(15,23,42,0.04) !important;
+  transition:all 120ms ease !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
   width:100% !important;
+  letter-spacing:0.01em !important;
 }
 button[kind="secondary"]:hover, [data-testid="stBaseButton-secondary"]:hover {
-  background:#F8FAFC !important; border-color:#CBD5E1 !important; color:#0F172A !important;
-  box-shadow:0 3px 8px rgba(0,0,0,0.08) !important;
+  background:linear-gradient(180deg,#F1F5F9 0%,#E2E8F0 100%) !important;
+  border-color:#94A3B8 !important;
+  color:#1E293B !important;
+  box-shadow:0 3px 8px rgba(15,23,42,0.10) !important;
+  transform:translateY(-1px) !important;
+}
+button[kind="secondary"]:active, [data-testid="stBaseButton-secondary"]:active {
+  transform:translateY(0) !important;
+  box-shadow:0 1px 2px rgba(15,23,42,0.06) !important;
 }
 button[kind="primary"], [data-testid="stBaseButton-primary"] {
-  font-size:12px !important; font-weight:700 !important; padding:0 8px !important;
-  height:34px !important; white-space:nowrap !important; overflow:hidden !important;
-  text-overflow:ellipsis !important; width:100% !important;
+  font-size:11.5px !important;
+  font-weight:700 !important;
+  padding:0 14px !important;
+  height:32px !important;
+  border-radius:20px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  width:100% !important;
+  letter-spacing:0.01em !important;
+  box-shadow:0 2px 6px rgba(30,64,175,0.20) !important;
+  transition:all 120ms ease !important;
+}
+button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover {
+  transform:translateY(-1px) !important;
+  box-shadow:0 4px 12px rgba(30,64,175,0.28) !important;
 }
 [data-testid="stSelectbox"] > div > div {
   height:34px !important; border-radius:8px !important; border:1.5px solid #BFDBFE !important;
@@ -2029,41 +2074,6 @@ def _render_ward() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── AI 채팅 카드 — KPI Row 상단 배치 ─────────────────────────
-    _llm_avail = True
-    try:
-        from core.llm import get_llm_client as _gc; _gc()
-    except Exception:
-        _llm_avail = False
-    _ai_badge = (
-        '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;'
-        'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;'
-        'border-radius:4px;padding:1px 7px;font-weight:600;margin-left:8px;">연결됨</span>'
-        if _llm_avail else
-        '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;'
-        'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;'
-        'border-radius:4px;padding:1px 7px;font-weight:600;margin-left:8px;">미연결</span>'
-    )
-    st.markdown(
-        f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;'
-        f'box-shadow:0 2px 8px rgba(30,64,175,0.06);margin-bottom:8px;overflow:hidden;">'
-        f'<div style="background:linear-gradient(135deg,#1E3A8A 0%,#1E40AF 50%,#2563EB 100%);'
-        f'padding:10px 18px;display:flex;align-items:center;gap:10px;">'
-        f'<div style="width:28px;height:28px;background:rgba(255,255,255,0.15);'
-        f'border-radius:7px;display:flex;align-items:center;justify-content:center;'
-        f'font-size:16px;flex-shrink:0;">🤖</div>'
-        f'<div style="flex:1;">'
-        f'<div style="font-size:13px;font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;">AI 병동 분석 채팅{_ai_badge}</div>'
-        f'<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px;">'
-        f'금일 병동 데이터 기반 실시간 분석 · 위험도 평가 · 운영 조언</div>'
-        f'</div></div>'
-        f'<div style="padding:12px 16px;">',
-        unsafe_allow_html=True,
-    )
-    _render_ward_llm_chat(kpi=_kpi_for_llm, bed_occ=[], bed_detail=bed_detail_f, op_stat=op_stat_f)
-    st.markdown("</div></div>", unsafe_allow_html=True)
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
     # ════════════════════════════════════════════════════════════
     # ── Row 1: KPI 2행×3열 | 주간 추이 ─────────────────────────
     st.markdown('<div class="wd-row-kpi">', unsafe_allow_html=True)
@@ -2114,6 +2124,49 @@ def _render_ward() -> None:
                 f"</div>",
                 unsafe_allow_html=True,
             )
+
+        # ── KPI 하단: 빠른질문 버튼 + AI 채팅 ──────────────────────
+        # KPI 카드를 보고 판단한 뒤 바로 클릭 → 주간추이와 높이 자동 정렬
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # 빠른질문 버튼 5개 — 얇은 구분선 + 라벨
+        st.markdown(
+            '<div style="border-top:1px solid #E2E8F0;padding-top:8px;margin-bottom:6px;">'
+            '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
+            'text-transform:uppercase;letter-spacing:.08em;">빠른 분석</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _quick_qs2 = [
+            ("익일 가용",     "익일 입원 예약 대비 가용 병상 현황을 분석하고, 부족 위험이 있는 병동을 알려주세요."),
+            ("입퇴원 분석",   "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
+            ("입원 상병 추세","최근 7일 주요 입원 상병 추세를 분석하고 특이사항을 알려주세요."),
+            ("재원환자 분석", "병동별 재원 환자 현황을 분석하고 장기 재원 위험 병동을 알려주세요."),
+            ("운영 요약",     "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
+        ]
+        _qb_cols = st.columns(len(_quick_qs2), gap="small")
+        for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
+            with _qb_cols[_qi2]:
+                if st.button(
+                    _ql2, key=f"qs_kpi_{_qi2}",
+                    use_container_width=True, type="secondary",
+                    help=_qv2[:40] + "...",
+                ):
+                    _DASH_MON.log_action("quick_btn", label=_ql2)
+                    st.session_state["ward_chat_quick_input"] = _qv2
+                    st.rerun()
+
+        # AI 채팅 — KPI 컬럼 내 하단에 배치 (높이 자동 확장)
+        st.markdown(
+            '<div style="margin-top:8px;border:1px solid #E2E8F0;border-radius:10px;'
+            'padding:12px 14px;background:#FAFBFC;flex:1;">',
+            unsafe_allow_html=True,
+        )
+        _render_ward_llm_chat(
+            kpi=_kpi_for_llm, bed_occ=[],
+            bed_detail=bed_detail_f, op_stat=op_stat_f,
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════
     # [v2.2] 주간 추이 7일 — 차트 선택기 통합
@@ -2166,6 +2219,7 @@ def _render_ward() -> None:
     # ════════════════════════════════════════════════════════════
     st.markdown('</div>', unsafe_allow_html=True)  # /wd-row-kpi
     st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
     # ── Row 3: 병동별 당일 현황 + 진료과 재원 ───────────────────
     st.markdown('<div class="wd-row-chart">', unsafe_allow_html=True)
     # [v2.2] 두 섹션 모두 차트 선택기 통합
@@ -2498,50 +2552,9 @@ def _render_ward_llm_chat(
         st.session_state["ward_chat_history"] = []
     _history: List[Dict] = st.session_state.get("ward_chat_history", [])
 
-    # ── 상단 컨텍스트 배지 (KPI 요약) ───────────────────────────────
-    _occ_c = "#EF4444" if _occ >= 90 else "#F59E0B" if _occ >= 80 else "#059669"
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;'
-        f'background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
-        f'margin-bottom:10px;flex-wrap:wrap;">'
-        f'<span style="font-size:10px;color:#64748B;font-weight:600;text-transform:uppercase;'
-        f'letter-spacing:.06em;">현재 컨텍스트</span>'
-        f'<span style="width:1px;height:12px;background:#E2E8F0;"></span>'
-        f'<span style="font-size:11px;color:#475569;">{_ward}</span>'
-        f'<span style="font-size:11px;font-weight:700;color:{_occ_c};'
-        f'font-family:Consolas,monospace;">가동률 {_occ:.1f}%</span>'
-        f'<span style="font-size:11px;color:#475569;">재원 <b style="color:#1E40AF;">{_stay}명</b></span>'
-        f'<span style="font-size:11px;color:#475569;">입원 <b style="color:#059669;">{_adm}명</b>'
-        f' / 퇴원 <b style="color:#475569;">{_disc}명</b></span>'
-        f'<span style="margin-left:auto;font-size:10px;color:#94A3B8;">{time.strftime("%H:%M")} 기준</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
-    # ── 빠른 질문 버튼 (대화 없을 때만 표시) ─────────────────────────
-    if not _history:
-        _quick_qs = [
-            ("🔴 위험 병동 현황", "현재 가동률 90% 이상인 위험 병동이 있나요? 해당 병동 조치 방안을 알려주세요."),
-            ("📊 오늘 입퇴원 분석", "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
-            ("🏥 병상 부족 예측", "현재 데이터 기준으로 내일 병상 부족 위험이 있는 병동을 예측해주세요."),
-            ("🔪 수술 부담 현황", "수술 건수가 많은 병동의 현황과 관리 포인트를 알려주세요."),
-            ("📋 전체 운영 요약", "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
-        ]
-        st.markdown(
-            '<div style="margin-bottom:10px;">' 
-            '<div style="font-size:11px;color:#94A3B8;font-weight:600;margin-bottom:6px;'
-            'text-transform:uppercase;letter-spacing:.06em;">빠른 질문</div>',
-            unsafe_allow_html=True,
-        )
-        _qcols = st.columns(len(_quick_qs), gap="small")
-        for _qi, (_ql, _qv) in enumerate(_quick_qs):
-            with _qcols[_qi]:
-                if st.button(
-                    _ql, key=f"quick_q_{_qi}",
-                    use_container_width=True, type="secondary",
-                ):
-                    st.session_state["ward_chat_quick_input"] = _qv
-        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 빠른 질문: AI 채팅 헤더 파란바로 이동됨
 
     # ── 대화 이력 표시 ────────────────────────────────────────────────
     for _msg in _history:
@@ -2577,6 +2590,7 @@ def _render_ward_llm_chat(
         _history.append({"role": "user", "content": _user_input})
 
         with st.chat_message("assistant"):
+            _t_llm_start = time.time()
             _ph   = st.empty()
             # [최적화] list+join 으로 O(n²) → O(n) 스트리밍
             _toks: list = []
@@ -2612,6 +2626,12 @@ def _render_ward_llm_chat(
 
         _history.append({"role": "assistant", "content": _full})
         st.session_state["ward_chat_history"] = _history
+        _llm_elapsed = int((time.time() - _t_llm_start) * 1000) if "_t_llm_start" in dir() else 0
+        _DASH_MON.log_llm_query(
+            question=_user_input,
+            elapsed_ms=_llm_elapsed,
+            success=("LLM 연결 실패" not in _full),
+        )
         st.rerun()
 
 
@@ -2768,93 +2788,87 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
     _o_color = "#16A34A" if oracle_ok else "#F59E0B"
     _o_label = "Oracle 연결 정상" if oracle_ok else "데모 데이터"
 
-    # ── 탑바 ─────────────────────────────────────────────────────────
-    st.markdown('<div class="wd-topbar-accent"></div>', unsafe_allow_html=True)
-    _c_title, _c_btns, _c_info = st.columns([4, 3, 3], vertical_alignment="center")
+    # ── 탑바: ① 순수 HTML 그라데이션 배너 (제목+상태) ─────────────
+    # 인터랙티브 요소(selectbox/button)는 배너 밖 별도 행으로 분리
+    # → div 래퍼 탈출 문제 완전 해결
+    _glow_c = "rgba(74,222,128,0.6)" if oracle_ok else "rgba(251,191,36,0.6)"
+    _dot_c  = "#4ADE80" if oracle_ok else "#FBBF24"
+    st.markdown(
+        f'<div style="'
+        f'background:linear-gradient(135deg,#0F2A6B 0%,#1E3A8A 30%,#1E40AF 60%,#2563EB 100%);'
+        f'border-radius:14px;padding:12px 22px;margin-bottom:6px;'
+        f'box-shadow:0 4px 20px rgba(30,64,175,0.28);'
+        f'display:flex;align-items:center;justify-content:space-between;">'
+        # 좌: 병원명 + 대시보드명
+        f'<div style="display:flex;align-items:center;gap:12px;">'
+        f'<div style="width:3px;height:28px;background:rgba(255,255,255,0.7);border-radius:2px;"></div>'
+        f'<div>'
+        f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.60);'
+        f'text-transform:uppercase;letter-spacing:.18em;margin-bottom:3px;">좋은문화병원</div>'
+        f'<div style="font-size:20px;font-weight:800;color:#FFFFFF;letter-spacing:-0.03em;'
+        f'line-height:1;">{_tab_name}</div>'
+        f'</div></div>'
+        # 우: Oracle 상태
+        f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">'
+        f'<div style="display:flex;align-items:center;gap:6px;">'
+        f'<span style="width:8px;height:8px;border-radius:50%;background:{_dot_c};'
+        f'display:inline-block;box-shadow:0 0 7px {_glow_c};"></span>'
+        f'<span style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.95);">{_o_label}</span>'
+        f'<span style="color:rgba(255,255,255,0.30);font-size:11px;">|</span>'
+        f'<span style="font-size:11px;color:rgba(255,255,255,0.70);font-family:Consolas,monospace;">'
+        f'갱신 {st.session_state[_ss_key]}</span>'
+        f'</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.45);">'
+        f'AI 병동 분석 — 하단에서 질문하세요</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-    with _c_title:
-        _tt_col, _wd_col = st.columns([3, 2], vertical_alignment="center")
-        with _tt_col:
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
-                f'<div style="width:3px;height:22px;background:#1E40AF;border-radius:2px;flex-shrink:0;"></div>'
-                f"<div>"
-                f'<div style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.15em;line-height:1;margin-bottom:2px;">좋은문화병원</div>'
-                f'<div style="font-size:17px;font-weight:800;color:#0F172A;letter-spacing:-0.03em;line-height:1.1;">{_tab_name}</div>'
-                f"</div></div>",
-                unsafe_allow_html=True,
+    # ── 탑바: ② 인터랙티브 버튼 행 (배너 바로 아래) ──────────────────
+    # 배너와 버튼 행 사이 여백 + 구분선
+    st.markdown(
+        '<div style="height:6px;border-bottom:1px solid #E2E8F0;margin-bottom:8px;"></div>',
+        unsafe_allow_html=True,
+    )
+    _c_ward_sel, _c_btns_bar = st.columns([3, 7], vertical_alignment="center", gap="small")
+    with _c_ward_sel:
+        if tab == "ward":
+            _ward_name_list = st.session_state.get("ward_name_list", ["전체"])
+            _cur_ward       = st.session_state.get("ward_selected", "전체")
+            _sel = st.selectbox(
+                "병동", options=_ward_name_list,
+                index=_ward_name_list.index(_cur_ward) if _cur_ward in _ward_name_list else 0,
+                key="global_ward_selector", label_visibility="collapsed",
+                help="선택한 병동의 데이터만 모든 차트에 반영됩니다",
             )
-        with _wd_col:
-            if tab == "ward":
-                _wsel_col, _rmbtn_col = st.columns([3, 2], gap="small", vertical_alignment="center")
-                with _wsel_col:
-                    _ward_name_list = st.session_state.get("ward_name_list", ["전체"])
-                    _cur_ward       = st.session_state.get("ward_selected", "전체")
-                    _sel = st.selectbox(
-                        "병동 선택", options=_ward_name_list,
-                        index=_ward_name_list.index(_cur_ward) if _cur_ward in _ward_name_list else 0,
-                        key="global_ward_selector", label_visibility="collapsed",
-                        help="선택한 병동의 데이터만 모든 차트에 반영됩니다",
-                    )
-                    if _sel != st.session_state.get("ward_selected"):
-                        st.session_state["ward_selected"] = _sel
-                        st.rerun()
-                with _rmbtn_col:
-                    _rm_panel_open = st.session_state.get("show_room_panel", False)
-                    if st.button("▲ 접기" if _rm_panel_open else "🏥 병실현황", key="btn_room_panel", type="secondary", use_container_width=True, help="선택 병동의 병실별 상세 현황"):
-                        st.session_state["show_room_panel"] = not _rm_panel_open
-                        st.rerun()
-
-    with _c_btns:
-        _b1, _b2, _b3 = st.columns(3, gap="small")
-        with _b1:
-            if st.button("🔄 새로고침", key=f"dash_refresh_{tab}", use_container_width=True,
-                         type="secondary", help="최신 데이터 재조회"):
-                # Oracle 체크 만료 → 다음 렌더 시 재체크
+            if _sel != st.session_state.get("ward_selected"):
+                _DASH_MON.log_action("ward_filter", label=_sel)
+                st.session_state["ward_selected"] = _sel
+                st.rerun()
+    with _c_btns_bar:
+        _bx1, _bx2, _bx3 = st.columns([2, 2, 6], gap="small")
+        with _bx1:
+            _rm_panel_open = st.session_state.get("show_room_panel", False)
+            if st.button("병실현황" if not _rm_panel_open else "▲ 닫기",
+                         key="btn_room_panel", type="secondary", use_container_width=True):
+                st.session_state["show_room_panel"] = not _rm_panel_open
+                st.rerun()
+        with _bx2:
+            if st.button("🔄 새로고침", key=f"dash_refresh_{tab}",
+                         type="secondary", use_container_width=True):
+                _DASH_MON.log_action("refresh", label=tab)
                 st.session_state.pop("oracle_ok", None)
                 st.session_state.pop("oracle_ok_expire", None)
-                # TTL jitter 제거 → 즉시 새 버킷으로 이동
-                _jk_prefix = "_ttl_jitter_"
                 for _k in list(st.session_state.keys()):
-                    if _k.startswith(_jk_prefix):
+                    if _k.startswith("_ttl_jitter_"):
                         del st.session_state[_k]
-                # 전체 캐시 초기화 (불가피 — Streamlit API 한계)
                 st.cache_data.clear()
                 st.session_state[_ss_key] = time.strftime("%Y-%m-%d %H:%M")
                 st.rerun()
-        with _b2:
-            if tab == "ward":
-                pass  # 익일 예약 상세는 하단 고정 표시
-        with _b3:
-            if st.button("💬 채팅초기화", key=f"ward_chat_clear_hdr_{tab}", use_container_width=True, type="secondary", help="AI 채팅 대화 기록 초기화"):
-                st.session_state["ward_chat_history"] = []
-                st.rerun()
+        # _bx3은 빈 공간 (우측 정렬 효과)
 
-    with _c_info:
-        _h_prev  = st.session_state.get("ward_chat_history", [])
-        _ai_msgs = [m for m in _h_prev if m["role"] == "assistant"]
-        _preview = ""
-        if _ai_msgs:
-            _preview = _ai_msgs[-1]["content"][:55].replace(chr(10), " ")
-            _preview += "…" if len(_ai_msgs[-1]["content"]) > 55 else ""
-        st.markdown(
-            f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding:8px 0;">'
-            f'<div style="display:flex;align-items:center;gap:6px;">'
-            f'<span style="width:8px;height:8px;border-radius:50%;background:{_o_color};display:inline-block;"></span>'
-            f'<span style="font-size:12px;font-weight:700;color:{_o_color};">{_o_label}</span>'
-            f'<span style="font-size:11px;color:#CBD5E1;">|</span>'
-            f'<span style="font-size:11px;color:#64748B;font-family:Consolas,monospace;">갱신 {st.session_state[_ss_key]}</span>'
-            f"</div>"
-            + (
-                f'<div style="font-size:10px;color:#94A3B8;max-width:300px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🤖 {_preview}</div>'
-                if _preview else
-                f'<div style="font-size:10px;color:#CBD5E1;letter-spacing:0.02em;">🤖 AI 분석 채팅 — 하단에서 질문하세요</div>'
-            )
-            + f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div style="height:1px;background:#F1F5F9;margin:0 0 8px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
     if tab == "ward":
         _render_ward()
