@@ -203,6 +203,37 @@ def _render_search_mode_selector() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+# ── 회람 문서 노트 저장 경로 ────────────────────────────────────────
+# JSON 파일로 영구 저장 — 서버 재시작 후에도 유지됨
+def _get_note_path():
+    """노트 저장 파일 경로 반환."""
+    try:
+        base = settings.log_dir or "logs"
+    except Exception:
+        base = "logs"
+    from pathlib import Path as _P
+    p = _P(base)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "shortcut_note.txt"
+
+
+def _load_note() -> str:
+    """저장된 노트 로드. 없으면 기본값 반환."""
+    try:
+        return _get_note_path().read_text(encoding="utf-8").strip()
+    except Exception:
+        return "최근 업데이트 내용을 입력하세요"
+
+
+def _save_note(note: str) -> None:
+    """노트를 파일에 저장."""
+    try:
+        _get_note_path().write_text(note.strip(), encoding="utf-8")
+    except Exception as exc:
+        logger.warning(f"노트 저장 실패: {exc}")
+
+
 def _render_shortcuts() -> None:
     """
     바로가기 — v7.4
@@ -215,9 +246,9 @@ def _render_shortcuts() -> None:
     _role     = st.session_state.get("role", "user")
     _is_admin = _role == "admin"
 
-    # ── 업데이트 노트 세션 기본값 ─────────────────────────────────────
+    # ── 노트 로드 — 파일에서 (서버 재시작 후에도 유지) ─────────────────
     if "shortcut_note" not in st.session_state:
-        st.session_state["shortcut_note"] = "2026-03-28  산부인과 지침 추가"
+        st.session_state["shortcut_note"] = _load_note()
     _note = st.session_state["shortcut_note"]
 
     # ── 공통 인라인 스타일 상수 ────────────────────────────────────────
@@ -300,6 +331,7 @@ def _render_shortcuts() -> None:
         if st.button("💾 저장", key="shortcut_note_save",
                      use_container_width=True, type="primary"):
             st.session_state["shortcut_note"] = _new_note
+            _save_note(_new_note)  # 파일에 영구 저장
             st.session_state[_edit_key] = False
             st.rerun()
 
