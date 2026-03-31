@@ -47,6 +47,50 @@ FQ: Dict[str, str] = {
     "opd_kpi": "SELECT * FROM JAIN_WM.V_OPD_KPI WHERE ROWNUM = 1",
     "opd_dept_status": "SELECT * FROM JAIN_WM.V_OPD_DEPT_STATUS ORDER BY 대기 DESC",
     "kiosk_status": "SELECT * FROM JAIN_WM.V_KIOSK_STATUS ORDER BY 키오스크ID",
+    # 신규: 키오스크/창구 7일 추세 + 진료과별 수납
+    "kiosk_by_dept": "SELECT * FROM JAIN_WM.V_KIOSK_BY_DEPT ORDER BY 수납건수 DESC",
+    "kiosk_counter_trend": "SELECT * FROM JAIN_WM.V_KIOSK_COUNTER_TREND ORDER BY 기준일",
+    # 진료과별 외래 현황 (실시간)
+    "opd_dept_now": "SELECT * FROM JAIN_WM.V_OPD_DEPT_STATUS ORDER BY 합계 DESC",
+    # 병동 병실현황
+    "ward_room_detail": "SELECT * FROM JAIN_WM.V_WARD_ROOM_DETAIL ORDER BY 병동명, 병실번호",
+    # 일일현황 (진료과×보험구분×구분)
+    "daily_dept_stat": "SELECT * FROM JAIN_WM.V_DAILY_DEPT_STAT ORDER BY 진료과명, 구분",
+    # 세부과 일일집계표 (V_DAY_INWEON_3)
+    "day_inweon": """
+        SELECT 진료과, 외래계, 입원계, 퇴원계, 재원계,
+               "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
+        FROM (
+            SELECT 일자, 진료과, 외래계, 입원계, 퇴원계, 재원계,
+                   "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
+            FROM JAIN_WM.V_DAY_INWEON_3
+            UNION ALL
+            SELECT 일자, '총합계',SUM(외래계),SUM(입원계),SUM(퇴원계),SUM(재원계),
+                   SUM("예방(독감)"),SUM("예방(AZ,JS,NV)"),SUM("예방(MD)"),SUM("예방(FZ)"),SUM(예방주사계)
+            FROM JAIN_WM.V_DAY_INWEON_3
+            GROUP BY 일자
+        )
+        WHERE 일자 = TO_CHAR(SYSDATE, 'YYYYMMDD')
+        ORDER BY
+            CASE WHEN 진료과 = '총합계' THEN 19 ELSE 10 END,
+            CASE
+                WHEN TRIM(진료과)='*내분비내과' THEN 1 WHEN TRIM(진료과)='*호흡기내과' THEN 2
+                WHEN TRIM(진료과)='*소화기내과' THEN 3 WHEN TRIM(진료과)='*신장내과' THEN 4
+                WHEN TRIM(진료과)='*순환기내과' THEN 5 WHEN TRIM(진료과)='인공신장실' THEN 6
+                WHEN TRIM(진료과)='신경과' THEN 7   WHEN TRIM(진료과)='가정의학과' THEN 8
+                WHEN TRIM(진료과)='신경외과' THEN 9  WHEN TRIM(진료과)='*유방센터' THEN 10
+                WHEN TRIM(진료과)='*위장관센터' THEN 11 WHEN TRIM(진료과)='*갑상선센터' THEN 12
+                WHEN TRIM(진료과)='성형외과' THEN 13 WHEN TRIM(진료과)='정형외과' THEN 14
+                WHEN TRIM(진료과)='*OBGY' THEN 15  WHEN TRIM(진료과)='*난임센터' THEN 16
+                WHEN TRIM(진료과)='소아청소년과' THEN 17 WHEN TRIM(진료과)='이비인후과' THEN 18
+                WHEN TRIM(진료과)='피부과' THEN 19 WHEN TRIM(진료과)='응급의학과' THEN 20
+                WHEN TRIM(진료과)='외부의뢰' THEN 21 WHEN TRIM(진료과)='진단검사' THEN 22
+                ELSE 23
+            END ASC,
+            REPLACE(진료과,'*'),
+            CASE WHEN SUBSTR(진료과,1,1)='*' THEN 2 ELSE 1 END
+    """,
+
     "discharge_pipeline": "SELECT * FROM JAIN_WM.V_DISCHARGE_PIPELINE ORDER BY 단계, 병동명",
     "opd_dept_trend": "SELECT * FROM JAIN_WM.V_OPD_DEPT_TREND ORDER BY 기준일, 외래환자수 DESC",
     "ward_bed_detail": "SELECT * FROM JAIN_WM.V_WARD_BED_DETAIL ORDER BY 병동명",
@@ -59,11 +103,43 @@ FQ: Dict[str, str] = {
 }
 
 
-def _fq(key: str) -> List[Dict[str, Any]]:
+def _fq(key: str, date_str: str = "") -> List[Dict[str, Any]]:
+    """
+    FQ 딕셔너리의 쿼리를 실행한다.
+    date_str: YYYYMMDD 형식 날짜 — 쿼리 내 SYSDATE 조건을 대체
+    """
     try:
         from db.oracle_client import execute_query
-
-        return execute_query(FQ[key]) or []
+        _sql = FQ[key]
+        if date_str and len(date_str) == 8:
+            # SYSDATE → 지정 날짜로 교체
+            # SYSDATE-1 → 전일 보정 포함
+            import re as _re2
+            import datetime as _dt2
+            _d = _dt2.datetime.strptime(date_str, "%Y%m%d")
+            _d_prev = (_d - _dt2.timedelta(days=1)).strftime("%Y%m%d")
+            # TO_CHAR(SYSDATE-1, 'YYYYMMDD') → 지정 날짜
+            _sql = _re2.sub(
+                r"TO_CHAR\(SYSDATE-1,\s*'YYYYMMDD'\)",
+                f"'{_d_prev}'", _sql
+            )
+            # TO_CHAR(SYSDATE, 'YYYYMMDD') → 지정 날짜
+            _sql = _re2.sub(
+                r"TO_CHAR\(SYSDATE,\s*'YYYYMMDD'\)",
+                f"'{date_str}'", _sql
+            )
+            # TO_CHAR(SYSDATE + 1, 'YYYYMMDD')
+            _d_next = (_d + _dt2.timedelta(days=1)).strftime("%Y%m%d")
+            _sql = _re2.sub(
+                r"TO_CHAR\(SYSDATE\s*\+\s*1,\s*'YYYYMMDD'\)",
+                f"'{_d_next}'", _sql
+            )
+            # SYSDATE 단독 (날짜 비교용) → TRUNC(TO_DATE(...))
+            _sql = _re2.sub(
+                r"(?<!')SYSDATE(?!\s*[+-]|\s*,)",
+                f"TO_DATE('{date_str}','YYYYMMDD')", _sql
+            )
+        return execute_query(_sql) or []
     except Exception as e:
         logger.warning(f"[Finance] {key}: {e}")
         return []
@@ -214,7 +290,7 @@ _PLOTLY_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(color="#333333", size=11),
-    margin=dict(l=0, r=8, t=8, b=8),
+    # margin은 각 차트에서 개별 지정 — 여기 포함 시 **언팩 시 중복 키 오류
     xaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
     yaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
 )
@@ -223,149 +299,300 @@ _PLOTLY_LAYOUT = dict(
 # ════════════════════════════════════════════════════════════════════
 # 탭 1 — 실시간 현황
 # ════════════════════════════════════════════════════════════════════
-def _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail):
-    # KPI 5개
-    _opd = int(opd_kpi.get("총내원", 0) or 0)
-    _adm = sum(int(r.get("금일입원", 0) or 0) for r in bed_detail)
-    _disc = sum(int(r.get("금일퇴원", 0) or 0) for r in bed_detail)
-    _wait = sum(int(r.get("대기", 0) or 0) for r in dept_status)
-    _done = sum(int(r.get("완료", 0) or 0) for r in dept_status)
-    _wc = C["red"] if _wait >= 30 else C["yellow"] if _wait >= 15 else C["green"]
+def _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail,
+                  kiosk_by_dept=None, kiosk_counter_trend=None, ward_room_detail=None,
+                  opd_dept_trend=None, daily_dept_stat=None):
+    opd_dept_trend   = opd_dept_trend   or []
+    daily_dept_stat  = daily_dept_stat  or []
+    kiosk_by_dept        = kiosk_by_dept or []
+    kiosk_counter_trend  = kiosk_counter_trend or []
+    ward_room_detail     = ward_room_detail or []
 
-    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
-    _kpi_card(k1, "👥", "금일 외래", f"{_opd:,}", "명", "금일 내원 합계", C["blue"])
+    # ── KPI 계산 — daily_dept_stat 우선, fallback bed_detail ──────────
+    # daily_dept_stat 컬럼: 진료과명 / 구분(외래·입원·퇴원·재원) / 보험구분 / 건수
+    def _ds_sum(cat):
+        return sum(int(r.get("건수", 0) or 0)
+                   for r in daily_dept_stat if r.get("구분") == cat)
+
+    _opd_total = _ds_sum("외래") or (
+        sum(int(r.get("대기",0) or 0)+int(r.get("진료중",0) or 0)+int(r.get("완료",0) or 0)
+            for r in dept_status))
+    _adm  = _ds_sum("입원") or sum(int(r.get("금일입원",0) or 0) for r in bed_detail)
+    _disc = _ds_sum("퇴원") or sum(int(r.get("금일퇴원",0) or 0) for r in bed_detail)
+    _stay = _ds_sum("재원") or sum(int(r.get("재원수",   0) or 0) for r in bed_detail)
+    _opd_wait = sum(int(r.get("대기",0) or 0) for r in dept_status)
+    _opd_proc = sum(int(r.get("진료중",0) or 0) for r in dept_status)
+    _opd_done = sum(int(r.get("완료",0) or 0) for r in dept_status)
+
+    # ── KPI 카드 4개 ────────────────────────────────────────────────
+    k1, k2, k3, k4 = st.columns(4, gap="small")
+    k1.markdown(
+        f'<div class="fn-kpi" style="border-top:3px solid {C["blue"]};">'
+        f'<div class="fn-kpi-icon">👥</div>'
+        f'<div class="fn-kpi-label">금일 외래</div>'
+        f'<div class="fn-kpi-value" style="color:{C["blue"]};">{_opd_total:,}'
+        f'<span class="fn-kpi-unit">명</span></div>'
+        f'<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">'
+        f'<span style="background:{C["yellow"]}22;color:{C["yellow"]};border-radius:4px;'
+        f'padding:2px 6px;font-size:10px;font-weight:700;">대기 {_opd_wait}</span>'
+        f'<span style="background:{C["blue"]}22;color:{C["blue"]};border-radius:4px;'
+        f'padding:2px 6px;font-size:10px;font-weight:700;">보류 {_opd_proc}</span>'
+        f'<span style="background:{C["green"]}22;color:{C["green"]};border-radius:4px;'
+        f'padding:2px 6px;font-size:10px;font-weight:700;">완료 {_opd_done}</span>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
     _kpi_card(k2, "🏥", "금일 입원", f"{_adm:,}", "명", "입원 처리 완료", C["indigo"])
     _kpi_card(k3, "📤", "금일 퇴원", f"{_disc:,}", "명", "퇴원 처리 완료", C["t2"])
-    _kpi_card(k4, "⏳", "현재 대기", f"{_wait:,}", "명", "전체 진료과 합산", _wc)
-    _kpi_card(k5, "✅", "수납 완료", f"{_done:,}", "명", "진료·수납 완료", C["green"])
+    _kpi_card(k4, "🛏️", "현재 재원", f"{_stay:,}", "명",
+              f"총병상 {sum(int(r.get('총병상',0) or 0) for r in bed_detail)}개 기준", C["violet"])
     _gap()
 
-    # 진료과 대기 테이블 + 바차트
-    ct, cc = st.columns([5, 4], gap="small")
-    with ct:
-        st.markdown(
-            '<div class="wd-card" style="border-top:3px solid ' + C["blue"] + ';">',
-            unsafe_allow_html=True,
-        )
-        _sec_hd("📊 진료과별 대기·진료·완료", "실시간", C["blue"])
-        _TH = "padding:8px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;white-space:nowrap;"
-        _t = (
-            '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
-            f"<thead><tr>"
-            f'<th style="{_TH}text-align:left;">진료과</th>'
-            f'<th style="{_TH}text-align:right;color:{C["yellow"]};">대기</th>'
-            f'<th style="{_TH}text-align:right;color:{C["blue"]};">진료중</th>'
-            f'<th style="{_TH}text-align:right;color:{C["green"]};">완료</th>'
-            f'<th style="{_TH}text-align:right;">합계</th>'
-            f'<th style="{_TH}text-align:right;">평균대기</th>'
-            f'<th style="{_TH}text-align:center;">상태</th>'
-            f"</tr></thead><tbody>"
-        )
-        if dept_status:
-            for i, r in enumerate(dept_status):
-                _d = r.get("진료과명", "")
-                _w = int(r.get("대기", 0) or 0)
-                _p = int(r.get("진료중", 0) or 0)
-                _e = int(r.get("완료", 0) or 0)
-                _t2 = int(r.get("합계", _w + _p + _e) or 0)
-                _a = float(r.get("평균대기시간", 0) or 0)
-                _bg = "#F8FAFC" if i % 2 == 0 else "#fff"
-                _ac = (
-                    "wait-danger"
-                    if _a >= 30
-                    else "wait-warn"
-                    if _a >= 15
-                    else "wait-ok"
-                )
-                _b = (
-                    '<span class="badge badge-red">혼잡</span>'
-                    if _w >= 10
-                    else '<span class="badge badge-yellow">보통</span>'
-                    if _w >= 5
-                    else '<span class="badge badge-green">여유</span>'
-                    if _w > 0
-                    else '<span class="badge badge-gray">대기없음</span>'
-                )
-                _td = f"padding:8px 10px;background:{_bg};border-bottom:1px solid #F8FAFC;"
-                _t += (
-                    f"<tr><td style='{_td}font-weight:700;color:{C['t1']};'>{_d}</td>"
-                    f"<td style='{_td}text-align:right;font-weight:800;color:{C['yellow']};font-family:Consolas,monospace;font-size:15px;'>{_w}</td>"
-                    f"<td style='{_td}text-align:right;font-weight:700;color:{C['blue']};font-family:Consolas,monospace;'>{_p}</td>"
-                    f"<td style='{_td}text-align:right;color:{C['green']};font-family:Consolas,monospace;'>{_e}</td>"
-                    f"<td style='{_td}text-align:right;color:{C['t3']};font-family:Consolas,monospace;'>{_t2}</td>"
-                    f"<td style='{_td}text-align:right;' class='{_ac}'>{_a:.0f}분</td>"
-                    f"<td style='{_td}text-align:center;'>{_b}</td></tr>"
-                )
-            _sw = sum(int(r.get("대기", 0) or 0) for r in dept_status)
-            _sp = sum(int(r.get("진료중", 0) or 0) for r in dept_status)
-            _se = sum(int(r.get("완료", 0) or 0) for r in dept_status)
-            _sh = f"padding:8px 10px;background:#EFF6FF;border-top:2px solid #BFDBFE;font-weight:700;"
-            _t += (
-                f"<tr><td style='{_sh}color:{C['blue']};'>합계</td>"
-                f"<td style='{_sh}text-align:right;color:{C['yellow']};font-family:Consolas,monospace;font-size:15px;'>{_sw}</td>"
-                f"<td style='{_sh}text-align:right;color:{C['blue']};font-family:Consolas,monospace;'>{_sp}</td>"
-                f"<td style='{_sh}text-align:right;color:{C['green']};font-family:Consolas,monospace;'>{_se}</td>"
-                f"<td style='{_sh}text-align:right;font-family:Consolas,monospace;color:{C['blue']};'>{_sw + _sp + _se}</td>"
-                f"<td style='{_sh}'>─</td><td style='{_sh}text-align:center;'>─</td></tr>"
+    # ── 병동 현황 요약 — 탑바 스타일과 동일한 인라인 행 ─────────────
+    if bed_detail:
+        _total_bed = sum(int(r.get("총병상", 0) or 0) for r in bed_detail)
+        _occ_rate  = round(_stay / max(_total_bed, 1) * 100, 1)
+        _ndc_pre   = sum(int(r.get("익일퇴원예약", 0) or 0) for r in bed_detail)
+        _rest      = max(0, _total_bed - _stay)
+        _oc        = "#DC2626" if _occ_rate >= 90 else "#F59E0B" if _occ_rate >= 80 else "#059669"
+        # 병동 현황 요약 — KPI 카드 스타일 (재원 제거, KPI 카드와 중복)
+        _ward_kpi_items = [
+            ("가동률",      f"{_occ_rate:.1f}", _oc,       "%",      "🏥"),
+            ("총병상",      str(_total_bed),    "#64748B", "개",     "🛏️"),
+            ("잔여병상",    str(_rest),         "#059669", "개",     "✅"),
+            ("익일퇴원예정",str(_ndc_pre),      "#7C3AED", "명",     "📤"),
+        ]
+        _wk_cols = st.columns(len(_ward_kpi_items), gap="small")
+        for _wki, (_wl, _wv, _wc, _wu, _ico) in enumerate(_ward_kpi_items):
+            _wk_cols[_wki].markdown(
+                f'<div class="fn-kpi" style="border-top:3px solid {_wc};min-height:80px;">'
+                f'<div class="fn-kpi-icon">{_ico}</div>'
+                f'<div class="fn-kpi-label">{_wl}</div>'
+                f'<div class="fn-kpi-value" style="color:{_wc};">{_wv}'
+                f'<span class="fn-kpi-unit">{_wu}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
-        else:
-            _t += '<tr><td colspan="7" style="padding:30px;text-align:center;color:#94A3B8;">V_OPD_DEPT_STATUS 확인</td></tr>'
-        st.markdown(_t + "</tbody></table></div></div>", unsafe_allow_html=True)
 
-    with cc:
+    # 병실현황 패널 (탑바 버튼 클릭 시 펼침)
+    if st.session_state.get("fn_show_room", False) and ward_room_detail:
         st.markdown(
-            '<div class="wd-card" style="border-top:3px solid ' + C["blue"] + ';">',
+            '<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:10px;'
+            'padding:12px 14px;margin-bottom:8px;">',
             unsafe_allow_html=True,
         )
-        _sec_hd("진료과 대기 시각화")
-        if dept_status and HAS_PLOTLY:
-            _top = sorted(dept_status, key=lambda x: -int(x.get("대기", 0) or 0))[:10]
-            _ds = [r.get("진료과명", "") for r in reversed(_top)]
-            _wv = [int(r.get("대기", 0) or 0) for r in reversed(_top)]
-            _pv = [int(r.get("진료중", 0) or 0) for r in reversed(_top)]
-            _ev = [int(r.get("완료", 0) or 0) for r in reversed(_top)]
-            _fig = go.Figure()
-            for _vals, _name, _clr in [
-                (_ev, "완료", C["green"]),
-                (_pv, "진료중", C["blue"]),
-                (_wv, "대기", C["yellow"]),
-            ]:
-                _fig.add_trace(
-                    go.Bar(
-                        name=_name,
-                        y=_ds,
-                        x=_vals,
-                        orientation="h",
-                        marker_color=_clr,
-                        marker=dict(line=dict(width=0)),
-                        hovertemplate=f"%{{y}}: {_name} %{{x}}명<extra></extra>",
+        _TH_R = ("padding:6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;"
+                 "color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;")
+        _rh = (
+            '<div style="overflow-x:auto;max-height:280px;overflow-y:auto;">'
+            '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>'
+            f'<th style="{_TH_R}text-align:left;">병동</th>'
+            f'<th style="{_TH_R}text-align:center;">병실</th>'
+            f'<th style="{_TH_R}text-align:center;">베드</th>'
+            f'<th style="{_TH_R}text-align:center;">상태</th>'
+            f'<th style="{_TH_R}text-align:center;">성별</th>'
+            f'<th style="{_TH_R}text-align:left;">진료과</th>'
+            f'<th style="{_TH_R}text-align:right;">병실료</th>'
+            '</tr></thead><tbody>'
+        )
+        _STATUS_CLR = {"재원":("#1D4ED8","#DBEAFE"),"퇴원예정":("#7C3AED","#EDE9FE"),
+                       "빈병상":("#16A34A","#DCFCE7"),"LOCK":("#DC2626","#FEE2E2")}
+        for _ri, _r in enumerate(ward_room_detail[:80]):
+            _bno = str(_r.get("병실번호","")).zfill(6)
+            _sc, _sbg = _STATUS_CLR.get(_r.get("상태","빈병상"), ("#64748B","#F1F5F9"))
+            _fee = int(_r.get("병실료", 0) or 0)
+            _bg_r = "#F8FAFC" if _ri % 2 == 0 else "#FFFFFF"
+            _td_r = f"padding:5px 8px;background:{_bg_r};border-bottom:1px solid #F8FAFC;"
+            _rh += (
+                f"<tr>"
+                f'<td style="{_td_r}font-weight:600;">{_r.get("병동명","")}</td>'
+                f'<td style="{_td_r}text-align:center;font-family:Consolas,monospace;">{_bno[2:4]}</td>'
+                f'<td style="{_td_r}text-align:center;font-family:Consolas,monospace;color:#7C3AED;">{_bno[4:6]}</td>'
+                f'<td style="{_td_r}text-align:center;">'
+                f'<span style="background:{_sbg};color:{_sc};border-radius:4px;padding:1px 6px;'
+                f'font-size:10px;font-weight:700;">{_r.get("상태","")}</span></td>'
+                f'<td style="{_td_r}text-align:center;font-weight:600;">{_r.get("성별","─")}</td>'
+                f'<td style="{_td_r}">{_r.get("진료과","─")}</td>'
+                f'<td style="{_td_r}text-align:right;font-family:Consolas,monospace;">'
+                f'{"─" if not _fee else f"{_fee:,}원"}</td>'
+                f"</tr>"
+            )
+        st.markdown(_rh + "</tbody></table></div></div>", unsafe_allow_html=True)
+    elif st.session_state.get("fn_show_room", False):
+        st.info("V_WARD_ROOM_DETAIL 데이터 없음 — Oracle 연결 확인")
+
+    _gap()
+
+    # ── 📋 일일현황 테이블 (전체 너비) ─────────────────────────────
+    st.markdown(
+        '<div class="wd-card" style="border-top:3px solid ' + C["blue"] + ';">',
+        unsafe_allow_html=True,
+    )
+    _sec_hd("📋 일일현황", "진료과별 외래·입원·퇴원·재원 (보험구분)", C["blue"])
+    _INS_CODES = ["공단", "보호", "산재", "자보", "기타"]
+    _CATS = ["외래", "입원", "퇴원", "재원"]
+    _CAT_COLORS = {"외래": C["blue"], "입원": C["indigo"], "퇴원": C["t2"], "재원": C["violet"]}
+    if daily_dept_stat:
+        from collections import defaultdict as _ddd2
+        _agg: dict = _ddd2(lambda: _ddd2(lambda: _ddd2(int)))
+        for _r in daily_dept_stat:
+            _dept = _r.get("진료과명", "")
+            _cat  = _r.get("구분", "")
+            _ins  = _r.get("보험구분", "기타")
+            _cnt  = int(_r.get("건수", 0) or 0)
+            if _dept and _cat:
+                _agg[_dept][_cat][_ins] += _cnt
+        _depts = sorted(_agg.keys())
+        _TH_D = ("padding:4px 6px;font-size:11px;font-weight:700;"
+                 "letter-spacing:.02em;color:#64748B;border-bottom:1.5px solid #E2E8F0;"
+                 "background:#F8FAFC;white-space:nowrap;text-align:right;")
+        _TH_L = _TH_D.replace("text-align:right;", "text-align:left;")
+        _colspan = len(_INS_CODES) + 1
+        _gh = "".join(
+            f'<th colspan="{_colspan}" style="padding:4px;font-size:11.5px;font-weight:800;'
+            f'color:{_CAT_COLORS[c]};border-bottom:1px solid #E2E8F0;background:#F8FAFC;'
+            f'text-align:center;border-left:2px solid {_CAT_COLORS[c]}33;">{c}</th>'
+            for c in _CATS
+        )
+        _sh2 = "".join(
+            (f'<th style="{_TH_D}border-left:2px solid {_CAT_COLORS[c]}33;">{ins}</th>'
+             if i == 0 else f'<th style="{_TH_D}">{ins}</th>') +
+            (f'<th style="{_TH_D}color:{_CAT_COLORS[c]};font-weight:800;">계</th>'
+             if i == len(_INS_CODES) - 1 else "")
+            for c in _CATS for i, ins in enumerate(_INS_CODES)
+        )
+        _rows_d = ""
+        _tot: dict = _ddd2(lambda: _ddd2(int))
+        for _di, _dept in enumerate(_depts):
+            _rbg = "#F8FAFC" if _di % 2 == 0 else "#FFFFFF"
+            _td_s = f"padding:4px 5px;background:{_rbg};border-bottom:1px solid #F1F5F9;font-size:12px;font-family:Consolas,monospace;text-align:right;"
+            _rows_d += (f'<tr><td style="{_td_s.replace("text-align:right;","text-align:left;")}'
+                        f'font-weight:700;font-family:inherit;color:#0F172A;white-space:nowrap;">{_dept}</td>')
+            for _ci, _cat in enumerate(_CATS):
+                _subtot = 0
+                for _ii, _ins in enumerate(_INS_CODES):
+                    _v = _agg[_dept][_cat][_ins]
+                    _subtot += _v
+                    _tot[_cat][_ins] += _v
+                    _bl2 = f"border-left:2px solid {_CAT_COLORS[_cat]}33;" if _ii == 0 else ""
+                    _rows_d += f'<td style="{_td_s}{_bl2}">{"─" if _v == 0 else _v}</td>'
+                _tot[_cat]["계"] += _subtot
+                _rows_d += (f'<td style="{_td_s}font-weight:700;color:{_CAT_COLORS[_cat]};">'
+                            f'{"─" if _subtot == 0 else _subtot}</td>')
+            _rows_d += "</tr>"
+        _sth_d = "padding:4px 5px;background:#EFF6FF;border-top:2px solid #BFDBFE;font-size:12px;font-family:Consolas,monospace;text-align:right;font-weight:700;"
+        _rows_d += f'<tr><td style="{_sth_d.replace("text-align:right;","text-align:left;")}font-family:inherit;color:#1E40AF;">합계</td>'
+        for _cat in _CATS:
+            for _ii, _ins in enumerate(_INS_CODES):
+                _v = _tot[_cat][_ins]
+                _bl2 = f"border-left:2px solid {_CAT_COLORS[_cat]}33;" if _ii == 0 else ""
+                _rows_d += f'<td style="{_sth_d}{_bl2}color:{_CAT_COLORS[_cat]};">{"─" if _v==0 else _v}</td>'
+            _v2 = _tot[_cat]["계"]
+            _rows_d += (f'<td style="{_sth_d}color:{_CAT_COLORS[_cat]};font-size:12.5px;">'
+                        f'{"─" if _v2==0 else _v2}</td>')
+        _rows_d += "</tr>"
+        st.markdown(
+            f'<div style="overflow-x:auto;">'
+            f'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+            f'<thead>'
+            f'<tr><th style="{_TH_L}min-width:40px;">진료과</th>{_gh}</tr>'
+            f'<tr><th style="{_TH_L}"></th>{_sh2}</tr>'
+            f'</thead><tbody>{_rows_d}</tbody></table></div>',
+            unsafe_allow_html=True,
+        )
+    # ── 외래·입원·재원 진료과별 파이차트 3분할 ─────────────────
+    _PALETTE_P = [
+        "#1E40AF","#4F46E5","#0891B2","#059669","#D97706",
+        "#DC2626","#7C3AED","#DB2777","#65A30D","#9333EA",
+        "#0284C7","#16A34A","#EA580C","#0F766E","#BE185D",
+    ]
+    _PIE_DEFS = [
+        ("외래", "🥧 외래 진료과별 구성", C["blue"],   "daily_pie_opd"),
+        ("입원", "🥧 입원 진료과별 구성", C["indigo"], "daily_pie_adm"),
+        ("재원", "🥧 재원 진료과별 구성", C["violet"], "daily_pie_stay"),
+    ]
+    if daily_dept_stat and HAS_PLOTLY:
+        from collections import defaultdict as _ddd_pie
+        # 구분별 진료과 집계
+        _pie_all: dict = _ddd_pie(lambda: _ddd_pie(int))
+        for _r in daily_dept_stat:
+            _cat_p  = _r.get("구분", "")
+            _dept_p = _r.get("진료과명", "")
+            if _cat_p and _dept_p:
+                _pie_all[_cat_p][_dept_p] += int(_r.get("건수", 0) or 0)
+
+        _pie_cols = st.columns(3, gap="small")
+        for _pci, (_pcat, _ptitle, _pclr, _pkey) in enumerate(_PIE_DEFS):
+            _pd = _pie_all.get(_pcat, {})
+            with _pie_cols[_pci]:
+                st.markdown(
+                    f'<div style="background:#FFFFFF;border:1px solid #F0F4F8;'
+                    f'border-top:3px solid {_pclr};border-radius:10px;padding:10px 12px;">',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div style="font-size:12px;font-weight:700;color:{_pclr};'
+                    f'margin-bottom:4px;">{_ptitle}</div>',
+                    unsafe_allow_html=True,
+                )
+                if _pd:
+                    # 상위 10개만, 나머지 기타 합산
+                    _sorted_d = sorted(_pd.items(), key=lambda x: -x[1])
+                    _top10    = _sorted_d[:10]
+                    _etc_sum  = sum(v for _, v in _sorted_d[10:])
+                    _pl = [k for k, _ in _top10]
+                    _pv = [v for _, v in _top10]
+                    if _etc_sum > 0:
+                        _pl.append("기타")
+                        _pv.append(_etc_sum)
+                    _ptotal = sum(_pv)
+                    _figP = go.Figure(go.Pie(
+                        labels=_pl, values=_pv,
+                        marker=dict(
+                            colors=_PALETTE_P[:len(_pl)],
+                            line=dict(color="#fff", width=1.5),
+                        ),
+                        hole=0.48,
+                        textinfo="label+percent",
+                        textfont=dict(size=10),
+                        insidetextorientation="radial",
+                        hovertemplate="<b>%{label}</b><br>%{value:,}명 (%{percent})<extra></extra>",
+                        sort=True,
+                    ))
+                    _figP.update_layout(
+                        **_PLOTLY_LAYOUT,
+                        height=300,
+                        margin=dict(l=0, r=0, t=4, b=4),
+                        showlegend=False,
+                        annotations=[dict(
+                            text=f"<b>{_ptotal:,}</b><br><span style='font-size:10px'>명</span>",
+                            x=0.5, y=0.5,
+                            font=dict(size=13, color=_pclr),
+                            showarrow=False,
+                        )],
                     )
-                )
-            _l = dict(
-                orientation="h",
-                y=1.04,
-                x=0.5,
-                xanchor="center",
-                font=dict(size=11),
-                bgcolor="rgba(0,0,0,0)",
-                traceorder="reversed",
-            )
-            _fig.update_layout(
-                **_PLOTLY_LAYOUT,
-                barmode="stack",
-                height=max(200, len(_ds) * 30),
-                margin=dict(l=0, r=30, t=4, b=4),
-                legend=_l,
-                bargap=0.3,
-            )
-            st.plotly_chart(_fig, use_container_width=True, key="rt_dept_bar")
-        else:
-            _plotly_empty()
-        st.markdown("</div>", unsafe_allow_html=True)
-
+                    st.plotly_chart(_figP, use_container_width=True, key=_pkey)
+                else:
+                    st.markdown(
+                        f'<div style="height:200px;display:flex;align-items:center;'
+                        f'justify-content:center;color:#94A3B8;font-size:12px;">데이터 없음</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;">'
+            'V_DAILY_DEPT_STAT 데이터 없음<br>'
+            '<span style="font-size:10px;">필요 컬럼: 진료과명 / 구분 / 보험구분 / 건수</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
     _gap()
 
-    # 키오스크 + 퇴원 파이프라인
+    # ── 키오스크 진료과별 수납 건수 + 7일 추세 ──────────────────────
+
+
     ck, cd = st.columns([1, 1], gap="small")
 
     with ck:
@@ -373,130 +600,111 @@ def _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail
             '<div class="wd-card" style="border-top:3px solid ' + C["violet"] + ';">',
             unsafe_allow_html=True,
         )
-        _sec_hd("🖥️ 키오스크 운영 현황", time.strftime("%H:%M") + " 기준", C["violet"])
-        if kiosk_status:
-            _kon = sum(
-                1
-                for r in kiosk_status
-                if r.get("가동상태", "") in ("정상", "ON", "운영중")
+        _sec_hd("🖥️ 키오스크 진료과별 수납 건수", "금일 기준", C["violet"])
+        if kiosk_by_dept:
+            _k_total = sum(int(r.get("수납건수", 0) or 0) for r in kiosk_by_dept)
+            st.markdown(
+                f'<div style="font-size:10px;color:#64748B;margin-bottom:8px;">'
+                f'총 <b style="color:{C["violet"]};font-size:13px;">{_k_total:,}</b>건</div>',
+                unsafe_allow_html=True,
             )
-            _kerr = sum(
-                1
-                for r in kiosk_status
-                if r.get("가동상태", "") in ("오류", "ERROR", "OFF")
+            _max_k = max((int(r.get("수납건수",0) or 0) for r in kiosk_by_dept), default=1)
+            _TH_K = "padding:6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
+            _k_amt_total = sum(int(r.get("수납금액", 0) or 0) for r in kiosk_by_dept)
+            _tk = (
+                '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>'
+                f'<th style="{_TH_K}text-align:left;">진료과</th>'
+                f'<th style="{_TH_K}text-align:right;color:{C["violet"]};">건수</th>'
+                f'<th style="{_TH_K}text-align:right;color:{C["indigo"]};">금액(만)</th>'
+                f'<th style="{_TH_K}">비율</th>'
+                '</tr></thead><tbody>'
             )
+            for _ki, _r in enumerate(kiosk_by_dept[:15]):
+                _kd  = _r.get("진료과명", "")
+                _kc  = int(_r.get("수납건수", 0) or 0)
+                _ka  = int(_r.get("수납금액", 0) or 0)
+                _kp  = round(_kc / max(_k_total, 1) * 100)
+                _kbg = "#F8FAFC" if _ki % 2 == 0 else "#FFFFFF"
+                _td_k = f"padding:5px 8px;background:{_kbg};border-bottom:1px solid #F8FAFC;"
+                _tk += (
+                    f"<tr><td style='{_td_k}font-weight:600;'>{_kd}</td>"
+                    f"<td style='{_td_k}text-align:right;color:{C['violet']};font-family:Consolas,monospace;font-weight:700;'>{_kc:,}</td>"
+                    f"<td style='{_td_k}text-align:right;color:{C['indigo']};font-family:Consolas,monospace;'>{_ka//10000 if _ka else '─'}만</td>"
+                    f"<td style='{_td_k}'>"
+                    f'<div style="display:flex;align-items:center;gap:4px;">'
+                    f'<div style="flex:1;height:6px;background:#F1F5F9;border-radius:3px;">'
+                    f'<div style="width:{_kp}%;height:100%;background:{C["violet"]};border-radius:3px;"></div></div>'
+                    f'<span style="font-size:10px;color:#64748B;">{_kp}%</span>'
+                    f"</div></td></tr>"
+                )
+            st.markdown(_tk + "</tbody></table>", unsafe_allow_html=True)
+        elif kiosk_status:
             _krec = sum(int(r.get("접수건수", 0) or 0) for r in kiosk_status)
             st.markdown(
-                f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">'
-                f'<span class="badge badge-green">✅ 정상 {_kon}대</span>'
-                f'<span class="badge badge-red">❌ 오류 {_kerr}대</span>'
-                f'<span class="badge badge-blue">접수 {_krec:,}건</span></div>',
+                f'<div style="padding:16px;text-align:center;color:#64748B;">'
+                f'<div style="font-size:24px;font-weight:800;color:{C["violet"]};">{_krec:,}</div>'
+                f'<div style="font-size:11px;">총 접수 건수</div>'
+                f'<div style="font-size:10px;color:#94A3B8;margin-top:4px;">V_KIOSK_BY_DEPT 생성 후 진료과별 상세 조회 가능</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
-            for _chunk in [
-                kiosk_status[i : i + 3] for i in range(0, len(kiosk_status), 3)
-            ]:
-                _cols = st.columns(len(_chunk), gap="small")
-                for _col, _r in zip(_cols, _chunk):
-                    _id = _r.get("키오스크ID", "")
-                    _loc = _r.get("위치", "")
-                    _rec = int(_r.get("접수건수", 0) or 0)
-                    _err = int(_r.get("오류건수", 0) or 0)
-                    _st = _r.get("가동상태", "")
-                    _on = _st in ("정상", "ON", "운영중")
-                    _er = _st in ("오류", "ERROR", "OFF")
-                    _bc = "#86EFAC" if _on else "#FCA5A5" if _er else "#E2E8F0"
-                    _bg = "#F0FDF4" if _on else "#FEF2F2" if _er else "#F8FAFC"
-                    _sl = "🟢 정상" if _on else "🔴 오류" if _er else "🟡 점검"
-                    _sc = "#15803D" if _on else "#DC2626" if _er else "#F59E0B"
-                    _col.markdown(
-                        f'<div class="kiosk-card" style="border-color:{_bc};background:{_bg};">'
-                        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
-                        f'<b style="font-size:12px;">{_id}</b>'
-                        f'<span style="font-size:11px;font-weight:700;color:{_sc};">{_sl}</span></div>'
-                        f'<div style="font-size:11px;color:{C["t3"]};">{_loc}</div>'
-                        f'<div style="display:flex;justify-content:space-around;margin-top:6px;">'
-                        f'<div style="text-align:center;">'
-                        f'<div style="font-size:19px;font-weight:800;color:{C["blue"]};font-family:Consolas,monospace;">{_rec}</div>'
-                        f'<div style="font-size:9px;color:{C["t4"]};">접수</div></div>'
-                        f'<div style="text-align:center;">'
-                        f'<div style="font-size:19px;font-weight:800;color:{"#DC2626" if _err > 0 else C["t4"]};font-family:Consolas,monospace;">{_err}</div>'
-                        f'<div style="font-size:9px;color:{C["t4"]};">오류</div></div>'
-                        f"</div></div>",
-                        unsafe_allow_html=True,
-                    )
         else:
-            st.markdown(
-                '<div style="padding:28px;text-align:center;color:#94A3B8;font-size:13px;">V_KIOSK_STATUS 확인</div>',
-                unsafe_allow_html=True,
-            )
+            _plotly_empty()
         st.markdown("</div>", unsafe_allow_html=True)
 
     with cd:
         st.markdown(
-            '<div class="wd-card" style="border-top:3px solid ' + C["green"] + ';">',
+            '<div class="wd-card" style="border-top:3px solid ' + C["teal"] + ';">',
             unsafe_allow_html=True,
         )
-        _sec_hd(
-            "🚶 퇴원 처리 파이프라인", time.strftime("%Y-%m-%d") + " 기준", C["green"]
-        )
-        _PC = [
-            ("퇴원지시", "DC", C["violet"], C["violet_l"], "퇴원 오더 완료"),
-            ("계산대기", "PC", C["yellow"], C["yellow_l"], "원무 계산 대기"),
-            ("계산완료", "PD", C["blue"], C["blue_l"], "수납 처리 완료"),
-            ("퇴원완료", "DD", C["green"], C["green_l"], "최종 퇴원"),
-        ]
-        _pcnt: Dict[str, int] = {}
-        for r in discharge_pipe:
-            _s = r.get("단계", "")
-            _n = int(r.get("환자수", 0) or 0)
-            if _s:
-                _pcnt[_s] = _pcnt.get(_s, 0) + _n
-
-        st.markdown('<div class="dc-pipeline">', unsafe_allow_html=True)
-        for _lbl, _code, _clr, _bg, _desc in _PC:
-            _n = _pcnt.get(_lbl, 0)
+        _sec_hd("📈 7일간 키오스크 vs 창구 수납 건수", "일별 추이", C["teal"])
+        if kiosk_counter_trend and HAS_PLOTLY:
+            def _fmt_date(d):
+                s = str(d).replace('-','')[:8]
+                return f"{s[4:6]}/{s[6:8]}" if len(s) >= 8 else str(d)[:10]
+            _dates_k = [_fmt_date(r.get("기준일","")) for r in kiosk_counter_trend]
+            _k_vals  = [int(r.get("키오스크건수", 0) or 0) for r in kiosk_counter_trend]
+            _c_vals  = [int(r.get("창구건수",    0) or 0) for r in kiosk_counter_trend]
+            _figKC = go.Figure()
+            _figKC.add_trace(go.Bar(
+                x=_dates_k, y=_k_vals, name="키오스크",
+                marker_color=C["violet"], marker=dict(line=dict(width=0)),
+                text=_k_vals, textposition="outside",
+                textfont=dict(size=11, color=C["violet"]),
+                hovertemplate="%{x}<br>키오스크: %{y}건<extra></extra>",
+            ))
+            _figKC.add_trace(go.Bar(
+                x=_dates_k, y=_c_vals, name="창구",
+                marker_color=C["teal"], marker=dict(line=dict(width=0)),
+                text=_c_vals, textposition="outside",
+                textfont=dict(size=11, color=C["teal"]),
+                hovertemplate="%{x}<br>창구: %{y}건<extra></extra>",
+            ))
+            _kc_max = max(max(_k_vals, default=0), max(_c_vals, default=0))
+            _figKC.update_layout(
+                **_PLOTLY_LAYOUT,
+                barmode="group",
+                height=280,
+                margin=dict(l=0, r=0, t=30, b=8),
+                legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
+                            font=dict(size=12), bgcolor="rgba(0,0,0,0)"),
+                bargap=0.25, bargroupgap=0.05,
+            )
+            _figKC.update_xaxes(tickfont=dict(size=12, color="#334155"))
+            _figKC.update_yaxes(
+                title_text="수납 건수",
+                title_font=dict(size=10, color=C["t3"]),
+                range=[0, _kc_max * 1.22],
+            )
+            st.plotly_chart(_figKC, use_container_width=True, key="kiosk_counter_trend")
+        else:
             st.markdown(
-                f'<div class="dc-step" style="background:{_bg};">'
-                f'<div class="dc-step-code" style="color:{_clr};">{_lbl}</div>'
-                f'<div class="dc-step-num" style="color:{_clr};">{_n}</div>'
-                f'<div class="dc-step-desc">{_desc}</div></div>',
+                '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;">'
+                'V_KIOSK_COUNTER_TREND 생성 후 조회 가능<br>'
+                '<span style="font-size:11px;">필요 컬럼: 기준일 / 키오스크건수 / 창구건수</span>'
+                '</div>',
                 unsafe_allow_html=True,
             )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if discharge_pipe:
-            _wmap: Dict[str, Dict[str, int]] = {}
-            for r in discharge_pipe:
-                _w2 = r.get("병동명", "기타")
-                _s2 = r.get("단계", "")
-                _n2 = int(r.get("환자수", 0) or 0)
-                if _w2 and _s2:
-                    _wmap.setdefault(_w2, {})[_s2] = (
-                        _wmap.get(_w2, {}).get(_s2, 0) + _n2
-                    )
-            _TH2 = "padding:7px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
-            _t2 = (
-                '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
-                f"<thead><tr>"
-                f'<th style="{_TH2}text-align:left;">병동</th>'
-                f'<th style="{_TH2}text-align:right;color:{C["violet"]};">지시</th>'
-                f'<th style="{_TH2}text-align:right;color:{C["yellow"]};">계산대기</th>'
-                f'<th style="{_TH2}text-align:right;color:{C["blue"]};">계산완료</th>'
-                f'<th style="{_TH2}text-align:right;color:{C["green"]};">퇴원완료</th>'
-                f"</tr></thead><tbody>"
-            )
-            for i, (_wn, _sv) in enumerate(sorted(_wmap.items())):
-                _bg2 = "#F8FAFC" if i % 2 == 0 else "#fff"
-                _td2 = f"padding:7px 10px;border-bottom:1px solid #F8FAFC;background:{_bg2};"
-                _t2 += (
-                    f"<tr><td style='{_td2}font-weight:700;'>{_wn}</td>"
-                    f"<td style='{_td2}text-align:right;color:{C['violet']};font-family:Consolas,monospace;'>{_sv.get('퇴원지시', 0) or '─'}</td>"
-                    f"<td style='{_td2}text-align:right;color:{C['yellow']};font-family:Consolas,monospace;'>{_sv.get('계산대기', 0) or '─'}</td>"
-                    f"<td style='{_td2}text-align:right;color:{C['blue']};font-family:Consolas,monospace;'>{_sv.get('계산완료', 0) or '─'}</td>"
-                    f"<td style='{_td2}text-align:right;font-weight:700;color:{C['green']};font-family:Consolas,monospace;'>{_sv.get('퇴원완료', 0) or '─'}</td></tr>"
-                )
-            st.markdown(_t2 + "</tbody></table></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -702,28 +910,14 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
                 legend=_lg2,
                 hovermode="x unified",
                 bargap=0.25,
-                xaxis=dict(
-                    gridcolor="#F1F5F9",
-                    tickfont=dict(size=10),
-                    tickangle=-30,
-                    nticks=15,
-                ),
-                yaxis=dict(
-                    gridcolor="#F1F5F9",
-                    tickfont=dict(size=10),
-                    tickformat=",",
-                    title=dict(
-                        text="수납금액(만원)", font=dict(size=10, color=C["t3"])
-                    ),
-                ),
-                yaxis2=dict(
-                    overlaying="y",
-                    side="right",
-                    showgrid=False,
-                    tickfont=dict(size=10, color=C["indigo"]),
-                    title=dict(text="건수", font=dict(size=10, color=C["indigo"])),
-                ),
             )
+            _fig2.update_xaxes(tickangle=-30, nticks=15)
+            _fig2.update_yaxes(tickformat=",",
+                title_text="수납금액(만원)", title_font=dict(size=10, color=C["t3"]))
+            _fig2.update_layout(yaxis2=dict(
+                overlaying="y", side="right", showgrid=False,
+                tickfont=dict(size=10, color=C["indigo"]),
+                title=dict(text="건수", font=dict(size=10, color=C["indigo"]))))
             st.plotly_chart(_fig2, use_container_width=True, key="rev_trend")
             _l7 = finance_trend[-7:]
             _p7 = finance_trend[-14:-7] if len(finance_trend) >= 14 else []
@@ -782,15 +976,10 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
                 height=max(240, len(_depts2) * 28),
                 margin=dict(l=0, r=60, t=4, b=4),
                 showlegend=False,
-                xaxis=dict(
-                    gridcolor="#F1F5F9",
-                    tickfont=dict(size=10),
-                    zeroline=False,
-                    ticksuffix="만",
-                ),
-                yaxis=dict(tickfont=dict(size=11), autorange="reversed"),
                 bargap=0.3,
             )
+            _fig3.update_xaxes(ticksuffix="만")
+            _fig3.update_yaxes(tickfont=dict(size=11), autorange="reversed")
             st.plotly_chart(_fig3, use_container_width=True, key="rev_dept_bar")
         else:
             _plotly_empty()
@@ -880,7 +1069,115 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
 # ════════════════════════════════════════════════════════════════════
 # 탭 3 — 통계·분석
 # ════════════════════════════════════════════════════════════════════
-def _tab_analytics(opd_dept_trend, waittime_trend, los_dist):
+def _tab_analytics(opd_dept_trend, waittime_trend, los_dist, daily_dept_stat=None):
+    daily_dept_stat = daily_dept_stat or []
+
+    # ── 7일 외래 인원 추이 ─────────────────────────────────────────
+    _gap()
+    st.markdown(
+        '<div class="wd-card" style="border-top:3px solid ' + C["blue"] + ';">',
+        unsafe_allow_html=True,
+    )
+    _sec_hd("📈 7일간 추이", "외래·입원·퇴원·재원", C["blue"])
+    if daily_dept_stat and HAS_PLOTLY:
+        # daily_dept_stat에서 일자별 구분별 합산
+        from collections import defaultdict as _ddc_tr
+        _trend_day: dict = _ddc_tr(lambda: _ddc_tr(int))
+        for _r in daily_dept_stat:
+            _rd = str(_r.get("기준일", "")).replace("-","")
+            _d_fmt = f"{_rd[4:6]}/{_rd[6:8]}" if len(_rd)>=8 else str(_r.get("기준일",""))[:10]
+            _cat2 = _r.get("구분", "")
+            if _cat2 in ("외래","입원","퇴원","재원"):
+                _trend_day[_d_fmt][_cat2] += int(_r.get("건수", 0) or 0)
+        _tr_dates = sorted(_trend_day.keys())
+        if _tr_dates:
+            _tr_colors = {"외래": C["blue"], "입원": C["indigo"], "퇴원": C["t2"], "재원": C["violet"]}
+            _figOPD = go.Figure()
+            for _tc in ("외래","입원","퇴원","재원"):
+                _ty = [_trend_day[d][_tc] for d in _tr_dates]
+                _figOPD.add_trace(go.Scatter(
+                    x=_tr_dates, y=_ty, name=_tc,
+                    mode="lines+markers",
+                    line=dict(color=_tr_colors[_tc], width=2.5, shape="spline"),
+                    marker=dict(size=6, color=_tr_colors[_tc], line=dict(color="#fff",width=1.5)),
+                    hovertemplate=f"%{{x}}<br>{_tc}: %{{y}}명<extra></extra>",
+                ))
+            _figOPD.update_layout(
+                **_PLOTLY_LAYOUT, height=240,
+                margin=dict(l=0, r=0, t=28, b=8),
+                legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
+                            font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
+                hovermode="x unified",
+            )
+            _figOPD.update_xaxes(tickfont=dict(size=12, color="#334155"))
+            _figOPD.update_yaxes(title_text="인원 (명)", title_font=dict(size=10, color=C["t3"]))
+            st.plotly_chart(_figOPD, use_container_width=True, key="opd_7day_trend")
+        else:
+            st.markdown('<div style="padding:20px;text-align:center;color:#94A3B8;">V_DAILY_DEPT_STAT 기준일 컬럼 필요</div>', unsafe_allow_html=True)
+    elif opd_dept_trend and HAS_PLOTLY:
+        # fallback: opd_dept_trend 합산
+        from collections import defaultdict as _ddc_opd
+        _opd_day: dict = _ddc_opd(int)
+        for _r in opd_dept_trend:
+            _d = str(_r.get("기준일","")).replace("-","")
+            _d_fmt = f"{_d[4:6]}/{_d[6:8]}" if len(_d)>=8 else str(_r.get("기준일",""))[:10]
+            _opd_day[_d_fmt] += int(_r.get("외래환자수",0) or 0)
+        _opd_dates = sorted(_opd_day.keys())
+        _opd_vals  = [_opd_day[d] for d in _opd_dates]
+        _figOPD2 = go.Figure(go.Scatter(
+            x=_opd_dates, y=_opd_vals, name="외래",
+            mode="lines+markers", line=dict(color=C["blue"], width=2.5, shape="spline"),
+            marker=dict(size=6, color=C["blue"], line=dict(color="#fff",width=1.5)),
+        ))
+        _figOPD2.update_layout(**_PLOTLY_LAYOUT, height=240, margin=dict(l=0,r=0,t=8,b=8))
+        st.plotly_chart(_figOPD2, use_container_width=True, key="opd_7day_trend")
+    else:
+        st.markdown('<div style="padding:24px;text-align:center;color:#94A3B8;font-size:12px;">데이터 없음</div>', unsafe_allow_html=True)
+
+    # ── 진료과별 7일간 인원 히트맵 (한눈에 파악) ─────────────────
+    _gap()
+    st.markdown('<div class="wd-card" style="border-top:3px solid ' + C["indigo"] + ';">', unsafe_allow_html=True)
+    _sec_hd("🗓️ 진료과별 7일 외래 인원 히트맵", "색이 진할수록 인원 많음", C["indigo"])
+    if opd_dept_trend and HAS_PLOTLY:
+        from collections import defaultdict as _ddc_dp
+        _dp_map: dict = _ddc_dp(lambda: _ddc_dp(int))
+        for _r in opd_dept_trend:
+            _d = str(_r.get("기준일","")).replace("-","")
+            _d_fmt = f"{_d[4:6]}/{_d[6:8]}" if len(_d)>=8 else str(_r.get("기준일",""))[:10]
+            _dp = _r.get("진료과명","")
+            if _dp: _dp_map[_dp][_d_fmt] += int(_r.get("외래환자수",0) or 0)
+        _dp_dates = sorted({d for dv in _dp_map.values() for d in dv})
+        # 합계 기준 상위 15개 진료과
+        _top_depts = sorted(_dp_map, key=lambda d:-sum(_dp_map[d].values()))[:15]
+        if _top_depts and _dp_dates:
+            _z = [[_dp_map[dept].get(d,0) for d in _dp_dates] for dept in _top_depts]
+            # 각 진료과 합계 (우측 레이블)
+            _totals = [sum(_dp_map[d].values()) for d in _top_depts]
+            _y_labels = [f"{d} ({t}명)" for d, t in zip(_top_depts, _totals)]
+            _figDP = go.Figure(go.Heatmap(
+                z=_z, x=_dp_dates, y=_y_labels,
+                colorscale=[[0.0,"#EFF6FF"],[0.5,"#60A5FA"],[1.0,"#1E40AF"]],
+                text=[[str(v) if v>0 else "" for v in row] for row in _z],
+                texttemplate="%{text}",
+                textfont=dict(size=11),
+                hovertemplate="<b>%{y}</b><br>%{x}: %{z}명<extra></extra>",
+                showscale=True,
+                colorbar=dict(len=0.8, thickness=12, tickfont=dict(size=9)),
+            ))
+            _figDP.update_layout(
+                **_PLOTLY_LAYOUT,
+                height=max(280, len(_top_depts)*32),
+                margin=dict(l=0, r=60, t=8, b=8),
+            )
+            _figDP.update_xaxes(tickfont=dict(size=11, color="#334155"), side="top")
+            _figDP.update_yaxes(tickfont=dict(size=11, color="#0F172A"), autorange="reversed")
+            st.plotly_chart(_figDP, use_container_width=True, key="dept_7day_heatmap")
+        else:
+            _plotly_empty()
+    else:
+        _plotly_empty()
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     # 외래 추세 라인
     st.markdown(
         '<div class="wd-card" style="border-top:3px solid ' + C["blue"] + ';">',
@@ -945,23 +1242,12 @@ def _tab_analytics(opd_dept_trend, waittime_trend, los_dist):
                 **_PLOTLY_LAYOUT,
                 height=280,
                 margin=dict(l=0, r=0, t=8, b=8),
-                legend=dict(
-                    orientation="h",
-                    y=-0.18,
-                    x=0.5,
-                    xanchor="center",
-                    font=dict(size=11),
-                    bgcolor="rgba(0,0,0,0)",
-                ),
+                legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center",
+                            font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
                 hovermode="x unified",
-                yaxis=dict(
-                    gridcolor="#F1F5F9",
-                    tickfont=dict(size=10),
-                    title=dict(
-                        text="외래 환자 수(명)", font=dict(size=10, color=C["t3"])
-                    ),
-                ),
             )
+            _figT.update_yaxes(title_text="외래 환자 수(명)",
+                title_font=dict(size=10, color=C["t3"]))
             st.plotly_chart(_figT, use_container_width=True, key="an_opd_trend")
         else:
             _plotly_empty()
@@ -1089,14 +1375,11 @@ def _tab_analytics(opd_dept_trend, waittime_trend, los_dist):
                 height=240,
                 margin=dict(l=0, r=0, t=8, b=8),
                 showlegend=False,
-                xaxis=dict(tickfont=dict(size=11), gridcolor="rgba(0,0,0,0)"),
-                yaxis=dict(
-                    gridcolor="#F1F5F9",
-                    tickfont=dict(size=10),
-                    title=dict(text="환자 수(명)", font=dict(size=10, color=C["t3"])),
-                ),
                 bargap=0.25,
             )
+            _figL.update_xaxes(tickfont=dict(size=11), gridcolor="rgba(0,0,0,0)")
+            _figL.update_yaxes(title_text="환자 수(명)",
+                title_font=dict(size=10, color=C["t3"]))
             st.plotly_chart(_figL, use_container_width=True, key="an_los_dist")
             _long = sum(
                 int(r.get("환자수", 0) or 0)
@@ -1118,6 +1401,297 @@ def _tab_analytics(opd_dept_trend, waittime_trend, los_dist):
 
 
 # ════════════════════════════════════════════════════════════════════
+# 원무 AI 채팅 분석
+# ════════════════════════════════════════════════════════════════════
+def _render_finance_llm_chat(bed_detail=None, dept_status=None, kiosk_by_dept=None,
+                              daily_dept_stat=None, kiosk_counter_trend=None,
+                              discharge_pipe=None, kiosk_status=None):
+    """원무 현황 AI 채팅 — 대시보드 전체 데이터를 컨텍스트로 전달."""
+    import json as _json, uuid as _uuid
+    bed_detail          = bed_detail          or []
+    dept_status         = dept_status         or []
+    kiosk_by_dept       = kiosk_by_dept       or []
+    daily_dept_stat     = daily_dept_stat     or []
+    kiosk_counter_trend = kiosk_counter_trend or []
+    discharge_pipe      = discharge_pipe      or []
+
+    # ── 집계 ──────────────────────────────────────────────────────
+    _stay  = sum(int(r.get("재원수",   0) or 0) for r in bed_detail)
+    _adm   = sum(int(r.get("금일입원", 0) or 0) for r in bed_detail)
+    _disc  = sum(int(r.get("금일퇴원", 0) or 0) for r in bed_detail)
+    _total_bed = sum(int(r.get("총병상", 0) or 0) for r in bed_detail)
+    _rest  = max(0, _total_bed - _stay)
+    _occ   = round(_stay / max(_total_bed,1)*100, 1)
+    _ndc   = sum(int(r.get("익일퇴원예약", 0) or 0) for r in bed_detail)
+    _wait  = sum(int(r.get("대기",   0) or 0) for r in dept_status)
+    _proc  = sum(int(r.get("진료중", 0) or 0) for r in dept_status)
+    _done  = sum(int(r.get("완료",   0) or 0) for r in dept_status)
+    _k_tot = sum(int(r.get("수납건수", 0) or 0) for r in kiosk_by_dept)
+    _k_amt = sum(int(r.get("수납금액", 0) or 0) for r in kiosk_by_dept)
+
+    # 일일현황 보험구분 합산
+    from collections import defaultdict as _ddd_c
+    _ds_cat: dict = _ddd_c(lambda: _ddd_c(int))
+    for _r in daily_dept_stat:
+        _ds_cat[_r.get("구분","")][_r.get("보험구분","기타")] += int(_r.get("건수",0) or 0)
+
+    # 퇴원 파이프라인
+    _pipe: dict = {}
+    for _r in discharge_pipe:
+        _s = _r.get("단계",""); _n = int(_r.get("환자수",0) or 0)
+        if _s: _pipe[_s] = _pipe.get(_s,0) + _n
+
+    # 키오스크 7일 추세 요약
+    _kc_summary = [{"날짜": str(r.get("기준일",""))[:10],
+                    "키오스크": r.get("키오스크건수"), "창구": r.get("창구건수")}
+                   for r in kiosk_counter_trend[-7:]]
+
+    _ctx = {
+        "기준시각": time.strftime("%Y-%m-%d %H:%M"),
+        "병동_현황": {
+            "금일입원": _adm, "금일퇴원": _disc, "재원수": _stay,
+            "총병상": _total_bed, "잔여병상": _rest,
+            "가동률": f"{_occ}%", "익일퇴원예정": _ndc,
+            "병동별": [{"병동": r.get("병동명"), "재원": r.get("재원수"),
+                         "가동률": r.get("가동률")} for r in bed_detail[:12]],
+        },
+        "외래_현황": {
+            "대기": _wait, "진료중": _proc, "완료": _done, "합계": _wait+_proc+_done,
+            "진료과별": [{"진료과": r.get("진료과명"),
+                           "대기": r.get("대기"), "완료": r.get("완료"),
+                           "평균대기(분)": r.get("평균대기시간")}
+                          for r in sorted(dept_status,
+                              key=lambda x:-int(x.get("대기",0) or 0))[:12]],
+        },
+        "일일현황_보험구분": {
+            cat: dict(v) for cat, v in _ds_cat.items()
+        },
+        "키오스크_수납": {
+            "총건수": _k_tot, "총금액(만원)": _k_amt//10000,
+            "진료과별": [{"진료과": r.get("진료과명"),
+                           "건수": r.get("수납건수"),
+                           "금액(만원)": int(r.get("수납금액",0) or 0)//10000}
+                          for r in kiosk_by_dept[:10]],
+            "7일_추세": _kc_summary,
+        },
+        "퇴원_파이프라인": _pipe,
+    }
+    _sys_prompt = (
+        "당신은 병원 원무팀 업무 지원 AI입니다.\n"
+        "반드시 아래 [현재 대시보드 데이터]만 근거로 답변하세요. 데이터에 없는 내용은 추측하지 마세요.\n"
+        "핵심 수치는 **굵게**, 위험/주의는 🔴, 정상은 🟢, 권장 조치는 ✅ 로 표시하세요.\n"
+        "개인 환자 정보는 절대 언급하지 마세요.\n\n"
+        f"## [현재 대시보드 데이터] — {time.strftime('%Y-%m-%d %H:%M')} 기준\n"
+        f"```json\n{_json.dumps(_ctx, ensure_ascii=False, indent=2)[:6000]}\n```"
+    )
+
+    if "fn_chat_history" not in st.session_state:
+        st.session_state["fn_chat_history"] = []
+    _history = st.session_state["fn_chat_history"]
+
+    # 채팅 카드
+    st.markdown(
+        f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;'
+        f'padding:14px 16px;margin-top:4px;">',
+        unsafe_allow_html=True,
+    )
+    # 헤더
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+        '<span style="font-size:16px;">🤖</span>'
+        '<span style="font-size:13px;font-weight:700;color:#0F172A;">AI 원무 분석 채팅</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    # 빠른 질문
+    _quick = [
+        ("외래 혼잡도", "현재 외래 진료과별 대기 현황을 분석하고 혼잡한 진료과 조치 방안을 알려주세요."),
+        ("키오스크 현황", f"오늘 키오스크 수납 {_k_tot}건 현황을 분석하고 창구 부담 현황을 알려주세요."),
+        ("입퇴원 분석", f"금일 입원 {_adm}명·퇴원 {_disc}명·재원 {_stay}명 현황을 분석해주세요."),
+        ("운영 요약", "오늘 원무 전체 운영 현황을 3줄로 요약해주세요."),
+    ]
+    _qcols = st.columns(len(_quick), gap="small")
+    for _qi, (_ql, _qv) in enumerate(_quick):
+        with _qcols[_qi]:
+            if st.button(_ql, key=f"fn_qs_{_qi}", use_container_width=True, type="secondary"):
+                st.session_state["fn_chat_prefill"] = _qv
+                st.rerun()
+    # 대화 이력
+    for _msg in _history:
+        with st.chat_message(_msg["role"]):
+            st.markdown(_msg["content"])
+
+    _prefill = st.session_state.pop("fn_chat_prefill", None)
+    _user_in = st.chat_input(
+        "원무 현황에 대해 질문하세요  예) 대기 많은 진료과는? / 키오스크 수납 현황은?",
+        key="fn_chat_input",
+    ) or _prefill
+
+    if _user_in:
+        with st.chat_message("user"):
+            st.markdown(_user_in)
+        _history.append({"role": "user", "content": _user_in})
+
+        with st.chat_message("assistant"):
+            _t0  = time.time()
+            _ph  = st.empty()
+            _toks: list = []
+            _full = ""
+            try:
+                from core.llm import get_llm_client
+                _llm = get_llm_client()
+                _safe_p = _sys_prompt[:4000] + "...(생략)" if len(_sys_prompt) > 4000 else _sys_prompt
+                for _tok in _llm.generate_stream(_user_in, _safe_p, request_id=_uuid.uuid4().hex[:8]):
+                    _toks.append(_tok)
+                    if len(_toks) % 4 == 0:
+                        _ph.markdown("".join(_toks) + "▌")
+                _full = "".join(_toks)
+            except Exception as _e:
+                _full = (
+                    f"**LLM 연결 실패**\n\n`{_e}`\n\n"
+                    f"현재 데이터: 재원 **{_stay}명** / 외래대기 **{_wait}명** / 키오스크수납 **{_k_tot}건**"
+                )
+            _ph.markdown(_full)
+
+        _history.append({"role": "assistant", "content": _full})
+        st.session_state["fn_chat_history"] = _history
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════
+# 세부과 일일집계표 (V_DAY_INWEON_3)
+# ════════════════════════════════════════════════════════════════════
+def _render_day_inweon(day_inweon: list) -> None:
+    """세부과 일일집계표 — V_DAY_INWEON_3 기반."""
+    # ── 컬럼 정의 ──────────────────────────────────────────────────
+    _COLS = [
+        ("진료과",         "left",  "#0F172A", False),
+        ("외래계",         "right", C["blue"],  True),
+        ("입원계",         "right", C["indigo"], True),
+        ("퇴원계",         "right", C["t2"],    True),
+        ("재원계",         "right", C["violet"], True),
+        ("예방(독감)",     "right", C["teal"],   True),
+        ("예방(AZ,JS,NV)", "right", C["teal"],   True),
+        ("예방(MD)",       "right", C["teal"],   True),
+        ("예방(FZ)",       "right", C["teal"],   True),
+        ("예방주사계",     "right", C["green"],  True),
+    ]
+    _TH = ("padding:6px 8px;font-size:11px;font-weight:700;"
+           "color:#64748B;border-bottom:2px solid #E2E8F0;"
+           "background:#F8FAFC;white-space:nowrap;")
+    # 예방접종 그룹 헤더
+    _group_html = (
+        f'<th style="{_TH}text-align:left;" rowspan="2">진료과</th>'
+        f'<th style="{_TH}text-align:right;color:{C["blue"]};" rowspan="2">외래계</th>'
+        f'<th style="{_TH}text-align:right;color:{C["indigo"]};" rowspan="2">입원계</th>'
+        f'<th style="{_TH}text-align:right;color:{C["t2"]};" rowspan="2">퇴원계</th>'
+        f'<th style="{_TH}text-align:right;color:{C["violet"]};" rowspan="2">재원계</th>'
+        f'<th colspan="5" style="{_TH}text-align:center;color:{C["teal"]};">'
+        f'예방접종</th>'
+    )
+    _sub_html = (
+        f'<th style="{_TH}text-align:right;color:{C["teal"]};">독감</th>'
+        f'<th style="{_TH}text-align:right;color:{C["teal"]};">AZ·JS·NV</th>'
+        f'<th style="{_TH}text-align:right;color:{C["teal"]};">MD</th>'
+        f'<th style="{_TH}text-align:right;color:{C["teal"]};">FZ</th>'
+        f'<th style="{_TH}text-align:right;color:{C["green"]};font-weight:800;">소계</th>'
+    )
+    _rows_html = ""
+    for _i, _r in enumerate(day_inweon):
+        _dept = str(_r.get("진료과", ""))
+        _dept_t    = _dept.strip()          # trim — 공백 제거
+        _is_total  = (_dept_t == "총합계")
+        _is_group  = _dept_t.startswith("*")  # trim 후 * 검사
+        _dept_disp = _dept_t.lstrip("*").strip() if _is_group else _dept_t
+
+        if _is_total:
+            _bg = "#EFF6FF"
+            _td = f"padding:6px 8px;background:{_bg};border-top:2px solid #BFDBFE;font-weight:800;font-size:12.5px;font-family:Consolas,monospace;text-align:right;"
+            _dept_td = _td.replace("text-align:right;", "text-align:left;") + f"color:#1E40AF;font-family:inherit;"
+        elif _is_group:
+            _bg = "#F0F4FF"
+            _td = f"padding:5px 8px;background:{_bg};border-bottom:1px solid #E2E8F0;font-size:12px;font-family:Consolas,monospace;text-align:right;font-weight:700;"
+            _dept_td = _td.replace("text-align:right;", "text-align:left;") + f"color:{C['blue']};font-family:inherit;padding-left:8px;"
+        else:
+            _bg = "#F8FAFC" if _i % 2 == 0 else "#FFFFFF"
+            _td = f"padding:5px 8px;background:{_bg};border-bottom:1px solid #F1F5F9;font-size:12px;font-family:Consolas,monospace;text-align:right;"
+            _dept_td = _td.replace("text-align:right;", "text-align:left;") + "color:#334155;font-family:inherit;padding-left:18px;"
+
+        def _fmt(key):
+            v = _r.get(key)
+            if v is None: return "─"
+            try:
+                n = int(str(v).replace(",",""))
+                if n == 0: return "─"
+                return f"{n:,}"
+            except: return str(v) if str(v).strip() else "─"
+
+        _rows_html += (
+            f"<tr>"
+            f'<td style="{_dept_td}">{_dept_disp}</td>'
+            f'<td style="{_td}color:{C["blue"]};">{_fmt("외래계")}</td>'
+            f'<td style="{_td}color:{C["indigo"]};">{_fmt("입원계")}</td>'
+            f'<td style="{_td}color:{C["t2"]};">{_fmt("퇴원계")}</td>'
+            f'<td style="{_td}color:{C["violet"]};">{_fmt("재원계")}</td>'
+            f'<td style="{_td}color:{C["teal"]};">{_fmt("예방(독감)")}</td>'
+            f'<td style="{_td}color:{C["teal"]};">{_fmt("예방(AZ,JS,NV)")}</td>'
+            f'<td style="{_td}color:{C["teal"]};">{_fmt("예방(MD)")}</td>'
+            f'<td style="{_td}color:{C["teal"]};">{_fmt("예방(FZ)")}</td>'
+            f'<td style="{_td}color:{C["green"]};font-weight:{"800" if _is_total or _is_group else "600"};">'
+            f'{_fmt("예방주사계")}</td>'
+            f"</tr>"
+        )
+
+    import time as _t
+    _today = _t.strftime("%Y.%m.%d")
+    st.markdown(
+        f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">'
+        f'<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{C["blue"]};"></span>'
+        f'세부과 일일집계표'
+        f'<span class="wd-sec-sub"> {_today} 기준</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    if day_inweon:
+        st.markdown(
+            f'<div style="overflow-x:auto;">'
+            f'<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+            f'<thead>'
+            f'<tr>{_group_html}</tr>'
+            f'<tr>{_sub_html}</tr>'
+            f'</thead>'
+            f'<tbody>{_rows_html}</tbody>'
+            f'</table></div>',
+            unsafe_allow_html=True,
+        )
+        # 범례
+        st.markdown(
+            f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;'
+            f'padding-top:6px;border-top:1px solid #F1F5F9;">'
+            f'<span style="font-size:10px;color:#64748B;">📌 * 표시: 하위 진료과 합산 그룹</span>'
+            f'<span style="font-size:10px;color:{C["blue"]};">■ 외래</span>'
+            f'<span style="font-size:10px;color:{C["indigo"]};">■ 입원</span>'
+            f'<span style="font-size:10px;color:{C["violet"]};">■ 재원</span>'
+            f'<span style="font-size:10px;color:{C["teal"]};">■ 예방접종</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="padding:28px;text-align:center;color:#94A3B8;font-size:13px;">'
+            'V_DAY_INWEON_3 데이터 없음<br>'
+            '<span style="font-size:11px;">전일(SYSDATE-1) 데이터를 조회합니다.</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════
 # 메인 진입점
 # ════════════════════════════════════════════════════════════════════
 def render_finance_dashboard() -> None:
@@ -1132,12 +1706,33 @@ def render_finance_dashboard() -> None:
     except Exception:
         pass
 
-    opd_kpi = (_fq("opd_kpi") or [{}])[0]
-    dept_status = _fq("opd_dept_status")
+    # ── 날짜 계산 — widget key(fn_sel_date)에서 직접 읽음 ──────
+    # Streamlit widget key는 rerun 시 즉시 최신값 반영
+    # fn_query_date 중간 변수 제거 → 동기화 지연 문제 해결
+    import datetime as _dt_main
+    _is_custom = st.session_state.get("fn_use_custom_date", False)
+    if _is_custom:
+        _sel_d = st.session_state.get("fn_sel_date", _dt_main.date.today())
+        if isinstance(_sel_d, _dt_main.date):
+            _qdate = _sel_d.strftime("%Y%m%d")
+        else:
+            _qdate = str(_sel_d).replace("-", "")[:8]
+    else:
+        _qdate = ""
+
+    # 실시간 데이터: 날짜 지정 시에도 현재 시점 유지
+    opd_kpi      = (_fq("opd_kpi") or [{}])[0]
+    dept_status  = _fq("opd_dept_status")
     kiosk_status = _fq("kiosk_status")
-    discharge_pipe = _fq("discharge_pipeline")
-    opd_dept_trend = _fq("opd_dept_trend")
-    bed_detail = _fq("ward_bed_detail")
+    # 날짜 적용 데이터
+    kiosk_by_dept       = _fq("kiosk_by_dept",       _qdate if _is_custom else "")
+    kiosk_counter_trend = _fq("kiosk_counter_trend", _qdate if _is_custom else "")
+    discharge_pipe      = _fq("discharge_pipeline",  _qdate if _is_custom else "")
+    opd_dept_trend      = _fq("opd_dept_trend",      _qdate if _is_custom else "")
+    bed_detail          = _fq("ward_bed_detail",      _qdate if _is_custom else "")
+    ward_room_detail    = _fq("ward_room_detail")
+    daily_dept_stat     = _fq("daily_dept_stat",     _qdate if _is_custom else "")
+    day_inweon          = _fq("day_inweon",           _qdate if _is_custom else "")
     finance_today = _fq("finance_today")
     finance_trend = _fq("finance_trend")
     finance_by_dept = _fq("finance_by_dept")
@@ -1147,7 +1742,7 @@ def render_finance_dashboard() -> None:
 
     # 탑바
     st.markdown('<div class="fn-topbar"></div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([4, 2, 4], vertical_alignment="center")
+    c1, c2, c3 = st.columns([3, 4, 5], vertical_alignment="center")
     with c1:
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
@@ -1158,37 +1753,73 @@ def render_finance_dashboard() -> None:
             unsafe_allow_html=True,
         )
     with c2:
-        b1, b2 = st.columns(2, gap="small")
+        b1, b2, b3 = st.columns(3, gap="small")
         with b1:
-            if st.button(
-                "🔄 새로고침",
-                key="fn_refresh",
-                use_container_width=True,
-                type="secondary",
-            ):
+            if st.button("🔄 새로고침", key="fn_refresh",
+                         use_container_width=True, type="secondary"):
                 st.cache_data.clear()
                 st.rerun()
         with b2:
             _auto = st.session_state.get("fn_auto", False)
-            if st.button(
-                "⏸ 자동갱신" if _auto else "▶ 자동갱신",
-                key="fn_auto_toggle",
-                use_container_width=True,
-                type="secondary",
-            ):
+            if st.button("⏸ 자동갱신" if _auto else "▶ 자동갱신",
+                         key="fn_auto_toggle", use_container_width=True, type="secondary"):
                 st.session_state["fn_auto"] = not _auto
                 st.rerun()
+        with b3:
+            st.markdown(
+                '<a href="http://192.1.1.231:8501" target="_blank" style="'
+                'display:block;text-align:center;background:#EFF6FF;color:#1E40AF;'
+                'border:1.5px solid #BFDBFE;border-radius:20px;padding:5px 0;'
+                'font-size:11.5px;font-weight:600;text-decoration:none;">🔗 병동 대시보드</a>',
+                unsafe_allow_html=True,
+            )
     with c3:
-        _oc = "#16A34A" if oracle_ok else "#F59E0B"
-        st.markdown(
-            f'<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:8px 0;">'
-            f'<span style="width:8px;height:8px;border-radius:50%;background:{_oc};display:inline-block;"></span>'
-            f'<span style="font-size:12px;font-weight:700;color:{_oc};">{"Oracle 연결 정상" if oracle_ok else "Oracle 미연결"}</span>'
-            f'<span style="font-size:11px;color:#CBD5E1;">|</span>'
-            f'<span style="font-size:11px;color:{C["t3"]};font-family:Consolas,monospace;">갱신 {time.strftime("%Y-%m-%d %H:%M")}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        # ── 날짜 선택 영역 ─────────────────────────────────────
+        # datetime은 상단에서 _dt_main으로 이미 임포트
+        _dc1, _dc2, _dc3 = st.columns([2, 3, 2], gap="small")
+        with _dc1:
+            _oc = "#16A34A" if oracle_ok else "#F59E0B"
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:5px;padding:6px 0;">'
+                f'<span style="width:8px;height:8px;border-radius:50%;'
+                f'background:{_oc};flex-shrink:0;display:inline-block;"></span>'
+                f'<span style="font-size:11px;font-weight:700;color:{_oc};'
+                f'white-space:nowrap;">{"Oracle 연결" if oracle_ok else "Oracle 미연결"}</span>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with _dc2:
+            # 날짜 고정 여부
+            _use_custom = st.toggle(
+                "📅 날짜 지정",
+                value=st.session_state.get("fn_use_custom_date", False),
+                key="fn_use_custom_date",
+            )
+        with _dc3:
+            if st.session_state.get("fn_use_custom_date", False):
+                st.date_input(
+                    "",
+                    value=st.session_state.get("fn_sel_date", _dt_main.date.today()),
+                    key="fn_sel_date",      # widget key → rerun 시 즉시 반영
+                    label_visibility="collapsed",
+                    format="YYYY-MM-DD",
+                    max_value=_dt_main.date.today(),  # 미래 날짜 방지
+                )
+                # 선택 날짜 배너 표시
+                _shown = st.session_state.get("fn_sel_date", _dt_main.date.today())
+                st.markdown(
+                    f'<div style="font-size:10px;color:{C["indigo"]};font-weight:700;'
+                    f'text-align:center;">📅 {_shown} 기준</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div style="font-size:11px;color:{C["t3"]};font-family:Consolas,monospace;'
+                    f'padding:6px 0;text-align:right;">'
+                    f'{time.strftime("%Y-%m-%d %H:%M")}</div>',
+                    unsafe_allow_html=True,
+                )
+
     st.markdown(
         '<div style="height:1px;background:#F1F5F9;margin:0 0 6px;"></div>',
         unsafe_allow_html=True,
@@ -1213,14 +1844,33 @@ def render_finance_dashboard() -> None:
             unsafe_allow_html=True,
         )
 
-    # 3탭
-    t1, t2, t3 = st.tabs(["🏥 실시간 현황", "💰 수납·미수금", "📊 통계·분석"])
+    # 2탭 (수납·미수금 제거)
+    t1, t3 = st.tabs(["🏥 실시간 현황", "📊 통계·분석"])
     with t1:
-        _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail)
-    with t2:
-        _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat)
+        _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail,
+                      kiosk_by_dept=kiosk_by_dept,
+                      kiosk_counter_trend=kiosk_counter_trend,
+                      ward_room_detail=ward_room_detail,
+                      opd_dept_trend=opd_dept_trend,
+                      daily_dept_stat=daily_dept_stat)
     with t3:
-        _tab_analytics(opd_dept_trend, waittime_trend, los_dist)
+        _tab_analytics(opd_dept_trend, waittime_trend, los_dist,
+                         daily_dept_stat=daily_dept_stat)
+
+    # ── 세부과 일일집계표 ──────────────────────────────────────────
+    _gap()
+    _render_day_inweon(day_inweon)
+
+    # ── AI 채팅 분석 (하단 고정) ─────────────────────────────────
+    _gap()
+    _render_finance_llm_chat(
+        bed_detail=bed_detail,
+        dept_status=dept_status,
+        kiosk_by_dept=kiosk_by_dept,
+        daily_dept_stat=daily_dept_stat,
+        kiosk_counter_trend=kiosk_counter_trend,
+        discharge_pipe=discharge_pipe,
+    )
 
     # ── 자동갱신: st_autorefresh 없을 때 meta HTTP-refresh 사용 ──
     # time.sleep(300) 은 Streamlit 메인 스레드를 300초 블로킹 → 금지
