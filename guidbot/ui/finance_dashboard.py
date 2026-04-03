@@ -2573,4 +2573,4 @@ def render_finance_dashboard() -> None:
             st.markdown(
                 '<meta http-equiv="refresh" content="300">',
                 unsafe_allow_html=True,
-            )
+            ) 
