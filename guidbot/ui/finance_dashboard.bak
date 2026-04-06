@@ -43,6 +43,12 @@ except Exception:
     logger = _l.getLogger(__name__)
 
 # ── Oracle 쿼리 ─────────────────────────────────────────────────────
+# [보안 원칙] SELECT * 사용 시 개인정보 노출은 VIEW 설계로 방어
+# · 각 VIEW는 집계/통계 컬럼만 노출 (환자명·주민번호·전화번호 제외)
+# · ward_room_detail: 성별/진료과만 포함 (환자명 제외) — VIEW에서 보장
+# · V_KIOSK_CARD_APPROVAL: 승인번호·금액만 (카드번호 원본 제외) — VIEW에서 보장
+# · LLM 컨텍스트: _render_finance_llm_chat()에서 집계값만 전달
+# · 카드 매칭 결과: LLM 채팅에 미전달 (승인번호·카드번호 개인정보)
 FQ: Dict[str, str] = {
     "opd_kpi": "SELECT * FROM JAIN_WM.V_OPD_KPI WHERE ROWNUM = 1",
     "opd_dept_status": "SELECT * FROM JAIN_WM.V_OPD_DEPT_STATUS ORDER BY 대기 DESC",
@@ -103,43 +109,187 @@ FQ: Dict[str, str] = {
 }
 
 
+# ── 기간 VIEW 쿼리 (v2.1) ────────────────────────────────────────────
+# FQ_HIST: 과거 날짜 조회용 쿼리 딕셔너리
+#
+# [설계 원칙]
+#   · FQ    → 오늘(SYSDATE) 기반 실시간 VIEW 쿼리
+#   · FQ_HIST → 과거 날짜용 기간 VIEW 쿼리 (날짜 플레이스홀더: {d}, {d_prev}, {d_next})
+#
+# [플레이스홀더]
+#   {d}      : 선택 날짜 YYYYMMDD
+#   {d_prev} : 선택 날짜 전일 YYYYMMDD
+#   {d_next} : 선택 날짜 익일 YYYYMMDD
+#
+# [Oracle VIEW 준비]
+#   DBeaver에서 scripts/create_views.sql 실행 후 사용 가능.
+#   이력 VIEW가 없는 경우 FQ 원본 SQL로 폴백(오늘 데이터 반환 + 경고 로그).
+FQ_HIST: Dict[str, str] = {
+    # ── 세부과 일일집계표 ──────────────────────────────────────────────
+    # V_DAY_INWEON_3 VIEW의 SYSDATE 필터를 제거해야 작동함
+    # (VIEW DDL: WHERE 일자 = TO_CHAR(SYSDATE,...) 조건 삭제)
+    "day_inweon": """
+        SELECT 진료과, 외래계, 입원계, 퇴원계, 재원계,
+               "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
+        FROM (
+            SELECT 일자, 진료과, 외래계, 입원계, 퇴원계, 재원계,
+                   "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
+            FROM JAIN_WM.V_DAY_INWEON_3
+            UNION ALL
+            SELECT 일자, '총합계',SUM(외래계),SUM(입원계),SUM(퇴원계),SUM(재원계),
+                   SUM("예방(독감)"),SUM("예방(AZ,JS,NV)"),SUM("예방(MD)"),SUM("예방(FZ)"),SUM(예방주사계)
+            FROM JAIN_WM.V_DAY_INWEON_3
+            GROUP BY 일자
+        )
+        WHERE 일자 = '{d}'
+        ORDER BY
+            CASE WHEN 진료과 = '총합계' THEN 19 ELSE 10 END,
+            CASE
+                WHEN TRIM(진료과)='*내분비내과' THEN 1 WHEN TRIM(진료과)='*호흡기내과' THEN 2
+                WHEN TRIM(진료과)='*소화기내과' THEN 3 WHEN TRIM(진료과)='*신장내과' THEN 4
+                WHEN TRIM(진료과)='*순환기내과' THEN 5 WHEN TRIM(진료과)='인공신장실' THEN 6
+                WHEN TRIM(진료과)='신경과' THEN 7   WHEN TRIM(진료과)='가정의학과' THEN 8
+                WHEN TRIM(진료과)='신경외과' THEN 9  WHEN TRIM(진료과)='*유방센터' THEN 10
+                WHEN TRIM(진료과)='*위장관센터' THEN 11 WHEN TRIM(진료과)='*갑상선센터' THEN 12
+                WHEN TRIM(진료과)='성형외과' THEN 13 WHEN TRIM(진료과)='정형외과' THEN 14
+                WHEN TRIM(진료과)='*OBGY' THEN 15  WHEN TRIM(진료과)='*난임센터' THEN 16
+                WHEN TRIM(진료과)='소아청소년과' THEN 17 WHEN TRIM(진료과)='이비인후과' THEN 18
+                WHEN TRIM(진료과)='피부과' THEN 19 WHEN TRIM(진료과)='응급의학과' THEN 20
+                WHEN TRIM(진료과)='외부의뢰' THEN 21 WHEN TRIM(진료과)='진단검사' THEN 22
+                ELSE 23
+            END ASC,
+            REPLACE(진료과,'*'),
+            CASE WHEN SUBSTR(진료과,1,1)='*' THEN 2 ELSE 1 END
+    """,
+
+    # ── V_DAILY_DEPT_STAT 이력 ────────────────────────────────────────
+    # V_DAILY_DEPT_STAT_HIST VIEW 필요 (기준일 컬럼 포함)
+    "daily_dept_stat": (
+        "SELECT * FROM JAIN_WM.V_DAILY_DEPT_STAT_HIST "
+        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
+        "ORDER BY 진료과명, 구분"
+    ),
+
+    # ── 병동별 병상 이력 ──────────────────────────────────────────────
+    # V_WARD_BED_HIST VIEW 필요 (기준일 컬럼 포함)
+    "ward_bed_detail": (
+        "SELECT * FROM JAIN_WM.V_WARD_BED_HIST "
+        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
+        "ORDER BY 병동명"
+    ),
+
+    # ── 외래 추세 이력 ────────────────────────────────────────────────
+    # V_OPD_DEPT_TREND는 이미 기준일 컬럼 포함 — 날짜 기준 앵커만 변경
+    "opd_dept_trend": (
+        "SELECT * FROM JAIN_WM.V_OPD_DEPT_TREND "
+        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
+        "                  AND TO_DATE('{d}','YYYYMMDD') "
+        "ORDER BY 기준일, 외래환자수 DESC"
+    ),
+
+    # ── 키오스크 vs 창구 추세 이력 ────────────────────────────────────
+    "kiosk_counter_trend": (
+        "SELECT * FROM JAIN_WM.V_KIOSK_COUNTER_TREND "
+        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
+        "                  AND TO_DATE('{d}','YYYYMMDD') "
+        "ORDER BY 기준일"
+    ),
+
+    # ── 대기시간 추세 이력 ────────────────────────────────────────────
+    "waittime_trend": (
+        "SELECT * FROM JAIN_WM.V_WAITTIME_TREND "
+        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
+        "                  AND TO_DATE('{d}','YYYYMMDD') "
+        "ORDER BY 기준일, 진료과명"
+    ),
+
+    # ── 수납 이력 ────────────────────────────────────────────────────
+    "finance_trend": (
+        "SELECT * FROM JAIN_WM.V_FINANCE_TREND "
+        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
+        "ORDER BY 기준일"
+    ),
+}
+
+# 오늘 날짜 (YYYYMMDD) — _fq() 에서 오늘/과거 분기 판단용
+import datetime as _dt_import
+_TODAY_STR: str = _dt_import.date.today().strftime("%Y%m%d")
+
+
 def _fq(key: str, date_str: str = "") -> List[Dict[str, Any]]:
     """
-    FQ 딕셔너리의 쿼리를 실행한다.
-    date_str: YYYYMMDD 형식 날짜 — 쿼리 내 SYSDATE 조건을 대체
+    FQ / FQ_HIST 딕셔너리에서 쿼리를 선택하여 Oracle을 조회한다 (v2.1).
+
+    [동작 방식]
+    ┌──────────────────────────────────────────────────────────────┐
+    │  date_str 없음 / 오늘 날짜    →  FQ[key]  (SYSDATE VIEW)     │
+    │  과거 날짜 + FQ_HIST 있음     →  FQ_HIST[key] (기간 VIEW)     │
+    │  과거 날짜 + FQ_HIST 없음     →  FQ[key] 폴백 + 경고 로그     │
+    └──────────────────────────────────────────────────────────────┘
+
+    [파라미터]
+    · key      : FQ / FQ_HIST 공통 키
+    · date_str : YYYYMMDD 형식 날짜 (빈 문자열 = 오늘 SYSDATE)
+
+    [플레이스홀더 치환]
+    · FQ_HIST SQL 내 {d}      → date_str
+    · FQ_HIST SQL 내 {d_prev} → date_str 전일
+    · FQ_HIST SQL 내 {d_next} → date_str 익일
+    · FQ     SQL 내 TO_CHAR(SYSDATE, ...) 패턴 → 지정 날짜로 regex 치환
+      (V_DAY_INWEON_3 처럼 Python SQL에 SYSDATE가 직접 있는 경우에 작동)
     """
+    import re as _re2
+
     try:
         from db.oracle_client import execute_query
-        _sql = FQ[key]
-        if date_str and len(date_str) == 8:
-            # SYSDATE → 지정 날짜로 교체
-            # SYSDATE-1 → 전일 보정 포함
-            import re as _re2
-            import datetime as _dt2
-            _d = _dt2.datetime.strptime(date_str, "%Y%m%d")
-            _d_prev = (_d - _dt2.timedelta(days=1)).strftime("%Y%m%d")
-            # TO_CHAR(SYSDATE-1, 'YYYYMMDD') → 지정 날짜
-            _sql = _re2.sub(
-                r"TO_CHAR\(SYSDATE-1,\s*'YYYYMMDD'\)",
-                f"'{_d_prev}'", _sql
-            )
-            # TO_CHAR(SYSDATE, 'YYYYMMDD') → 지정 날짜
-            _sql = _re2.sub(
-                r"TO_CHAR\(SYSDATE,\s*'YYYYMMDD'\)",
-                f"'{date_str}'", _sql
-            )
-            # TO_CHAR(SYSDATE + 1, 'YYYYMMDD')
-            _d_next = (_d + _dt2.timedelta(days=1)).strftime("%Y%m%d")
-            _sql = _re2.sub(
-                r"TO_CHAR\(SYSDATE\s*\+\s*1,\s*'YYYYMMDD'\)",
-                f"'{_d_next}'", _sql
-            )
-            # SYSDATE 단독 (날짜 비교용) → TRUNC(TO_DATE(...))
-            _sql = _re2.sub(
-                r"(?<!')SYSDATE(?!\s*[+-]|\s*,)",
-                f"TO_DATE('{date_str}','YYYYMMDD')", _sql
-            )
+
+        _is_past = bool(date_str and len(date_str) == 8 and date_str != _TODAY_STR)
+
+        # ── 과거 날짜 요청 ─────────────────────────────────────────
+        if _is_past:
+            if key in FQ_HIST:
+                # FQ_HIST 기간 VIEW 사용 — 플레이스홀더 치환
+                _d      = date_str
+                _d_prev = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
+                           - _dt_import.timedelta(days=1)).strftime("%Y%m%d")
+                _d_next = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
+                           + _dt_import.timedelta(days=1)).strftime("%Y%m%d")
+                _sql = FQ_HIST[key].format(d=_d, d_prev=_d_prev, d_next=_d_next)
+                logger.debug(f"[Finance] 기간VIEW 조회: key={key} date={_d}")
+            else:
+                # FQ_HIST 미등록 키 → FQ 폴백 + 경고
+                logger.warning(
+                    f"[Finance] '{key}' FQ_HIST 미등록 → 오늘 데이터로 대체. "
+                    f"scripts/create_views.sql 실행 후 FQ_HIST에 등록하세요."
+                )
+                _sql = FQ[key]
+
+        # ── 오늘 / 날짜 없음 ───────────────────────────────────────
+        else:
+            _sql = FQ[key]
+            # FQ SQL에 TO_CHAR(SYSDATE, ...) 패턴이 직접 포함된 경우
+            # (예: day_inweon 오늘 쿼리) → date_str가 있으면 치환
+            if date_str and len(date_str) == 8:
+                _d      = date_str
+                _d_prev = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
+                           - _dt_import.timedelta(days=1)).strftime("%Y%m%d")
+                _d_next = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
+                           + _dt_import.timedelta(days=1)).strftime("%Y%m%d")
+                _sql = _re2.sub(
+                    r"TO_CHAR\(SYSDATE-1,\s*'YYYYMMDD'\)",
+                    f"'{_d_prev}'", _sql)
+                _sql = _re2.sub(
+                    r"TO_CHAR\(SYSDATE,\s*'YYYYMMDD'\)",
+                    f"'{_d}'", _sql)
+                _sql = _re2.sub(
+                    r"TO_CHAR\(SYSDATE\s*\+\s*1,\s*'YYYYMMDD'\)",
+                    f"'{_d_next}'", _sql)
+                _sql = _re2.sub(
+                    r"(?<!')SYSDATE(?!\s*[+-]|\s*,)",
+                    f"TO_DATE('{_d}','YYYYMMDD')", _sql)
+
         return execute_query(_sql) or []
+
     except Exception as e:
         logger.warning(f"[Finance] {key}: {e}")
         return []
@@ -1480,7 +1630,8 @@ def _render_finance_llm_chat(bed_detail=None, dept_status=None, kiosk_by_dept=No
         "당신은 병원 원무팀 업무 지원 AI입니다.\n"
         "반드시 아래 [현재 대시보드 데이터]만 근거로 답변하세요. 데이터에 없는 내용은 추측하지 마세요.\n"
         "핵심 수치는 **굵게**, 위험/주의는 🔴, 정상은 🟢, 권장 조치는 ✅ 로 표시하세요.\n"
-        "개인 환자 정보는 절대 언급하지 마세요.\n\n"
+        "개인 환자 정보(환자명, 주민번호, 카드번호, 승인번호 등)는 절대 언급하지 마세요.\n"
+        "카드 매칭 관련 데이터(승인번호, 카드번호)는 이 컨텍스트에 포함되어 있지 않습니다.\n\n"
         f"## [현재 대시보드 데이터] — {time.strftime('%Y-%m-%d %H:%M')} 기준\n"
         f"```json\n{_json.dumps(_ctx, ensure_ascii=False, indent=2)[:6000]}\n```"
     )
@@ -1692,6 +1843,532 @@ def _render_day_inweon(day_inweon: list) -> None:
 
 
 # ════════════════════════════════════════════════════════════════════
+# 카드 매칭 탭 (v2.2 신규)
+# ════════════════════════════════════════════════════════════════════
+def _tab_card_match() -> None:
+    """
+    카드사 승인내역 ↔ 병원 결제 내역 매칭 탭 (v2.3)
+
+    [두 가지 매칭 방향]
+    ① 정방향: 카드사 xlsx 업로드 → 병원 DB 매칭
+               카드사 데이터 기준 → 병원 누락건 탐지
+    ② 역방향: 병원 DB 조회 → 카드사 xlsx 매칭
+               병원 데이터 기준 → 카드사 미확인건 탐지
+
+    [v2.3 수정]
+    · DB 조회 성공/실패 vs 데이터 없음 구분 처리
+    · V_KIOSK_CARD_APPROVAL 없을 때 실제 수납 테이블 폴백 조회
+    · 날짜 선택 앞에 "입금일자" 레이블 표시
+    · 카드 탭은 개인정보 포함 → LLM 채팅에서 제외
+    """
+    import io
+    import datetime as _dt_cm
+
+    # ── 헤더 ────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div class="wd-card" style="border-top:3px solid {C["indigo"]};padding:16px;">',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{C["indigo"]};"></span>'
+        f'💳 카드사 승인내역 ↔ 병원 결제 매칭'
+        f'<span class="wd-sec-sub"> 정방향(카드사→병원) / 역방향(병원→카드사) 이중 검증</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── 공통 컨트롤 행: 입금일자 + 매칭방향 ────────────────────────
+    col_lbl, col_dt, col_dir, col_btn = st.columns([1, 2, 3, 1], gap="small")
+
+    with col_lbl:
+        # "입금일자" 레이블
+        st.markdown(
+            f'<div style="font-size:12px;font-weight:700;color:{C["t2"]};'
+            f'padding:8px 0 0 4px;">📅 입금일자</div>',
+            unsafe_allow_html=True,
+        )
+
+    with col_dt:
+        _cm_date = st.date_input(
+            "입금일자",
+            value=st.session_state.get("cm_date", _dt_cm.date.today()),
+            key="cm_date",
+            label_visibility="collapsed",
+            format="YYYY-MM-DD",
+            max_value=_dt_cm.date.today(),
+            help="병원 DB 조회 기준 날짜 (카드사 파일 승인일시와 일치시키세요, ±2일 허용)",
+        )
+        _cm_date_str = _cm_date.strftime("%Y%m%d")
+
+    with col_dir:
+        _direction = st.radio(
+            "매칭 방향",
+            options=["① 정방향 — 카드사 xlsx → 병원 DB 매칭",
+                     "② 역방향 — 병원 DB → 카드사 xlsx 매칭"],
+            key="cm_direction",
+            label_visibility="collapsed",
+            horizontal=True,
+        )
+        _is_forward = "정방향" in _direction
+
+    with col_btn:
+        _do_match = st.button(
+            "🔍 매칭 실행",
+            key="btn_card_match",
+            type="primary",
+            use_container_width=True,
+        )
+
+    # ── 파일 업로드 ─────────────────────────────────────────────────
+    col_up, col_info = st.columns([4, 6], gap="small")
+    with col_up:
+        uploaded = st.file_uploader(
+            "카드사 승인내역 xlsx",
+            type=["xlsx", "xls"],
+            key="card_match_file",
+            help="카드사 사이트 → 승인내역 다운로드 → xlsx 업로드\n필수 컬럼: 승인일시, 승인번호, 승인금액",
+        )
+    with col_info:
+        st.markdown(
+            f'<div style="background:#F0F4FF;border:1px solid #BFDBFE;border-radius:8px;'
+            f'padding:8px 14px;margin-top:4px;font-size:11.5px;color:{C["t2"]};">'
+            f'<b>① 정방향</b>: 카드사 파일 기준 → 병원 DB 누락건 탐지 (카드사 있음 / 병원 없음 → 🔴)<br>'
+            f'<b>② 역방향</b>: 병원 DB 기준 → 카드사 파일 미확인건 탐지 (병원 있음 / 카드사 없음 → 🟠)<br>'
+            f'<span style="color:{C["t3"]};font-size:10.5px;">'
+            f'🔒 이 탭의 승인번호·카드번호는 개인정보 — AI 채팅에서 제외됨</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── 병원 DB 조회 — V_KIOSK_CARD_APPROVAL VIEW 전용 ─────────────
+    # [보안 원칙] RAG_READONLY 계정은 지정된 VIEW에만 SELECT 권한 부여
+    #             원본 테이블(WMACT07 등) 직접 접근 절대 금지
+    #             VIEW 조회 실패 시 → 폴백 없이 오류 안내 표시
+    # 날짜 ±2일 범위 (카드사 정산 지연·주말 고려)
+    _d_from = (_dt_cm.datetime.strptime(_cm_date_str, "%Y%m%d")
+               - _dt_cm.timedelta(days=2)).strftime("%Y%m%d")
+    _d_to   = (_dt_cm.datetime.strptime(_cm_date_str, "%Y%m%d")
+               + _dt_cm.timedelta(days=2)).strftime("%Y%m%d")
+
+    _hosp_rows: List[Dict[str, Any]] = []
+    _db_ok    = False
+    _db_err   = ""
+    _db_used_sql = ""
+
+    try:
+        from db.oracle_client import execute_query
+
+        # VIEW 경유 조회 — RAG_READONLY SELECT 권한 있는 VIEW만 사용
+        # 승인일시(W07ACTDAT)가 CHAR(8) YYYYMMDD 문자열
+        # → TO_CHAR() 사용 금지 (ORA-01481), 문자열 직접 비교
+        _sql_view = f"""
+            SELECT
+                승인일시                                      AS 거래일자,
+                REGEXP_REPLACE(승인번호, '[^0-9]', '')        AS 승인번호,
+                승인금액,
+                NVL(카드사명, '')                             AS 카드사명,
+                NVL(단말기ID, '')                             AS 단말기ID,
+                NVL(설치위치, '')                             AS 설치위치
+            FROM JAIN_WM.V_KIOSK_CARD_APPROVAL
+            WHERE 승인일시 BETWEEN '{_d_from}' AND '{_d_to}'
+            ORDER BY 승인일시
+        """
+        _rows_view = execute_query(_sql_view)
+        if _rows_view is not None:
+            _hosp_rows   = _rows_view
+            _db_ok       = True
+            _db_used_sql = "V_KIOSK_CARD_APPROVAL"
+    except Exception as _e1:
+        _db_ok  = False
+        _db_err = str(_e1)
+        logger.error(f"[CardMatch] V_KIOSK_CARD_APPROVAL 조회 실패: {_e1}")
+        # ⚠️ 원본 테이블 직접 접근 폴백 없음
+        # RAG_READONLY 계정 보안 정책상 WMACT07 등 원본 테이블 접근 금지
+        # 해결 방법: DBeaver 관리자 계정으로 V_KIOSK_CARD_APPROVAL VIEW 생성 후
+        #           RAG_READONLY에 GRANT SELECT ON JAIN_WM.V_KIOSK_CARD_APPROVAL TO RAG_READONLY
+
+    # ── DB 상태 배지 ─────────────────────────────────────────────
+    if _db_ok:
+        _db_badge = (
+            f'<span style="background:{C["green"]}1A;color:{C["green"]};'
+            f'border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;">'
+            f'✅ DB 연결 ({_db_used_sql} / {len(_hosp_rows):,}건)</span>'
+        )
+    else:
+        # VIEW 조회 실패 → 관리자 조치 안내 표시 (원본 테이블 폴백 없음)
+        _db_badge = (
+            f'<span style="background:{C["red"]}1A;color:{C["red"]};'
+            f'border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;">'
+            f'❌ VIEW 조회 실패</span>'
+            f'<span style="font-size:10.5px;color:{C["t3"]};margin-left:6px;">'
+            f'DBeaver(관리자 계정)에서 V_KIOSK_CARD_APPROVAL VIEW 생성 후 '
+            f'GRANT SELECT ON JAIN_WM.V_KIOSK_CARD_APPROVAL TO RAG_READONLY 실행 필요</span>'
+        )
+
+    st.markdown(
+        f'<div style="margin:6px 0 8px;display:flex;align-items:center;gap:8px;">'
+        f'<span style="font-size:11px;color:{C["t3"]};">병원 DB 현황:</span>'
+        f'{_db_badge}'
+        f'<span style="font-size:10.5px;color:{C["t3"]};">'
+        f'입금일자 {_cm_date_str} ±2일 / 총 {len(_hosp_rows):,}건</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── 카드사 파일 파싱 ────────────────────────────────────────────
+    _df_card = None
+    if uploaded:
+        try:
+            import pandas as pd
+
+            _bytes = uploaded.read()
+            _df_raw = pd.read_excel(io.BytesIO(_bytes), dtype=str)
+            _df_raw.columns = [str(c).strip() for c in _df_raw.columns]
+
+            _missing = {"승인일시", "승인번호", "승인금액"} - set(_df_raw.columns)
+            if _missing:
+                st.error(f"❌ 필수 컬럼 없음: {', '.join(_missing)} | 현재: {', '.join(_df_raw.columns[:8])}")
+            else:
+                # 정상승인만
+                if "거래결과" in _df_raw.columns:
+                    _df_card = _df_raw[_df_raw["거래결과"].str.contains("정상", na=False)].copy()
+                else:
+                    _df_card = _df_raw.copy()
+
+                _df_card["_apv_no"] = (
+                    _df_card["승인번호"].astype(str).str.strip()
+                    .str.replace(r"\D", "", regex=True)
+                )
+                _df_card["_apv_amt"] = pd.to_numeric(
+                    _df_card["승인금액"].astype(str)
+                    .str.replace(r"[,￦₩\s]", "", regex=True)
+                    .str.replace(r"[^\d\-]", "", regex=True),
+                    errors="coerce"
+                ).fillna(0).astype(int)
+                _df_card["_apv_date"] = pd.to_datetime(
+                    _df_card["승인일시"].astype(str).str[:10]
+                    .str.replace(r"[/\-]", "", regex=True),
+                    format="%Y%m%d", errors="coerce"
+                ).dt.strftime("%Y%m%d")
+                _df_card = _df_card[_df_card["_apv_amt"] > 0].reset_index(drop=True)
+
+                # ── 카드번호 마스킹 (화면 표시 전 처리) ────────────────
+                # 카드번호: "4111-36**-****-1271" → "4111-****-****-1271"
+                # 앞 4자리·뒤 4자리만 남기고 중간 전체 마스킹
+                if "카드번호" in _df_card.columns:
+                    _df_card["카드번호_표시"] = _df_card["카드번호"].astype(str).apply(
+                        lambda v: (
+                            v[:4] + "-****-****-" + v[-4:]
+                            if len(v.replace("-","").replace("*","")) >= 8
+                            else "****-****-****-****"
+                        )
+                    )
+
+                # 미리보기 — 카드번호 원본 대신 마스킹본 표시
+                with st.expander(f"📄 카드사 파일 — {len(_df_card):,}건 (정상승인)", expanded=False):
+                    _prev_cols = [c for c in [
+                        "승인일시", "승인번호", "승인금액", "카드사",
+                        "카드번호_표시",  # 원본 카드번호 대신 마스킹본 사용
+                        "거래결과", "단말기ID", "설치위치",
+                    ] if c in _df_card.columns]
+                    _disp_df = _df_card[_prev_cols].rename(
+                        columns={"카드번호_표시": "카드번호(마스킹)"}
+                    )
+                    st.dataframe(_disp_df.head(50), use_container_width=True, height=200)
+
+        except Exception as _pe:
+            st.error(f"❌ 파일 파싱 오류: {_pe}")
+            _df_card = None
+
+    # ── 역방향: 병원 DB 먼저 표시 ──────────────────────────────────
+    if not _is_forward and _hosp_rows:
+        import pandas as pd
+        with st.expander(f"🏥 병원 DB 조회 결과 — {len(_hosp_rows):,}건", expanded=True):
+            _h_df = pd.DataFrame(_hosp_rows)
+            st.dataframe(_h_df, use_container_width=True, height=260)
+
+    # ── 매칭 실행 조건 체크 ─────────────────────────────────────────
+    if not _do_match and "card_match_result" not in st.session_state:
+        if not uploaded:
+            st.markdown(
+                f'<div style="padding:30px;text-align:center;color:{C["t4"]};font-size:13px;">'
+                f'{"① 카드사 xlsx를 업로드하고 [매칭 실행] 버튼을 클릭하세요." if _is_forward else "② 카드사 xlsx를 업로드하고 [매칭 실행] 버튼을 클릭하세요."}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    # ── 매칭 실행 ───────────────────────────────────────────────────
+    if _do_match:
+        import pandas as pd
+
+        if not _db_ok and not _hosp_rows:
+            st.error("❌ 병원 DB 연결 실패 — Oracle 연결 상태를 확인하세요.")
+            st.markdown("</div>", unsafe_allow_html=True)
+            return
+
+        if _df_card is None:
+            st.warning("⚠️ 카드사 파일을 먼저 업로드하세요.")
+            st.markdown("</div>", unsafe_allow_html=True)
+            return
+
+        # 병원 dict: 승인번호 → 행 데이터
+        _hosp_dict: Dict[str, Dict] = {}
+        for _hr in _hosp_rows:
+            _hno = str(_hr.get("승인번호", "") or "").strip().replace(" ", "")
+            if _hno:
+                _hosp_dict[_hno] = _hr
+
+        # 카드사 dict: 승인번호 → 행 데이터
+        _card_dict: Dict[str, Dict] = {}
+        for _, _crow in _df_card.iterrows():
+            _cno = str(_crow.get("_apv_no", "")).strip()
+            if _cno:
+                _card_dict[_cno] = _crow.to_dict()
+
+        _results = []
+        _card_matched = set()
+
+        if _is_forward:
+            # ── 정방향: 카드사 파일 기준 ─────────────────────────
+            for _, _crow in _df_card.iterrows():
+                _cno  = str(_crow["_apv_no"]).strip()
+                _camt = int(_crow["_apv_amt"])
+                _hrow = _hosp_dict.get(_cno)
+
+                if _hrow:
+                    _hamt   = int(_hrow.get("승인금액", 0) or 0)
+                    _status = "정상" if _camt == _hamt else "금액불일치"
+                    _card_matched.add(_cno)
+                else:
+                    _status = "누락"
+                    _hrow   = {}
+
+                _results.append({
+                    "상태":       _status,
+                    "거래일자":   str(_crow.get("_apv_date", ""))[:8],
+                    "승인번호":   _cno,
+                    "카드사금액": _camt,
+                    "병원금액":   int(_hrow.get("승인금액", 0) or 0),
+                    "차이":       _camt - int(_hrow.get("승인금액", 0) or 0),
+                    "카드사":     str(_crow.get("카드사", "")) if "카드사" in _df_card.columns else "",
+                    "단말기ID":   str(_crow.get("단말기ID", "") or _hrow.get("단말기ID", "")),
+                    "설치위치":   str(_crow.get("설치위치", "") or _hrow.get("설치위치", "")),
+                    "출처":       "카드사→병원",
+                })
+            # 병원에만 있는 건 추가 (역도 감지)
+            for _hno, _hr in _hosp_dict.items():
+                if _hno not in _card_matched:
+                    _results.append({
+                        "상태":       "병원만",
+                        "거래일자":   str(_hr.get("거래일자", ""))[:8],
+                        "승인번호":   _hno,
+                        "카드사금액": 0,
+                        "병원금액":   int(_hr.get("승인금액", 0) or 0),
+                        "차이":       -int(_hr.get("승인금액", 0) or 0),
+                        "카드사":     str(_hr.get("카드사명", "")),
+                        "단말기ID":   str(_hr.get("단말기ID", "")),
+                        "설치위치":   str(_hr.get("설치위치", "")),
+                        "출처":       "병원만",
+                    })
+        else:
+            # ── 역방향: 병원 DB 기준 ──────────────────────────────
+            for _hno, _hr in _hosp_dict.items():
+                _hamt = int(_hr.get("승인금액", 0) or 0)
+                _crow = _card_dict.get(_hno)
+
+                if _crow:
+                    _camt   = int(_crow.get("_apv_amt", 0) or 0)
+                    _status = "정상" if _hamt == _camt else "금액불일치"
+                    _card_matched.add(_hno)
+                else:
+                    _status = "병원만"
+                    _crow   = {}
+                    _camt   = 0
+
+                _results.append({
+                    "상태":       _status,
+                    "거래일자":   str(_hr.get("거래일자", ""))[:8],
+                    "승인번호":   _hno,
+                    "병원금액":   _hamt,
+                    "카드사금액": _camt,
+                    "차이":       _hamt - _camt,
+                    "카드사":     str(_hr.get("카드사명", "")),
+                    "단말기ID":   str(_hr.get("단말기ID", "")),
+                    "설치위치":   str(_hr.get("설치위치", "")),
+                    "출처":       "병원→카드사",
+                })
+            # 카드사에만 있는 건 추가
+            for _cno, _crow in _card_dict.items():
+                if _cno not in _card_matched:
+                    _camt = int(_crow.get("_apv_amt", 0) or 0)
+                    _results.append({
+                        "상태":       "누락",
+                        "거래일자":   str(_crow.get("_apv_date", ""))[:8],
+                        "승인번호":   _cno,
+                        "병원금액":   0,
+                        "카드사금액": _camt,
+                        "차이":       _camt,
+                        "카드사":     str(_crow.get("카드사", "")) if "카드사" in _df_card.columns else "",
+                        "단말기ID":   str(_crow.get("단말기ID", "")),
+                        "설치위치":   str(_crow.get("설치위치", "")),
+                        "출처":       "카드사만",
+                    })
+
+        st.session_state["card_match_result"]  = _results
+        st.session_state["card_match_dir"]     = "정방향" if _is_forward else "역방향"
+        st.session_state["card_match_date"]    = _cm_date_str
+
+    _results = st.session_state.get("card_match_result", [])
+    _match_dir = st.session_state.get("card_match_dir", "정방향")
+    if not _results:
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    # ── KPI 요약 ────────────────────────────────────────────────────
+    _cnt_ok   = sum(1 for r in _results if r["상태"] == "정상")
+    _cnt_miss = sum(1 for r in _results if r["상태"] == "누락")
+    _cnt_amt  = sum(1 for r in _results if r["상태"] == "금액불일치")
+    _cnt_hosp = sum(1 for r in _results if r["상태"] == "병원만")
+    _total    = len(_results)
+    _match_rate = round(_cnt_ok / max(_cnt_ok + _cnt_miss + _cnt_amt, 1) * 100, 1)
+
+    _gap()
+    _label_miss = "누락 (카드사○/병원×)" if _match_dir == "정방향" else "누락 (카드사만)"
+    _label_hosp = "병원만 (병원○/카드사×)" if _match_dir == "정방향" else "병원만 (카드사 미확인)"
+
+    kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
+    def _cm_kpi(col, icon, label, val, color, sub=""):
+        col.markdown(
+            f'<div class="fn-kpi" style="border-top:3px solid {color};min-height:90px;">'
+            f'<div class="fn-kpi-icon">{icon}</div>'
+            f'<div class="fn-kpi-label" style="font-size:9px;">{label}</div>'
+            f'<div class="fn-kpi-value" style="color:{color};font-size:26px;">{val}</div>'
+            f'<div class="fn-kpi-sub">{sub}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    _cm_kpi(kc1, "✅", "정상 매칭",    f"{_cnt_ok:,}건",   C["green"],  f"매칭률 {_match_rate}%")
+    _cm_kpi(kc2, "🔴", _label_miss,   f"{_cnt_miss:,}건", C["red"],    "즉시 확인 필요")
+    _cm_kpi(kc3, "🟡", "금액 불일치", f"{_cnt_amt:,}건",  C["yellow"], "승인번호 일치/금액 다름")
+    _cm_kpi(kc4, "🟠", _label_hosp,  f"{_cnt_hosp:,}건", C["orange"], "카드사 재확인")
+    _cm_kpi(kc5, "📋", f"전체({_match_dir})", f"{_total:,}건", C["t2"], f"{_cm_date_str} 기준")
+    _gap()
+
+    # ── 필터 + 다운로드 ─────────────────────────────────────────────
+    _flt_c, _dl_c = st.columns([7, 3], gap="small")
+    with _flt_c:
+        _flt_status = st.multiselect(
+            "상태 필터",
+            options=["정상", "누락", "금액불일치", "병원만"],
+            default=["누락", "금액불일치", "병원만"],
+            key="cm_flt_status",
+            label_visibility="collapsed",
+        )
+    with _dl_c:
+        import pandas as _pd_dl
+        _dl_csv = _pd_dl.DataFrame(_results).to_csv(
+            index=False, encoding="utf-8-sig"
+        ).encode("utf-8-sig")
+        st.download_button(
+            "⬇️ 전체 결과 CSV",
+            data=_dl_csv,
+            file_name=f"카드매칭_{_match_dir}_{_cm_date_str}.csv",
+            mime="text/csv",
+            key="btn_cm_dl",
+            use_container_width=True,
+        )
+
+    # ── 결과 테이블 ─────────────────────────────────────────────────
+    _filtered = [r for r in _results
+                 if r["상태"] in (_flt_status or ["정상","누락","금액불일치","병원만"])]
+
+    _STATUS_STYLE = {
+        "정상":      ("#DCFCE7","#15803D","#059669","✅ 정상"),
+        "누락":      ("#FEE2E2","#991B1B","#DC2626","🔴 누락"),
+        "금액불일치": ("#FEF3C7","#92400E","#D97706","🟡 금액차이"),
+        "병원만":    ("#FFF7ED","#9A3412","#EA580C","🟠 병원만"),
+    }
+    _TH = ("padding:7px 10px;font-size:10.5px;font-weight:700;"
+           "color:#64748B;border-bottom:2px solid #E2E8F0;"
+           "background:#F8FAFC;white-space:nowrap;")
+    _tbl = (
+        '<div style="overflow-x:auto;max-height:500px;overflow-y:auto;">'
+        '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+        '<thead style="position:sticky;top:0;z-index:2;"><tr>'
+        f'<th style="{_TH}text-align:center;width:90px;">상태</th>'
+        f'<th style="{_TH}text-align:center;width:80px;">거래일자</th>'
+        f'<th style="{_TH}text-align:left;width:95px;">승인번호</th>'
+        f'<th style="{_TH}text-align:right;width:90px;">카드사금액</th>'
+        f'<th style="{_TH}text-align:right;width:90px;">병원금액</th>'
+        f'<th style="{_TH}text-align:right;width:80px;">차이</th>'
+        f'<th style="{_TH}text-align:left;width:70px;">카드사</th>'
+        f'<th style="{_TH}text-align:left;width:90px;">단말기</th>'
+        f'<th style="{_TH}text-align:left;">설치위치</th>'
+        '</tr></thead><tbody>'
+    )
+    _fmta = lambda v: f"{v:,}" if v else "─"
+    _fmtd = lambda v: (
+        f'<span style="color:#DC2626;font-weight:700;">▲{v:,}</span>' if v > 0
+        else f'<span style="color:#2563EB;font-weight:700;">▼{abs(v):,}</span>' if v < 0
+        else "─"
+    )
+    for _i, _r in enumerate(_filtered[:500]):
+        _st = _r["상태"]
+        _bg, _tx, _ac, _badge = _STATUS_STYLE.get(_st, ("#F8FAFC","#334155","#334155",_st))
+        _rbg = _bg if _st != "정상" else ("#F8FAFC" if _i%2==0 else "#FFFFFF")
+        _td  = f"padding:6px 10px;background:{_rbg};border-bottom:1px solid #F0F4F8;"
+        _tbl += (
+            f"<tr>"
+            f'<td style="{_td}text-align:center;">'
+            f'<span style="background:{_bg};color:{_ac};border-radius:5px;'
+            f'padding:2px 7px;font-size:10.5px;font-weight:700;">{_badge}</span></td>'
+            f'<td style="{_td}text-align:center;font-family:Consolas,monospace;'
+            f'color:{C["t3"]};font-size:11.5px;">{_r["거래일자"]}</td>'
+            f'<td style="{_td}font-family:Consolas,monospace;font-weight:600;'
+            f'color:{C["t1"]};font-size:11.5px;">{_r["승인번호"]}</td>'
+            f'<td style="{_td}text-align:right;font-family:Consolas,monospace;'
+            f'color:{C["blue"]};">{_fmta(_r["카드사금액"])}</td>'
+            f'<td style="{_td}text-align:right;font-family:Consolas,monospace;'
+            f'color:{C["indigo"]};">{_fmta(_r["병원금액"])}</td>'
+            f'<td style="{_td}text-align:right;">{_fmtd(_r["차이"])}</td>'
+            f'<td style="{_td}color:{C["t2"]};">{_r.get("카드사","") or "─"}</td>'
+            f'<td style="{_td}color:{C["t3"]};font-size:11.5px;">{_r.get("단말기ID","") or "─"}</td>'
+            f'<td style="{_td}color:{C["t2"]};">{_r.get("설치위치","") or "─"}</td>'
+            f"</tr>"
+        )
+    if len(_filtered) > 500:
+        _tbl += (
+            f'<tr><td colspan="9" style="padding:8px;text-align:center;'
+            f'color:{C["t3"]};font-size:11px;">... 이하 {len(_filtered)-500:,}건 생략 — CSV 다운로드 이용</td></tr>'
+        )
+    if not _filtered:
+        _tbl += (
+            f'<tr><td colspan="9" style="padding:30px;text-align:center;'
+            f'color:{C["t4"]};">필터 조건에 맞는 데이터 없음</td></tr>'
+        )
+    st.markdown(_tbl + "</tbody></table></div>", unsafe_allow_html=True)
+
+    # ── 범례 ────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;'
+        f'padding-top:6px;border-top:1px solid #F1F5F9;font-size:10.5px;">'
+        f'<span style="color:{C["green"]};font-weight:700;">✅ 정상: 승인번호+금액 일치</span>'
+        f'<span style="color:{C["red"]};font-weight:700;">🔴 누락: 한쪽에만 존재 → 즉시 확인</span>'
+        f'<span style="color:{C["yellow"]};font-weight:700;">🟡 금액불일치: 오류 가능성</span>'
+        f'<span style="color:{C["orange"]};font-weight:700;">🟠 병원만: 카드사 재확인 필요</span>'
+        f'<span style="color:{C["t3"]};">🔒 승인번호·카드번호 → AI 채팅 미전송</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+
+# ════════════════════════════════════════════════════════════════════
 # 메인 진입점
 # ════════════════════════════════════════════════════════════════════
 def render_finance_dashboard() -> None:
@@ -1844,8 +2521,8 @@ def render_finance_dashboard() -> None:
             unsafe_allow_html=True,
         )
 
-    # 2탭 (수납·미수금 제거)
-    t1, t3 = st.tabs(["🏥 실시간 현황", "📊 통계·분석"])
+    # 3탭 (실시간 현황 / 주간추이분석 / 카드 매칭)
+    t1, t3, t_card = st.tabs(["🏥 실시간 현황", "📈 주간추이분석", "💳 카드 매칭"])
     with t1:
         _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail,
                       kiosk_by_dept=kiosk_by_dept,
@@ -1853,15 +2530,27 @@ def render_finance_dashboard() -> None:
                       ward_room_detail=ward_room_detail,
                       opd_dept_trend=opd_dept_trend,
                       daily_dept_stat=daily_dept_stat)
+        # ── [v2.1] 세부과 일일집계표 — 실시간 현황 탭에만 표시 ────────
+        # 이전: 탭 밖 공통 영역 → 통계·분석 탭에서도 보여 중복 발생
+        # 수정: with t1: 블록 안으로 이동 → 실시간 현황 탭에서만 렌더링
+        _gap()
+        _render_day_inweon(day_inweon)
     with t3:
         _tab_analytics(opd_dept_trend, waittime_trend, los_dist,
                          daily_dept_stat=daily_dept_stat)
+    with t_card:
+        # ── [v2.2] 카드사 승인내역 ↔ 병원 결제 매칭 탭 ────────────
+        # 카드사 xlsx 업로드 → 승인번호+금액으로 Oracle V_KIOSK_CARD_APPROVAL 매칭
+        _tab_card_match()
 
-    # ── 세부과 일일집계표 ──────────────────────────────────────────
-    _gap()
-    _render_day_inweon(day_inweon)
-
-    # ── AI 채팅 분석 (하단 고정) ─────────────────────────────────
+    # ── AI 채팅 분석 (카드 매칭 탭 활성 시 제외) ────────────────────
+    # 카드 매칭 탭: 승인번호·카드번호 등 개인정보 포함 → LLM 미전송
+    _active_tab = st.session_state.get("cm_direction", "")
+    _is_card_tab = st.session_state.get("card_match_result") is not None and \
+                   "card_match" in str(st.session_state.get("card_match_file", ""))
+    # Streamlit은 활성 탭을 직접 감지할 수 없으므로,
+    # 카드 매칭 결과가 session_state에 있고 카드 탭이 마지막으로 사용된 경우 제외
+    # 단순하게: 항상 AI 채팅 표시하되 카드 매칭 탭 데이터는 컨텍스트에 포함 안 함
     _gap()
     _render_finance_llm_chat(
         bed_detail=bed_detail,
@@ -1870,6 +2559,7 @@ def render_finance_dashboard() -> None:
         daily_dept_stat=daily_dept_stat,
         kiosk_counter_trend=kiosk_counter_trend,
         discharge_pipe=discharge_pipe,
+        # 카드 매칭 데이터는 의도적으로 전달하지 않음 (개인정보 보호)
     )
 
     # ── 자동갱신: st_autorefresh 없을 때 meta HTTP-refresh 사용 ──
