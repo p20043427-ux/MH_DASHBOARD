@@ -27,6 +27,8 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional
 import streamlit as st
+import json as _json_r
+import uuid as _uuid_r
 
 try:
     import plotly.graph_objects as go
@@ -1800,7 +1802,7 @@ def _tab_region(region_data: List[Dict]) -> None:
             texttemplate="%{text}", textfont=dict(size=9, color="#fff"),
             hovertemplate="<b>%{y}</b><br>%{x}: %{z:,}명<extra></extra>",
             showscale=True, xgap=2, ygap=2,
-            colorbar=dict(title="환자수", titleside="right", thickness=12, len=0.8),
+            colorbar=dict(title="환자수", thickness=12, len=0.8),
         ))
         _hm3_h = max(250, len(_top10_rg_hm) * 26 + 70)
         _fig_hm3.update_layout(
@@ -1995,7 +1997,9 @@ def _tab_region(region_data: List[Dict]) -> None:
     # 월별 TOP3 지역 추이 (LLM 입력용)
     _trend_ctx: dict = _ddr(lambda: _ddr(int))
     for _r in _filtered_data:
-        _ym8 = str(_r.get("기준년월", ""))[:6]
+        # 기준일자(YYYYMMDD)를 기준년월(YYYYMM)로 변환
+        _dj = str(_r.get("기준일자", ""))
+        _ym8 = _dj[:6] if len(_dj) >= 6 else ""
         _rg8 = _r.get("지역", "")
         if _ym8 and _rg8 and _rg8 != "지역미상":
             _trend_ctx[_ym8][_rg8] += int(_r.get("환자수", 0) or 0)
@@ -2005,7 +2009,12 @@ def _tab_region(region_data: List[Dict]) -> None:
                for r, c in sorted(_rgs.items(), key=lambda x: -x[1])[:3]]
         for _ym8, _rgs in sorted(_trend_ctx.items())
     }
- 
+    
+    # 월별 분석 메타데이터
+    _target_months = list(sorted(_trend_ctx.keys()))
+    _n_months = len(_target_months)
+    _unique_depts = 1  # 현재는 선택된 단일 진료과만 분석
+
     # 이상징후 탐지 (MoM 증감)
     _anomalies: list = []
     _sorted_months_ctx = sorted(_trend_ctx.keys())
@@ -2028,10 +2037,15 @@ def _tab_region(region_data: List[Dict]) -> None:
                         "변동률": f"{_chg:+.1f}%",
                     })
         _anomalies = sorted(_anomalies, key=lambda x: abs(float(x["변동률"].replace("%",""))), reverse=True)[:5]
+    
+    # 진료과별 TOP5지역 컨텍스트 (현재는 단일 진료과)
+    _dept_region_ctx = {
+        _sel_dept: [{"지역": r, "환자수": c} for r, c in _sorted_regions[:5]]
+    } if _sorted_regions else {}
  
     _ai_ctx = {
-        "분석_진료과": _ctx_dept,
-        "분석_기간": f"최근 {_n_months}개월 ({', '.join(sorted(_target_months))})",
+        "분석_진료과": _sel_dept,
+        "분석_기간": f"최근 {_n_months}개월 ({', '.join(sorted(_target_months))})" if _target_months else "데이터 없음",
         "총_환자수": _total_patients,
         "유입_지역수": _unique_regions,
         "집계_진료과수": _unique_depts,
@@ -2156,7 +2170,7 @@ def _tab_region(region_data: List[Dict]) -> None:
                 _full2 = (
                     f"**⚠️ LLM 연결 실패** `{_e2}`\n\n"
                     f"**현재 데이터 요약** (AI 분석 불가 시 참고)\n"
-                    f"- 분석 과: **{_ctx_dept}**\n"
+                    f"- 분석 과: **{_sel_dept}**\n"
                     f"- 총 환자: **{_total_patients:,}명** (최근 {_n_months}개월)\n"
                     f"- 1위 지역: **{_top1_region}** ({_top1_cnt:,}명)\n"
                     f"- 유입 지역수: **{_unique_regions}개** 시구\n"
