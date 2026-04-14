@@ -23,6 +23,12 @@ ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.3
   V_LOS_DIST       (진료과별 분포 V_LOS_DIST_DEPT 로 대체)
 """
 
+from db.ward_repository import ward_repo, _query, _qc, QUERIES
+from services.ward_service import (
+    ward_service,
+    _norm_sex, _safe_int, _safe_float,
+    _filter_by_ward, _filter_dx_ward, _trend_dedup,
+)
 
 from __future__ import annotations
 import time
