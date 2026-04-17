@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/analyze.sh)",
+      "Bash(/tmp/analyze.sh)",
+      "Bash(python /tmp/func_sizes.py)",
+      "Bash(python)",
+      "Bash(python -c ' *)",
+      "Bash(awk '{print $NF}')",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -v \"^contextlib$\\\\|^contextmanager$\\\\|^datetime$\\\\|^logging$\\\\|^pathlib$\\\\|^typing$\\\\|^dataclasses$\\\\|^functools$\\\\|^enum$\\\\|^json$\\\\|^sys$\\\\|^time$\\\\|^os$\\\\|^re$\\\\|^hashlib$\\\\|^random$\\\\|^uuid$\\\\|^threading$\\\\|^shutil$\\\\|^argparse$\\\\|^math$\\\\|^hmac$\\\\|^textwrap$\\\\|^unicodedata$\\\\|^statistics$\\\\|^collections$\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(pip list *)",
+      "Bash(python -c \"import langchain_text_splitters; print\\(langchain_text_splitters.__version__\\)\")",
+      "Bash(pip show *)",
+      "Bash(venv/Scripts/pip show *)",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/python -c \"import google.genai; print\\('google.genai OK:', google.genai.__version__\\)\")"
+    ]
+  }
+}

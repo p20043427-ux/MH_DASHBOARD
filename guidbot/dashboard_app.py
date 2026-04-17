@@ -37,8 +37,10 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 if sys.platform == "win32":
     try:
         import ctypes
+
         ctypes.windll.kernel32.SetPriorityClass(
-            ctypes.windll.kernel32.GetCurrentProcess(), 0x00008000,
+            ctypes.windll.kernel32.GetCurrentProcess(),
+            0x00008000,
         )
         logger.info("Windows 프로세스 우선순위: ABOVE_NORMAL 설정 완료")
     except Exception as _e:
@@ -65,6 +67,7 @@ if _health_param == "1":
     _health: dict = {"status": "ok", "ts": time.time(), "oracle": False}
     try:
         from db.oracle_client import test_connection
+
         _ok, _msg = test_connection()
         _health["oracle"] = _ok
         _health["oracle_msg"] = _msg
@@ -72,11 +75,12 @@ if _health_param == "1":
         _health["oracle_msg"] = str(_e)
     try:
         import psutil
+
         _proc = psutil.Process()
-        _mem  = _proc.memory_info()
-        _health["memory_rss_mb"]          = round(_mem.rss / 1024 / 1024, 1)
+        _mem = _proc.memory_info()
+        _health["memory_rss_mb"] = round(_mem.rss / 1024 / 1024, 1)
         _sys_mem = psutil.virtual_memory()
-        _health["system_memory_pct"]      = _sys_mem.percent
+        _health["system_memory_pct"] = _sys_mem.percent
         _health["system_memory_avail_gb"] = round(_sys_mem.available / 1024**3, 1)
     except ImportError:
         _health["psutil"] = "not installed"
@@ -87,6 +91,7 @@ if _health_param == "1":
 # ══════════════════════════════════════════════════════════════════════
 # 사이드바
 # ══════════════════════════════════════════════════════════════════════
+
 
 # ══════════════════════════════════════════════════════════════════════
 # PDF → Markdown → 벡터DB 업로드 함수
@@ -114,7 +119,7 @@ def _do_pdf_upload(
     from pathlib import Path
 
     _prog = st.progress(0, text="준비 중...")
-    _log  = st.empty()
+    _log = st.empty()
     _total = len(uploaded_files)
     _success, _fail = 0, []
 
@@ -141,6 +146,7 @@ def _do_pdf_upload(
                 try:
                     from config.settings import settings as _cfg_p
                     import shutil as _sh
+
                     _work_copy = _cfg_p.local_work_dir / _f.name
                     _cfg_p.local_work_dir.mkdir(parents=True, exist_ok=True)
                     _sh.copy2(str(_pdf_path), str(_work_copy))
@@ -149,6 +155,7 @@ def _do_pdf_upload(
 
                 # Markdown 변환 + 청킹
                 from core.pdf_to_markdown import pdf_to_markdown
+
                 # langchain v0.2+ 패키지 분리 → langchain_text_splitters
                 from langchain_text_splitters import (
                     MarkdownHeaderTextSplitter,
@@ -175,8 +182,8 @@ def _do_pdf_upload(
 
                 # 메타데이터 추가
                 for _c in _chunks:
-                    _c.metadata["source"]   = _f.name
-                    _c.metadata["type"]     = "uploaded_pdf"
+                    _c.metadata["source"] = _f.name
+                    _c.metadata["type"] = "uploaded_pdf"
                     _c.metadata["uploaded"] = time.strftime("%Y-%m-%d %H:%M")
 
                 all_docs.extend(_chunks)
@@ -200,12 +207,13 @@ def _do_pdf_upload(
                 model_name=_cfg.embedding_model,
                 cache_dir=str(_cfg.local_cache_path),
             )
-            _ok  = _vsm.append(all_docs)
+            _ok = _vsm.append(all_docs)
 
             if _ok:
                 _prog.progress(100, text="완료!")
                 # ── 캐시 무효화: 채팅이 새 DB 재로드하도록 버전 증가
                 import streamlit as _st_inv
+
                 _st_inv.session_state["dash_vdb_version"] = (
                     _st_inv.session_state.get("dash_vdb_version", 0) + 1
                 )
@@ -214,6 +222,7 @@ def _do_pdf_upload(
                 # RAGPipeline 싱글턴도 리셋 (새 DB 반영)
                 try:
                     from core.rag_pipeline import reset_pipeline
+
                     reset_pipeline()
                 except Exception:
                     pass
@@ -236,7 +245,6 @@ def _do_pdf_upload(
         st.warning("일부 파일 실패:\n" + "\n".join(f"• {n}: {e}" for n, e in _fail))
 
 
-
 # ══════════════════════════════════════════════════════════════════════
 # 벡터DB 문서 목록 뷰어
 # ══════════════════════════════════════════════════════════════════════
@@ -249,6 +257,7 @@ def _render_vdb_doc_list() -> None:
     try:
         from core.vector_store import VectorStoreManager
         from config.settings import settings as _cfg
+
         _vsm = VectorStoreManager(
             db_path=_cfg.rag_db_path,
             model_name=_cfg.embedding_model,
@@ -265,12 +274,15 @@ def _render_vdb_doc_list() -> None:
 
         # 파일별 집계
         from collections import defaultdict
-        _file_stats: dict = defaultdict(lambda: {"chunks": 0, "uploaded": "", "type": ""})
+
+        _file_stats: dict = defaultdict(
+            lambda: {"chunks": 0, "uploaded": "", "type": ""}
+        )
         for _d in _docs:
             _meta = getattr(_d, "metadata", {})
-            _src  = _meta.get("source", "알 수 없음")
+            _src = _meta.get("source", "알 수 없음")
             _file_stats[_src]["chunks"] += 1
-            _up   = _meta.get("uploaded", "")
+            _up = _meta.get("uploaded", "")
             if _up and _up > _file_stats[_src]["uploaded"]:
                 _file_stats[_src]["uploaded"] = _up
             if not _file_stats[_src]["type"]:
@@ -280,22 +292,33 @@ def _render_vdb_doc_list() -> None:
         c1, c2, c3 = st.columns(3)
         c1.metric("총 문서 수", f"{len(_file_stats)}개")
         c2.metric("총 청크 수", f"{total_chunks:,}개")
-        c3.metric("벡터 수",    f"{_vdb.index.ntotal:,}개")
+        c3.metric("벡터 수", f"{_vdb.index.ntotal:,}개")
         st.divider()
 
         # 필터
-        _search = st.text_input("🔍 파일명 검색", placeholder="파일명 일부 입력...", key="vdb_search")
-        _sort   = st.selectbox("정렬", ["파일명 오름차순", "청크 수 내림차순", "업로드일 내림차순"],
-                               key="vdb_sort", label_visibility="collapsed")
+        _search = st.text_input(
+            "🔍 파일명 검색", placeholder="파일명 일부 입력...", key="vdb_search"
+        )
+        _sort = st.selectbox(
+            "정렬",
+            ["파일명 오름차순", "청크 수 내림차순", "업로드일 내림차순"],
+            key="vdb_sort",
+            label_visibility="collapsed",
+        )
 
         _rows = sorted(
-            [(src, stat) for src, stat in _file_stats.items()
-             if not _search or _search.lower() in src.lower()],
+            [
+                (src, stat)
+                for src, stat in _file_stats.items()
+                if not _search or _search.lower() in src.lower()
+            ],
             key=lambda x: (
-                x[0].lower() if "파일명" in _sort else
-                -x[1]["chunks"] if "청크" in _sort else
-                -(x[1]["uploaded"] or "")
-            )
+                x[0].lower()
+                if "파일명" in _sort
+                else -x[1]["chunks"]
+                if "청크" in _sort
+                else -(x[1]["uploaded"] or "")
+            ),
         )
 
         if not _rows:
@@ -306,27 +329,31 @@ def _render_vdb_doc_list() -> None:
         _TH = "padding:6px 10px;font-size:11px;font-weight:700;color:#64748B;border-bottom:2px solid #E2E8F0;background:#F8FAFC;"
         _tbl = (
             '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-            '<thead><tr>'
+            "<thead><tr>"
             f'<th style="{_TH}text-align:left;">#</th>'
             f'<th style="{_TH}text-align:left;">파일명</th>'
             f'<th style="{_TH}text-align:center;">유형</th>'
             f'<th style="{_TH}text-align:right;">청크</th>'
             f'<th style="{_TH}text-align:center;">업로드일</th>'
-            '</tr></thead><tbody>'
+            "</tr></thead><tbody>"
         )
         _TYPE_COLOR = {
             "uploaded_pdf": "#7C3AED",
-            "db_manual":    "#0891B2",
-            "규정집":        "#1E40AF",
+            "db_manual": "#0891B2",
+            "규정집": "#1E40AF",
         }
         for _i, (_src, _stat) in enumerate(_rows):
             _bg = "#F8FAFC" if _i % 2 == 0 else "#FFFFFF"
             _td = f"padding:5px 10px;background:{_bg};border-bottom:1px solid #F1F5F9;"
             _tc = _TYPE_COLOR.get(_stat["type"], "#64748B")
-            _type_lbl = {"uploaded_pdf":"업로드","db_manual":"DB명세","규정집":"규정집"}.get(_stat["type"], _stat["type"])
+            _type_lbl = {
+                "uploaded_pdf": "업로드",
+                "db_manual": "DB명세",
+                "규정집": "규정집",
+            }.get(_stat["type"], _stat["type"])
             _tbl += (
                 f"<tr>"
-                f'<td style="{_td}color:#94A3B8;">{_i+1}</td>'
+                f'<td style="{_td}color:#94A3B8;">{_i + 1}</td>'
                 f'<td style="{_td}font-weight:600;color:#0F172A;word-break:break-all;">{_src}</td>'
                 f'<td style="{_td}text-align:center;">'
                 f'<span style="background:{_tc}22;color:{_tc};border-radius:4px;'
@@ -336,20 +363,29 @@ def _render_vdb_doc_list() -> None:
                 f"</tr>"
             )
         _tbl += "</tbody></table>"
-        st.markdown(f'<div style="overflow-x:auto;">{_tbl}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="overflow-x:auto;">{_tbl}</div>', unsafe_allow_html=True
+        )
 
         # CSV 다운로드
         import io, csv
+
         _buf = io.StringIO()
         _w = csv.writer(_buf)
-        _w.writerow(["파일명","유형","청크수","업로드일"])
+        _w.writerow(["파일명", "유형", "청크수", "업로드일"])
         for _src, _stat in _rows:
             _w.writerow([_src, _stat["type"], _stat["chunks"], _stat["uploaded"]])
-        st.download_button("📥 목록 CSV 다운로드", _buf.getvalue().encode("utf-8-sig"),
-                           "vdb_docs.csv", "text/csv", key="vdb_csv_dl")
+        st.download_button(
+            "📥 목록 CSV 다운로드",
+            _buf.getvalue().encode("utf-8-sig"),
+            "vdb_docs.csv",
+            "text/csv",
+            key="vdb_csv_dl",
+        )
 
     except Exception as _e:
         st.error(f"벡터DB 목록 조회 실패: {_e}")
+
 
 def _render_mini_sidebar() -> str:
     """
@@ -379,15 +415,16 @@ def _render_mini_sidebar() -> str:
             _ok = False
             try:
                 from db.oracle_client import test_connection
+
                 _ok, _ = test_connection()
             except Exception:
                 pass
             st.session_state["dash_oracle_ok"] = _ok
 
         _oracle_ok = st.session_state.get("dash_oracle_ok", False)
-        _oc_bg  = "rgba(22,163,74,0.15)"  if _oracle_ok else "rgba(245,158,11,0.15)"
-        _oc_bd  = "rgba(22,163,74,0.3)"   if _oracle_ok else "rgba(245,158,11,0.3)"
-        _oc_dot = "#16A34A"  if _oracle_ok else "#F59E0B"
+        _oc_bg = "rgba(22,163,74,0.15)" if _oracle_ok else "rgba(245,158,11,0.15)"
+        _oc_bd = "rgba(22,163,74,0.3)" if _oracle_ok else "rgba(245,158,11,0.3)"
+        _oc_dot = "#16A34A" if _oracle_ok else "#F59E0B"
         _oc_lbl = "Oracle 연결 정상" if _oracle_ok else "Oracle 미연결"
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:6px;'
@@ -430,17 +467,21 @@ def _render_mini_sidebar() -> str:
         # ── 부서별 Google Docs 문서 링크 ────────────────────────────
         st.markdown(
             '<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.50);'
-            'text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;'
+            "text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;"
             '">📄 부서 문서</div>',
             unsafe_allow_html=True,
         )
         _DEPT_DOCS = [
-            ("🏥", "병동",    "https://docs.google.com/document/d/병동문서ID"),
-            ("🚨", "응급실",  "https://docs.google.com/document/d/응급실문서ID"),
-            ("💊", "중환자실","https://drive.google.com/file/d/1f0R6rpr5Te45W8wlIuGZAcx2m-nT7FGV/view?usp=sharing"),
-            ("👶", "분만실",  "https://docs.google.com/document/d/분만실문서ID"),
-            ("🍼", "NICU",    "https://docs.google.com/document/d/NICU문서ID"),
-            ("🔪", "수술실",  "https://docs.google.com/document/d/수술실문서ID"),
+            ("🏥", "병동", "https://docs.google.com/document/d/병동문서ID"),
+            ("🚨", "응급실", "https://docs.google.com/document/d/응급실문서ID"),
+            (
+                "💊",
+                "중환자실",
+                "https://drive.google.com/file/d/1f0R6rpr5Te45W8wlIuGZAcx2m-nT7FGV/view?usp=sharing",
+            ),
+            ("👶", "분만실", "https://docs.google.com/document/d/분만실문서ID"),
+            ("🍼", "NICU", "https://docs.google.com/document/d/NICU문서ID"),
+            ("🔪", "수술실", "https://docs.google.com/document/d/수술실문서ID"),
             ("👩‍⚕️", "간호부", "https://docs.google.com/document/d/간호부문서ID"),
         ]
         _doc_rows = ""
@@ -456,10 +497,10 @@ def _render_mini_sidebar() -> str:
                 '<div style="flex:1;">'
                 f'<span style="font-size:12px;font-weight:600;'
                 f'color:rgba(255,255,255,0.85);">{_nm}</span>'
-                '</div>'
+                "</div>"
                 '<span style="font-size:10px;'
                 'color:rgba(255,255,255,0.30);">↗</span>'
-                '</a>'
+                "</a>"
             )
         st.markdown(
             f'<div style="display:flex;flex-direction:column;'
@@ -470,22 +511,25 @@ def _render_mini_sidebar() -> str:
         # ── 시스템 모니터링 (psutil) ──────────────────────────────────
         try:
             import psutil
-            _proc    = psutil.Process()
-            _mem_mb  = round(_proc.memory_info().rss / 1024 / 1024, 0)
+
+            _proc = psutil.Process()
+            _mem_mb = round(_proc.memory_info().rss / 1024 / 1024, 0)
             _sys_mem = psutil.virtual_memory()
             _cpu_pct = psutil.cpu_percent(interval=None)
             _mem_color = (
-                "#EF4444" if _sys_mem.percent > 85
-                else "#F59E0B" if _sys_mem.percent > 70
+                "#EF4444"
+                if _sys_mem.percent > 85
+                else "#F59E0B"
+                if _sys_mem.percent > 70
                 else "rgba(255,255,255,0.45)"
             )
             st.markdown(
                 f'<div style="font-size:10px;color:rgba(255,255,255,0.45);">'
                 f'<div style="margin-bottom:3px;">🖥️ CPU: {_cpu_pct:.0f}%</div>'
                 f'<div style="margin-bottom:3px;color:{_mem_color};">'
-                f'💾 RAM: {_sys_mem.percent:.0f}% '
-                f'({round(_sys_mem.available/1024**3,1)}GB 여유)</div>'
-                f'<div>📦 이 앱: {_mem_mb:.0f} MB</div>'
+                f"💾 RAM: {_sys_mem.percent:.0f}% "
+                f"({round(_sys_mem.available / 1024**3, 1)}GB 여유)</div>"
+                f"<div>📦 이 앱: {_mem_mb:.0f} MB</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -505,15 +549,17 @@ def _render_mini_sidebar() -> str:
                     'color:#4ADE80;margin-bottom:8px;">✓ 관리자 인증 완료</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("로그아웃", key="dash_admin_logout",
-                             use_container_width=True):
+                if st.button(
+                    "로그아웃", key="dash_admin_logout", use_container_width=True
+                ):
                     st.session_state["dash_role"] = "user"
                     logger.info("대시보드 관리자 로그아웃")
                     st.rerun()
             else:
                 # 로그인 폼
                 # 사이드바 input 색상 강제: 다크 배경에서 흰 텍스트 → 검정
-                st.markdown("""
+                st.markdown(
+                    """
                     <style>
                     section[data-testid='stSidebar'] input[type='password'],
                     section[data-testid='stSidebar'] input[type='text'] {
@@ -524,9 +570,12 @@ def _render_mini_sidebar() -> str:
                     section[data-testid='stSidebar'] input::placeholder {
                         color: #94A3B8 !important;
                     }
-                    </style>""", unsafe_allow_html=True)
+                    </style>""",
+                    unsafe_allow_html=True,
+                )
                 _pw = st.text_input(
-                    "패스워드", type="password",
+                    "패스워드",
+                    type="password",
                     key="dash_admin_pw",
                     placeholder="관리자 패스워드 입력",
                     label_visibility="collapsed",
@@ -542,13 +591,12 @@ def _render_mini_sidebar() -> str:
                             st.markdown(
                                 '<div style="font-size:11px;color:#EF4444;'
                                 'font-weight:600;margin-top:4px;">'
-                                '패스워드가 올바르지 않습니다</div>',
+                                "패스워드가 올바르지 않습니다</div>",
                                 unsafe_allow_html=True,
                             )
                             logger.warning("대시보드 관리자 인증 실패")
                     except Exception as _auth_e:
                         st.error(f"인증 오류: {_auth_e}")
-
 
         st.divider()
 
@@ -556,7 +604,8 @@ def _render_mini_sidebar() -> str:
         if _role == "admin":
             with st.expander("📄 규정집 PDF 업로드", expanded=False):
                 # ── 사이드바 다크 배경 색상 강제 적용 CSS ─────────
-                st.markdown("""
+                st.markdown(
+                    """
                     <style>
                     section[data-testid='stSidebar'] p,
                     section[data-testid='stSidebar'] label,
@@ -569,20 +618,22 @@ def _render_mini_sidebar() -> str:
                         font-size: 12px !important;
                         font-weight: 600 !important;
                     }
-                    </style>""", unsafe_allow_html=True)
+                    </style>""",
+                    unsafe_allow_html=True,
+                )
 
                 # Google Drive 공유 폴더 바로가기
                 st.markdown(
                     '<a href="https://drive.google.com/drive/folders/13hG8qM8iQsovKBI4a_3X6SjkO0UUU8sL"'
                     ' target="_blank" style="'
-                    'display:flex;align-items:center;gap:6px;'
-                    'background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.35);'
+                    "display:flex;align-items:center;gap:6px;"
+                    "background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.35);"
                     'border-radius:7px;padding:6px 10px;text-decoration:none;margin-bottom:6px;">'
                     '<span style="font-size:14px;">📁</span>'
-                    '<div>'
+                    "<div>"
                     '<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.88);">벡터DB 공유 폴더</div>'
                     '<div style="font-size:10px;color:rgba(255,255,255,0.45);">Google Drive ↗</div>'
-                    '</div></a>',
+                    "</div></a>",
                     unsafe_allow_html=True,
                 )
                 st.caption("PDF → Markdown 변환 후 벡터DB에 추가합니다.")
@@ -661,7 +712,9 @@ def main() -> None:
     # ── 탭 구성 ─────────────────────────────────────────────────────
     if current_role == "admin":
         # 관리자: 병동 대시보드 + 모니터링
-        tab_dash, tab_mon, tab_docs = st.tabs(["🏥 병동 대시보드", "📊 모니터링", "📚 벡터DB 문서"])
+        tab_dash, tab_mon, tab_docs = st.tabs(
+            ["🏥 병동 대시보드", "📊 모니터링", "📚 벡터DB 문서"]
+        )
 
         with tab_dash:
             try:
@@ -677,6 +730,7 @@ def main() -> None:
             # ── 사용자 활동 모니터링 뷰어 ──────────────────────────
             try:
                 from ui.dashboard_log_viewer import render_dashboard_monitor
+
                 render_dashboard_monitor()
             except ImportError:
                 st.error(

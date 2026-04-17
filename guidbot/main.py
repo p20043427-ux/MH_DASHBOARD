@@ -2,7 +2,7 @@
 main.py  ─  좋은문화병원 가이드봇 v9.4
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[v9.4 — 코드 정리 & 성능 개선]
+[v9.4 — 코드 정리 & 성능 개선] -2026-04-17
 
 ■ 핵심 변경
   · search_engine.py import 완전 제거
@@ -113,6 +113,7 @@ st.markdown(T.get_global_css(), unsafe_allow_html=True)
 def _load_resources():
     """벡터 DB 병렬 초기화 + BM25 백그라운드 워밍업 (v9.4)."""
     from utils.startup_optimizer import parallel_load_resources, start_background_warmup
+
     try:
         result = parallel_load_resources()
         if result.pipeline is not None:
@@ -121,6 +122,7 @@ def _load_resources():
     except Exception as exc:
         logger.warning(f"병렬 로딩 실패 → 폴백: {exc}")
         from core.vector_store import VectorStoreManager
+
         manager = VectorStoreManager(
             db_path=settings.rag_db_path,
             model_name=settings.embedding_model,
@@ -132,11 +134,13 @@ def _load_resources():
 def _check_health(vector_db) -> DBHealth:
     """벡터 DB + 파일 시스템 상태 확인."""
     from datetime import datetime
+
     file_count, recent_files = 0, []
     try:
         pdf_files = sorted(
             settings.local_work_dir.glob("*.pdf"),
-            key=lambda p: p.stat().st_mtime, reverse=True,
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
         )
         file_count = len(pdf_files)
         recent_files = [
@@ -146,15 +150,29 @@ def _check_health(vector_db) -> DBHealth:
     except Exception:
         pass
     if vector_db is None:
-        return DBHealth(is_healthy=False, message="DB 오프라인", doc_count=0,
-                        file_count=file_count, recent_files=recent_files)
+        return DBHealth(
+            is_healthy=False,
+            message="DB 오프라인",
+            doc_count=0,
+            file_count=file_count,
+            recent_files=recent_files,
+        )
     try:
-        return DBHealth(is_healthy=True, message="정상 가동 중",
-                        doc_count=vector_db.index.ntotal,
-                        file_count=file_count, recent_files=recent_files)
+        return DBHealth(
+            is_healthy=True,
+            message="정상 가동 중",
+            doc_count=vector_db.index.ntotal,
+            file_count=file_count,
+            recent_files=recent_files,
+        )
     except Exception:
-        return DBHealth(is_healthy=True, message="정상 가동 중", doc_count=0,
-                        file_count=file_count, recent_files=recent_files)
+        return DBHealth(
+            is_healthy=True,
+            message="정상 가동 중",
+            doc_count=0,
+            file_count=file_count,
+            recent_files=recent_files,
+        )
 
 
 def _render_mode_badge(mode: str, pipeline_label: str = "") -> None:
@@ -354,14 +372,16 @@ def _stream_answer(
     return full_text, sources_data, pipeline_result
 
 
-
 def _render_log_tab() -> None:
     """피드백 로그 탭 — 관리자 전용."""
     try:
         all_fb = load_all_feedback()
         if all_fb:
             import pandas as pd
-            st.dataframe(pd.DataFrame(all_fb), use_container_width=True, hide_index=True)
+
+            st.dataframe(
+                pd.DataFrame(all_fb), use_container_width=True, hide_index=True
+            )
             if st.button("CSV 내보내기", key="fb_export"):
                 csv = export_as_training_data()
                 st.download_button(
@@ -374,6 +394,7 @@ def _render_log_tab() -> None:
             st.info("피드백 데이터가 없습니다.")
     except Exception as exc:
         st.error(f"로그 로드 실패: {exc}")
+
 
 def _render_benchmark_tab(vector_db) -> None:
     """
@@ -484,7 +505,9 @@ def _render_benchmark_tab(vector_db) -> None:
                 # [v9.4] private _run_* 제거 → pipeline.run_with_mode() 사용
                 _bm_pipeline = get_pipeline(vector_db)
                 t_search = time.time()
-                sr = _bm_pipeline.run_with_mode(test_query, mode=mode_id, use_cache=False)
+                sr = _bm_pipeline.run_with_mode(
+                    test_query, mode=mode_id, use_cache=False
+                )
                 search_sec = time.time() - t_search
 
                 t_llm = time.time()
@@ -507,7 +530,9 @@ def _render_benchmark_tab(vector_db) -> None:
                     "answer_len": len("".join(resp_tokens)),
                 }
                 results.append(row)
-                st.session_state["benchmark_results"].setdefault(mode_id, []).append(row)
+                st.session_state["benchmark_results"].setdefault(mode_id, []).append(
+                    row
+                )
 
             except Exception as exc:
                 st.error(f"[{mode_label}] 오류: {exc}")
@@ -563,7 +588,9 @@ def _render_benchmark_tab(vector_db) -> None:
             }
         ).set_index("모드")
         st.bar_chart(df_guide)
-        st.caption("위 수치는 예상 기준값입니다. 테스트 실행 후 실측값으로 업데이트됩니다.")
+        st.caption(
+            "위 수치는 예상 기준값입니다. 테스트 실행 후 실측값으로 업데이트됩니다."
+        )
 
 
 def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
@@ -584,7 +611,9 @@ def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg["role"] == "assistant" and msg.get("sources"):
-                with st.expander(f"📄 참고 문서 {len(msg['sources'])}건", expanded=False):
+                with st.expander(
+                    f"📄 참고 문서 {len(msg['sources'])}건", expanded=False
+                ):
                     for src in msg["sources"]:
                         source_trust_card(
                             rank=src["rank"],
@@ -594,7 +623,9 @@ def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
                             article=src.get("article", ""),
                             revision_date=src.get("revision_date", ""),
                             chunk_text=src["chunk_text"],
-                            doc_path=Path(src["doc_path_str"]) if src.get("doc_path_str") else None,
+                            doc_path=Path(src["doc_path_str"])
+                            if src.get("doc_path_str")
+                            else None,
                             card_ns=f"hist_{i}",
                         )
 
@@ -608,8 +639,8 @@ def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
     # '_prefill or chat_input' 패턴은 prefill 시 chat_input 을 skip해서
     # 답변 후 입력창이 사라지는 버그 → chat_input 항상 먼저 렌더.
     _user_input = st.chat_input("규정이나 업무에 대해 질문하세요")
-    _prefill    = st.session_state.pop("prefill_prompt", None)
-    prompt      = _prefill or _user_input
+    _prefill = st.session_state.pop("prefill_prompt", None)
+    prompt = _prefill or _user_input
 
     if prompt:
         request_id = str(uuid.uuid4())
@@ -666,8 +697,8 @@ def main() -> None:
 
     # ── 관리자 여부 확인 ────────────────────────────────────────────
     current_role: str = st.session_state.get("role", "user")
-    _is_admin = (current_role == "admin")
-    _is_data = (st.session_state.get("search_mode", "standard") == "data_analysis")
+    _is_admin = current_role == "admin"
+    _is_data = st.session_state.get("search_mode", "standard") == "data_analysis"
 
     # ── 탭 구성 — 관리자만 벤치마크·로그 탭 표시 ──────────────────
     if _is_admin:
