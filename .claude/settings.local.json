@@ -27,7 +27,8 @@
       "Bash(cmd /c \"taskkill /PID 52524 /F 2>&1\")",
       "Bash(cmd /c \"taskkill /PID 52524 /F & echo EXIT:%ERRORLEVEL%\")",
       "Bash(powershell -Command \"Stop-Process -Id 52524 -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; netstat -ano | findstr ':8504'\")",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(awk '/^C\\\\s*=\\\\s*\\\\{/,/^\\\\}/' guidbot/ui/finance_dashboard.py)"
     ]
   }
 }

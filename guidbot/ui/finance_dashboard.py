@@ -2614,8 +2614,383 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         )
     _gap()
 
-        # [섹션3] AI 경영 컨설팅 채팅
-    #
+    # ══════════════════════════════════════════════════════════════════
+    # [섹션6] 월별 환자 추이 (V_REGION_DEPT_DAILY 1년치 → YYYYMM 집계)
+    # ══════════════════════════════════════════════════════════════════
+    # 선택 진료과의 전체 1년 데이터를 월별로 집계 (기간 필터 무관)
+    _yr_m_region: dict = _ddr(lambda: _ddr(int))   # YYYYMM → {지역: 환자수}
+    _yr_m_unknown: dict = _ddr(int)                # YYYYMM → 지역미상 환자수
+    for _r2 in region_data:
+        if _r2.get("진료과명", "") != _sel_dept:
+            continue
+        _day2 = str(_r2.get("기준일자", ""))
+        _ym2  = _day2[:6] if len(_day2) >= 6 else ""
+        _rg2  = _r2.get("지역", "")
+        _cnt2 = int(_r2.get("환자수", 0) or 0)
+        if not _ym2:
+            continue
+        if _rg2 in ("지역미상", "", None):
+            _yr_m_unknown[_ym2] += _cnt2
+        else:
+            _yr_m_region[_ym2][_rg2] += _cnt2
+
+    _yr_months  = sorted(_yr_m_region.keys())
+    _yr_m_total = {ym: sum(v.values()) for ym, v in _yr_m_region.items()}
+
+    if _yr_months:
+        st.markdown(
+            f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
+            unsafe_allow_html=True,
+        )
+        _sec_hd(f"📅 {_sel_dept} — 월별 환자 추이 (1년)",
+                "일별 데이터 → 월 합산 · 지역미상 제외", C["blue"])
+
+        # ── 전월 대비 KPI
+        if len(_yr_months) >= 2:
+            _cur_ym  = _yr_months[-1]
+            _prv_ym  = _yr_months[-2]
+            _cur_tot = _yr_m_total.get(_cur_ym, 0)
+            _prv_tot = _yr_m_total.get(_prv_ym, 0)
+            _mom_d   = _cur_tot - _prv_tot
+            _mom_pct = round(_mom_d / max(_prv_tot, 1) * 100, 1)
+            _mom_clr = C["red"] if _mom_d > 0 else C["blue"] if _mom_d < 0 else C["t3"]
+            _mom_arr = "▲" if _mom_d > 0 else "▼" if _mom_d < 0 else "─"
+            _max_ym  = max(_yr_m_total, key=_yr_m_total.get)
+
+            _km1, _km2, _km3, _km4 = st.columns(4, gap="small")
+            _kpi_card(_km1, "📅", f"당월 ({_cur_ym[:4]}.{_cur_ym[4:]})",
+                      f"{_cur_tot:,}", "명", "지역미상 제외", C["blue"])
+            _kpi_card(_km2, "📅", f"전월 ({_prv_ym[:4]}.{_prv_ym[4:]})",
+                      f"{_prv_tot:,}", "명", "지역미상 제외", C["t2"])
+            _km3.markdown(
+                f'<div class="fn-kpi" style="border-top:3px solid {_mom_clr};">'
+                f'<div class="fn-kpi-icon">{"📈" if _mom_d >= 0 else "📉"}</div>'
+                f'<div class="fn-kpi-label">전월 대비</div>'
+                f'<div style="font-size:18px;font-weight:800;color:{_mom_clr};">'
+                f'{_mom_arr}&nbsp;{abs(_mom_d):,}'
+                f'<span style="font-size:11px;color:{C["t3"]};">명</span></div>'
+                f'<div style="font-size:11px;color:{_mom_clr};font-weight:700;">'
+                f'{_mom_pct:+.1f}%</div></div>',
+                unsafe_allow_html=True,
+            )
+            _kpi_card(_km4, "🏆", "최대 월",
+                      f"{_yr_m_total[_max_ym]:,}", "명",
+                      f"{_max_ym[:4]}.{_max_ym[4:]}", C["teal"])
+            _gap()
+
+        # ── 월별 추이 바 차트
+        if HAS_PLOTLY:
+            _ym_labels  = [f"{ym[:4]}.{ym[4:]}" for ym in _yr_months]
+            _ym_values  = [_yr_m_total.get(ym, 0) for ym in _yr_months]
+            _bar_clrs_m = [
+                C["blue"] if ym == _yr_months[-1]
+                else C["indigo"] if ym == _yr_months[-2]
+                else C["indigo"] + "88"
+                for ym in _yr_months
+            ]
+            _fig_mo = go.Figure(go.Bar(
+                x=_ym_labels, y=_ym_values,
+                marker=dict(color=_bar_clrs_m, line=dict(color="rgba(0,0,0,0)", width=0)),
+                text=[f"{v:,}" for v in _ym_values],
+                textposition="outside",
+                textfont=dict(size=10, color=C["t2"]),
+                hovertemplate="<b>%{x}</b><br>%{y:,}명<extra></extra>",
+            ))
+            _fig_mo.update_layout(
+                **_PLOTLY_LAYOUT, height=260,
+                margin=dict(l=0, r=0, t=30, b=8),
+                showlegend=False, bargap=0.25,
+            )
+            _fig_mo.update_xaxes(tickfont=dict(size=10))
+            _fig_mo.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.06)",
+                                  showticklabels=False)
+            st.plotly_chart(_fig_mo, use_container_width=True,
+                            key=f"reg_mo_bar_{_sel_dept}")
+
+        # ── 월별 TOP3 테이블
+        _TH_MO = (
+            "padding:6px 8px;font-size:11px;font-weight:700;color:#64748B;"
+            "border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
+        )
+        _mo_table = (
+            '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+            f'<thead><tr>'
+            f'<th style="{_TH_MO}text-align:left;">월</th>'
+            f'<th style="{_TH_MO}text-align:right;color:{C["blue"]};">총 환자수</th>'
+            f'<th style="{_TH_MO}text-align:left;">1위 지역</th>'
+            f'<th style="{_TH_MO}text-align:left;">2위 지역</th>'
+            f'<th style="{_TH_MO}text-align:left;">3위 지역</th>'
+            f'</tr></thead><tbody>'
+        )
+        for _ri3, _ym3 in enumerate(reversed(_yr_months)):
+            _rbg3  = "#F8FAFC" if _ri3 % 2 == 0 else "#FFFFFF"
+            _td3   = (f"padding:6px 8px;background:{_rbg3};"
+                      "border-bottom:1px solid #F1F5F9;font-size:12px;")
+            _tot3  = _yr_m_total.get(_ym3, 0)
+            _tops3 = sorted(_yr_m_region[_ym3].items(), key=lambda x: -x[1])[:3]
+            _cells3 = []
+            for _ii3 in range(3):
+                if _ii3 < len(_tops3):
+                    _r3, _c3 = _tops3[_ii3]
+                    _p3 = round(_c3 / max(_tot3, 1) * 100, 1)
+                    _cells3.append(
+                        f'{_r3}<br>'
+                        f'<span style="color:{C["t3"]};font-size:10px;">'
+                        f'{_c3:,}명 ({_p3}%)</span>'
+                    )
+                else:
+                    _cells3.append("─")
+            _mo_table += (
+                f"<tr>"
+                f'<td style="{_td3}font-weight:700;color:{C["blue"]};">'
+                f'{_ym3[:4]}.{_ym3[4:]}</td>'
+                f'<td style="{_td3}text-align:right;font-weight:800;color:{C["t1"]};">'
+                f'{_tot3:,}</td>'
+                + "".join(f'<td style="{_td3}">{cell}</td>' for cell in _cells3)
+                + "</tr>"
+            )
+        st.markdown(_mo_table + "</tbody></table>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        _gap()
+
+    # ══════════════════════════════════════════════════════════════════
+    # [섹션7] 월별 지역 비교 분석 (선택적 — 체크박스)
+    # ══════════════════════════════════════════════════════════════════
+    if len(_yr_months) >= 2:
+        _show_cmp = st.checkbox(
+            f"📊 {_sel_dept} — 월별 지역 비교 분석 (두 달 선택 → 지역별 증감 비교)",
+            key=f"reg_mo_cmp_{_sel_dept}",
+        )
+        if _show_cmp:
+            st.markdown(
+                f'<div class="wd-card" style="border-top:3px solid {C["indigo"]};">',
+                unsafe_allow_html=True,
+            )
+            _sec_hd("📊 월별 지역 비교 분석",
+                    f"{_sel_dept} · 두 달 선택 → 지역별 환자 증감", C["indigo"])
+
+            def _fmt_ym_ko(ym: str) -> str:
+                return f"{ym[:4]}년 {ym[4:]}월"
+
+            _cc1, _cc2 = st.columns(2, gap="small")
+            with _cc1:
+                st.markdown(
+                    f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};'
+                    f'padding-bottom:2px;">📅 A월 (기준월)</div>',
+                    unsafe_allow_html=True,
+                )
+                _cmp_a = st.selectbox(
+                    "A월", options=_yr_months,
+                    index=max(0, len(_yr_months) - 2),
+                    format_func=_fmt_ym_ko,
+                    key=f"reg_cmp_a_{_sel_dept}",
+                    label_visibility="collapsed",
+                )
+            with _cc2:
+                st.markdown(
+                    f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};'
+                    f'padding-bottom:2px;">📅 B월 (비교월)</div>',
+                    unsafe_allow_html=True,
+                )
+                _cmp_b = st.selectbox(
+                    "B월", options=_yr_months,
+                    index=len(_yr_months) - 1,
+                    format_func=_fmt_ym_ko,
+                    key=f"reg_cmp_b_{_sel_dept}",
+                    label_visibility="collapsed",
+                )
+
+            if _cmp_a == _cmp_b:
+                st.warning("⚠️ A월과 B월이 같습니다. 서로 다른 달을 선택하세요.")
+            else:
+                _agg_a = dict(_yr_m_region.get(_cmp_a, {}))
+                _agg_b = dict(_yr_m_region.get(_cmp_b, {}))
+                _tot_a = sum(_agg_a.values())
+                _tot_b = sum(_agg_b.values())
+                _all_rgs_c = sorted(set(list(_agg_a.keys()) + list(_agg_b.keys())))
+
+                _cmp_rows = []
+                for _rg_c in _all_rgs_c:
+                    _ca = _agg_a.get(_rg_c, 0)
+                    _cb = _agg_b.get(_rg_c, 0)
+                    _diff_c = _cb - _ca
+                    _pct_c  = round(_diff_c / max(_ca, 1) * 100, 1) if _ca > 0 else None
+                    _cmp_rows.append({
+                        "지역": _rg_c, "A": _ca, "B": _cb,
+                        "증감": _diff_c, "증감률": _pct_c,
+                    })
+                _cmp_rows.sort(key=lambda x: -x["증감"])
+
+                _inc_n  = sum(1 for r in _cmp_rows if r["증감"] > 0)
+                _dec_n  = sum(1 for r in _cmp_rows if r["증감"] < 0)
+                _diff_t = _tot_b - _tot_a
+                _diff_p = round(_diff_t / max(_tot_a, 1) * 100, 1)
+
+                # KPI
+                _kc1, _kc2, _kc3, _kc4 = st.columns(4, gap="small")
+                _kpi_card(_kc1, "📅", _fmt_ym_ko(_cmp_a),
+                          f"{_tot_a:,}", "명", "A월 환자수", C["indigo"])
+                _kpi_card(_kc2, "📅", _fmt_ym_ko(_cmp_b),
+                          f"{_tot_b:,}", "명", "B월 환자수", C["blue"])
+                _kpi_card(_kc3, "📊", "총 증감",
+                          f"{_diff_t:+,}", "명",
+                          f"{_diff_p:+.1f}%",
+                          C["red"] if _diff_t > 0 else C["blue"])
+                _kpi_card(_kc4, "🔄", "지역 변화",
+                          f"▲{_inc_n} ▼{_dec_n}", "",
+                          f"총 {len(_cmp_rows)}개 지역", C["teal"])
+                _gap()
+
+                # 증가/감소 TOP10 바 차트
+                _top_inc = [r for r in _cmp_rows if r["증감"] > 0][:10]
+                _top_dec = sorted(
+                    [r for r in _cmp_rows if r["증감"] < 0], key=lambda x: x["증감"]
+                )[:10]
+
+                _cc_l, _cc_r = st.columns(2, gap="small")
+                with _cc_l:
+                    st.markdown(
+                        f'<div class="wd-card" style="border-top:3px solid {C["red"]};">',
+                        unsafe_allow_html=True,
+                    )
+                    _sec_hd(
+                        f"📈 증가 TOP {len(_top_inc)}"
+                        f" ({_fmt_ym_ko(_cmp_a)} → {_fmt_ym_ko(_cmp_b)})",
+                        "", C["red"],
+                    )
+                    if _top_inc and HAS_PLOTLY:
+                        _fig_inc = go.Figure(go.Bar(
+                            x=[r["증감"] for r in _top_inc],
+                            y=[r["지역"] for r in _top_inc],
+                            orientation="h",
+                            marker_color=C["red"] + "cc",
+                            text=[f"+{r['증감']:,}명" for r in _top_inc],
+                            textposition="outside",
+                            textfont=dict(size=10, color=C["red"]),
+                            hovertemplate="<b>%{y}</b><br>+%{x:,}명<extra></extra>",
+                        ))
+                        _fig_inc.update_layout(
+                            **_PLOTLY_LAYOUT,
+                            height=max(200, len(_top_inc) * 28 + 60),
+                            margin=dict(l=0, r=90, t=8, b=8),
+                            showlegend=False,
+                        )
+                        _fig_inc.update_xaxes(showticklabels=False, showgrid=False)
+                        _fig_inc.update_yaxes(tickfont=dict(size=10), autorange="reversed")
+                        st.plotly_chart(_fig_inc, use_container_width=True,
+                                        key=f"reg_cmp_inc_{_sel_dept}_{_cmp_a}_{_cmp_b}")
+                    else:
+                        st.info("증가 지역 없음")
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                with _cc_r:
+                    st.markdown(
+                        f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
+                        unsafe_allow_html=True,
+                    )
+                    _sec_hd(
+                        f"📉 감소 TOP {len(_top_dec)}"
+                        f" ({_fmt_ym_ko(_cmp_a)} → {_fmt_ym_ko(_cmp_b)})",
+                        "", C["blue"],
+                    )
+                    if _top_dec and HAS_PLOTLY:
+                        _fig_dec = go.Figure(go.Bar(
+                            x=[r["증감"] for r in _top_dec],
+                            y=[r["지역"] for r in _top_dec],
+                            orientation="h",
+                            marker_color=C["blue"] + "cc",
+                            text=[f"{r['증감']:,}명" for r in _top_dec],
+                            textposition="outside",
+                            textfont=dict(size=10, color=C["blue"]),
+                            hovertemplate="<b>%{y}</b><br>%{x:,}명<extra></extra>",
+                        ))
+                        _fig_dec.update_layout(
+                            **_PLOTLY_LAYOUT,
+                            height=max(200, len(_top_dec) * 28 + 60),
+                            margin=dict(l=0, r=90, t=8, b=8),
+                            showlegend=False,
+                        )
+                        _fig_dec.update_xaxes(showticklabels=False, showgrid=False)
+                        _fig_dec.update_yaxes(tickfont=dict(size=10), autorange="reversed")
+                        st.plotly_chart(_fig_dec, use_container_width=True,
+                                        key=f"reg_cmp_dec_{_sel_dept}_{_cmp_a}_{_cmp_b}")
+                    else:
+                        st.info("감소 지역 없음")
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                _gap()
+
+                # 전체 비교 테이블
+                st.markdown(
+                    f'<div class="wd-card" style="border-top:3px solid {C["violet"]};">',
+                    unsafe_allow_html=True,
+                )
+                _sec_hd(
+                    f'📋 지역별 비교표 · {_fmt_ym_ko(_cmp_a)} vs {_fmt_ym_ko(_cmp_b)}',
+                    f"{_sel_dept} · {len(_cmp_rows)}개 지역 전체", C["violet"],
+                )
+                _TH_CT = (
+                    "padding:6px 10px;font-size:11px;font-weight:700;color:#64748B;"
+                    "border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
+                )
+                _cmp_tbl = (
+                    '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+                    f'<thead><tr>'
+                    f'<th style="{_TH_CT}text-align:left;">지역</th>'
+                    f'<th style="{_TH_CT}text-align:right;color:{C["indigo"]};">'
+                    f'{_fmt_ym_ko(_cmp_a)} (A)</th>'
+                    f'<th style="{_TH_CT}text-align:right;color:{C["blue"]};">'
+                    f'{_fmt_ym_ko(_cmp_b)} (B)</th>'
+                    f'<th style="{_TH_CT}text-align:right;">증감</th>'
+                    f'<th style="{_TH_CT}text-align:right;">증감률</th>'
+                    f'<th style="{_TH_CT}">추이</th>'
+                    f'</tr></thead><tbody>'
+                )
+                _max_v_ct = max((max(r["A"], r["B"]) for r in _cmp_rows), default=1)
+                for _ri5, _rw in enumerate(_cmp_rows):
+                    _rbg5 = "#F8FAFC" if _ri5 % 2 == 0 else "#FFFFFF"
+                    _td5  = (f"padding:6px 10px;background:{_rbg5};"
+                             "border-bottom:1px solid #F1F5F9;font-size:12px;")
+                    _d5   = _rw["증감"]
+                    _p5   = _rw["증감률"]
+                    _clr5 = C["red"] if _d5 > 0 else C["blue"] if _d5 < 0 else C["t3"]
+                    _arr5 = "▲" if _d5 > 0 else "▼" if _d5 < 0 else "─"
+                    _p5s  = f"{_p5:+.1f}%" if _p5 is not None else "신규"
+                    _bw_a = round(_rw["A"] / max(_max_v_ct, 1) * 80)
+                    _bw_b = round(_rw["B"] / max(_max_v_ct, 1) * 80)
+                    _bar5 = (
+                        f'<div style="display:flex;flex-direction:column;gap:2px;'
+                        f'min-width:80px;">'
+                        f'<div style="height:5px;width:{_bw_a}%;'
+                        f'background:{C["indigo"]}88;border-radius:2px;"></div>'
+                        f'<div style="height:5px;width:{_bw_b}%;'
+                        f'background:{C["blue"]}cc;border-radius:2px;"></div>'
+                        f'</div>'
+                    )
+                    _cmp_tbl += (
+                        f"<tr>"
+                        f'<td style="{_td5}font-weight:600;color:{C["t1"]};">'
+                        f'{_rw["지역"]}</td>'
+                        f'<td style="{_td5}text-align:right;color:{C["indigo"]};">'
+                        f'{_rw["A"]:,}</td>'
+                        f'<td style="{_td5}text-align:right;font-weight:700;'
+                        f'color:{C["blue"]};">{_rw["B"]:,}</td>'
+                        f'<td style="{_td5}text-align:right;font-weight:700;'
+                        f'color:{_clr5};">{_arr5}{abs(_d5):,}</td>'
+                        f'<td style="{_td5}text-align:right;font-weight:700;'
+                        f'color:{_clr5};">{_p5s}</td>'
+                        f'<td style="{_td5}">{_bar5}</td>'
+                        f"</tr>"
+                    )
+                st.markdown(_cmp_tbl + "</tbody></table>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)  # cmp card
+        _gap()
+
+    # ══════════════════════════════════════
+    # [AI] 경영 컨설팅 채팅
+    # ══════════════════════════════════════
     # [LLM 컨텍스트 설계]
     #   · 집계값(지역명·환자수)만 전달 — 환자명/주민번호/카드번호 미포함
     #   · 시스템 프롬프트: 병원 경영 분석 전문 컨설턴트 역할
