@@ -18,6 +18,12 @@
       "runtimeExecutable": "streamlit",
       "runtimeArgs": ["run", "guidbot/finance_app.py", "--server.port", "8503"],
       "port": 8503
+    },
+    {
+      "name": "Admin Dashboard",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "guidbot/admin_app.py", "--server.port", "8504"],
+      "port": 8504
     }
   ]
 }
