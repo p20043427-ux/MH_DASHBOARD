@@ -96,7 +96,7 @@ CHART_REGISTRY: Dict[str, Dict] = {
 
 # ── session_state 키 접두사 ────────────────────────────────────────────
 # 섹션별 선택값을 session_state 에 저장할 때 사용하는 키 형식
-_STATE_PREFIX = "chart_type__"
+_STATE_PREFIX = "ct__"
 
 
 def get_chart_type(section_key: str) -> str:
@@ -361,6 +361,84 @@ def render_section_header(
 
     # 차트 선택기 pill 버튼 (우측 정렬)
     return render_chart_selector(section_key)
+
+
+def render_section_header_inline(
+    section_key: str,
+    title: str,
+    subtitle: str = "",
+) -> str:
+    """
+    섹션 제목(좌)과 차트 선택 pill(우)을 한 줄에 나란히 렌더링합니다.
+
+    hospital_dashboard 에서 인라인 구현하던 _chart_selector() 와 동일한 레이아웃.
+    옵션 수에 따라 pill 컬럼 너비가 자동 조정됩니다.
+
+    Args:
+        section_key: CHART_REGISTRY 섹션 키
+        title:       섹션 제목 텍스트
+        subtitle:    부제목 (선택, 작은 회색 텍스트로 제목 옆에 표시)
+
+    Returns:
+        현재 선택된 차트 타입 문자열
+    """
+    config = CHART_REGISTRY.get(section_key)
+    if not config:
+        return ""
+
+    options   = config["options"]
+    state_key = _STATE_PREFIX + section_key
+    current   = st.session_state.get(state_key, config["default"])
+
+    labels = [lbl for _, lbl in options]
+    values = [val for val, _ in options]
+    try:
+        idx = values.index(current)
+    except ValueError:
+        idx = 0
+
+    _n_opts  = len(labels)
+    _pill_w  = min(45, max(25, _n_opts * 11))
+    _title_w = 100 - _pill_w
+    _col_t, _col_p = st.columns([_title_w, _pill_w], gap="small")
+
+    with _col_t:
+        _sub = (
+            f'<span style="font-size:10px;color:#94A3B8;margin-left:5px;">'
+            f'{subtitle}</span>'
+        ) if subtitle else ""
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:5px;min-height:28px;">'
+            f'<span style="width:3px;height:13px;'
+            f'background:linear-gradient(180deg,#1E40AF,#3B82F6);'
+            f'border-radius:2px;display:inline-block;flex-shrink:0;"></span>'
+            f'<span style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            f'white-space:nowrap;">{title}{_sub}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    with _col_p:
+        kw: dict = dict(
+            label="​",
+            options=labels,
+            index=idx,
+            horizontal=True,
+            key=f"radio_ct_{section_key}",
+        )
+        try:
+            kw["label_visibility"] = "hidden"
+            selected_label = st.radio(**kw)
+        except TypeError:
+            kw.pop("label_visibility", None)
+            selected_label = st.radio(**kw)
+
+    st.markdown(
+        '<div style="height:1px;background:#F1F5F9;margin:2px 0 6px;"></div>',
+        unsafe_allow_html=True,
+    )
+    selected_value = values[labels.index(selected_label)]
+    st.session_state[state_key] = selected_value
+    return st.session_state.get(state_key, config["default"])
 
 
 def reset_all_chart_types() -> None:
