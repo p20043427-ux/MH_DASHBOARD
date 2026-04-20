@@ -33,7 +33,8 @@
       "Bash(python -m py_compile guidbot/ui/hospital_dashboard.py)",
       "Bash(python -m py_compile guidbot/ui/nursing_dashboard.py)",
       "Bash(python -m py_compile guidbot/ui/dashboard_log_viewer.py)",
-      "Bash(python -m py_compile guidbot/db/oracle_client.py)"
+      "Bash(python -m py_compile guidbot/db/oracle_client.py)",
+      "Bash(grep -E \"^-.*\\\\.\\(py|md|toml\\)$\")"
     ]
   }
 }
