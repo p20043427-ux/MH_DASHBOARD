@@ -110,156 +110,18 @@ def _nq(key: str) -> List[Dict[str, Any]]:
         return []
 
 
-# ── CSS ──────────────────────────────────────────────────────────────
-_NURSING_CSS = """
-<style>
-@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
+from ui.design import C, APP_CSS as _NURSING_CSS, kpi_card as _kpi_card, section_header as _sec_hd, gap as _gap
 
-/* 기본 폰트 */
-.main, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] {
-  font-family: 'Pretendard Variable', 'Malgun Gothic', sans-serif !important;
-  font-size: 14px !important;
-}
-
-/* 여백 최소화 */
-[data-testid="stAppViewContainer"] > .main {
-  padding-top: 0.4rem !important;
-  padding-left: 0.75rem !important;
-  padding-right: 0.75rem !important;
-}
-[data-testid="stVerticalBlock"] { gap: 0.45rem !important; }
-.element-container { margin-bottom: 0 !important; }
-
-/* ── 간호 KPI 카드 ── */
-.nr-kpi {
-  background: #FFFFFF;
-  border: 1px solid #F0F4F8;
-  border-radius: 12px;
-  padding: 14px 16px;
-  min-height: 130px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.06);
-}
-.nr-kpi-label {
-  font-size: 10px; font-weight: 700; color: #64748B;
-  text-transform: uppercase; letter-spacing: .12em;
-}
-.nr-kpi-value {
-  font-size: 36px; font-weight: 800; line-height: 1;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
-}
-.nr-kpi-sub { font-size: 11px; color: #94A3B8; margin-top: 4px; }
-
-/* ── 고위험 환자 카드 ── */
-.nr-risk-card {
-  background: #FFFFFF;
-  border: 1px solid #F0F4F8;
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.06);
-}
-.nr-risk-header {
-  font-size: 12px; font-weight: 700; color: #0F172A;
-  margin-bottom: 10px; padding-bottom: 8px;
-  border-bottom: 1px solid #F1F5F9;
-  display: flex; align-items: center; gap: 6px;
-}
-.nr-risk-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 0; border-bottom: 1px solid #F8FAFC; font-size: 13px;
-}
-.nr-risk-ward { color: #334155; font-weight: 600; }
-.nr-risk-count {
-  font-weight: 800; font-size: 15px;
-  font-family: Consolas, monospace;
-}
-
-/* ── 상태 뱃지 ── */
-.badge-fall   { background:#FEE2E2; color:#991B1B; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; }
-.badge-sore   { background:#FEF3C7; color:#92400E; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; }
-.badge-dm     { background:#EDE9FE; color:#5B21B6; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; }
-.badge-ok     { background:#DCFCE7; color:#15803D; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; }
-
-/* ── 일반 카드 ── */
-.wd-card {
-  background: #FFFFFF; border: 1px solid #F0F4F8;
-  border-radius: 12px; padding: 14px 16px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.06);
-}
-.wd-sec {
-  font-size: 13px; font-weight: 700; color: #0F172A;
-  margin-bottom: 10px; padding-bottom: 8px;
-  border-bottom: 1px solid #F1F5F9;
-  display: flex; align-items: center; gap: 7px;
-}
-.wd-sec-accent { width:3px; height:15px; border-radius:2px; background:#0891B2; flex-shrink:0; }
-.wd-sec-sub { font-size:11px; color:#94A3B8; font-weight:400; margin-left:4px; }
-
-/* ── 탑바 ── */
-.nr-topbar-accent {
-  height: 3px;
-  background: linear-gradient(90deg, #0891B2 0%, #06B6D4 55%, #E2E8F0 100%);
-  border-radius: 2px 2px 0 0;
-}
-
-/* ── 인수인계 버튼 ── */
-button[kind="primary"] {
-  background: #0891B2 !important;
-  border-color: #0891B2 !important;
-  font-size: 13px !important;
-}
-button[kind="primary"]:hover { background: #0E7490 !important; }
-button[kind="secondary"] {
-  font-size: 13px !important; height: 34px !important;
-  border-radius: 8px !important;
-}
-
-/* ── 선택기 ── */
-[data-testid="stSelectbox"] > div > div {
-  height: 34px !important; border-radius: 8px !important;
-  border: 1.5px solid #A5F3FC !important;
-  background: #ECFEFF !important;
-  font-size: 13px !important; font-weight: 600 !important; color: #0E7490 !important;
-}
-[data-testid="stSelectbox"] label { display: none !important; }
-
-/* ── 인수인계 요약 박스 ── */
-.handover-box {
-  background: linear-gradient(135deg, #F0FDFF 0%, #ECFEFF 100%);
-  border: 1.5px solid #A5F3FC;
-  border-left: 4px solid #0891B2;
-  border-radius: 10px;
-  padding: 16px 20px;
-  font-size: 14px;
-  color: #0C4A6E;
-  line-height: 1.75;
-  white-space: pre-wrap;
-}
-.handover-time {
-  font-size: 10px; color: #94A3B8; margin-top: 8px; text-align: right;
-}
-</style>
-"""
-
-# ── 색상 팔레트 ──────────────────────────────────────────────────────
+# 간호 전용 의미 색상 (design.C 토큰 재사용)
 NC = {
-    "teal": "#0891B2",
-    "teal_dark": "#0E7490",
-    "teal_light": "#ECFEFF",
-    "fall": "#EF4444",
-    "fall_bg": "#FEE2E2",
-    "sore": "#F59E0B",
-    "sore_bg": "#FEF3C7",
-    "dm": "#8B5CF6",
-    "dm_bg": "#EDE9FE",
-    "ok": "#059669",
-    "ok_bg": "#DCFCE7",
-    "text1": "#0F172A",
-    "text2": "#334155",
-    "text3": "#64748B",
-    "text4": "#94A3B8",
+    "teal":       C["teal"],
+    "teal_dark":  "#0E7490",
+    "teal_light": C["teal_l"],
+    "fall":       C["red"],    "fall_bg":  C["red_l"],
+    "sore":       C["yellow"], "sore_bg":  C["yellow_l"],
+    "dm":         C["violet"], "dm_bg":    C["violet_l"],
+    "ok":         C["ok"],     "ok_bg":    C["ok_l"],
+    "text1": C["t1"], "text2": C["t2"], "text3": C["t3"], "text4": C["t4"],
 }
 
 
@@ -309,11 +171,11 @@ def render_nursing_dashboard() -> None:
     with _c_title:
         st.markdown(
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
-            f'<div style="width:3px;height:22px;background:{NC["teal"]};border-radius:2px;"></div>'
+            f'<div style="width:3px;height:22px;background:{C["teal"]};border-radius:2px;"></div>'
             "<div>"
             '<div style="font-size:9px;font-weight:700;color:#94A3B8;'
             'text-transform:uppercase;letter-spacing:.15em;">좋은문화병원</div>'
-            f'<div style="font-size:17px;font-weight:800;color:{NC["text1"]};'
+            f'<div style="font-size:17px;font-weight:800;color:{C["t1"]};'
             'letter-spacing:-0.03em;">💊 간호 현황</div>'
             "</div></div>",
             unsafe_allow_html=True,
@@ -422,64 +284,16 @@ def render_nursing_dashboard() -> None:
     # 퇴원예정
     _dc_planned = sum(int(r.get("익일퇴원예고", 0) or 0) for r in bed_f)
 
-    _occ_color = (
-        "#EF4444" if _occ_rate >= 90 else "#F59E0B" if _occ_rate >= 80 else "#059669"
-    )
-    _risk_color = (
-        "#EF4444" if _risk_total > 10 else "#F59E0B" if _risk_total > 5 else "#059669"
-    )
-    _inc_color = "#EF4444" if _incident_cnt > 0 else "#059669"
+    _occ_color  = C["red"] if _occ_rate >= 90 else C["yellow"] if _occ_rate >= 80 else C["green"]
+    _risk_color = C["red"] if _risk_total > 10 else C["yellow"] if _risk_total > 5 else C["green"]
+    _inc_color  = C["red"] if _incident_cnt > 0 else C["green"]
 
     kc1, kc2, kc3, kc4 = st.columns(4, gap="small")
 
-    def _nr_kpi(col, label, value, unit, sub, color, icon=""):
-        col.markdown(
-            f'<div class="nr-kpi">'
-            f'<div class="nr-kpi-label">{icon} {label}</div>'
-            f'<div class="nr-kpi-value" style="color:{color};">'
-            f'{value}<span style="font-size:16px;color:#64748B;font-weight:500;margin-left:3px;">{unit}</span>'
-            f"</div>"
-            f'<div class="nr-kpi-sub">{sub}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    _nr_kpi(
-        kc1,
-        "재원 환자",
-        str(_total_stay),
-        "명",
-        f"총병상 {_total_beds}개 · 가동률 {_occ_rate}%",
-        _occ_color,
-        "🏥",
-    )
-    _nr_kpi(
-        kc2,
-        "고위험 합계",
-        str(_risk_total),
-        "명",
-        f"낙상 {_fall_total} · 욕창 {_sore_total} · 당뇨 {_dm_total}",
-        _risk_color,
-        "🚨",
-    )
-    _nr_kpi(
-        kc3,
-        "금일 낙상 사고",
-        str(_incident_cnt),
-        "건",
-        "금일 발생 낙상 사고 보고 기준",
-        _inc_color,
-        "⚠️",
-    )
-    _nr_kpi(
-        kc4,
-        "퇴원 예정",
-        str(_dc_planned),
-        "명",
-        "퇴원예고(DC) 처리 대상",
-        NC["teal"],
-        "📤",
-    )
+    _kpi_card(kc1, "🏥", "재원 환자",   str(_total_stay),   "명", f"총병상 {_total_beds}개 · 가동률 {_occ_rate}%",   _occ_color)
+    _kpi_card(kc2, "🚨", "고위험 합계", str(_risk_total),   "명", f"낙상 {_fall_total} · 욕창 {_sore_total} · 당뇨 {_dm_total}", _risk_color)
+    _kpi_card(kc3, "⚠️", "금일 낙상",   str(_incident_cnt), "건", "금일 발생 낙상 사고 보고 기준",                   _inc_color)
+    _kpi_card(kc4, "📤", "퇴원 예정",   str(_dc_planned),   "명", "퇴원예고(DC) 처리 대상",                          C["teal"])
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -512,8 +326,8 @@ def render_nursing_dashboard() -> None:
             rc1,
             "🚨 낙상 고위험",
             "낙상고위험",
-            NC["fall"],
-            NC["fall_bg"],
+            C["red"],
+            C["red_l"],
             "badge-fall",
             "낙상",
         ),
@@ -521,8 +335,8 @@ def render_nursing_dashboard() -> None:
             rc2,
             "🩹 욕창 고위험",
             "욕창고위험",
-            NC["sore"],
-            NC["sore_bg"],
+            C["yellow"],
+            C["yellow_l"],
             "badge-sore",
             "욕창",
         ),
@@ -530,8 +344,8 @@ def render_nursing_dashboard() -> None:
             rc3,
             "💉 당뇨 고위험",
             "당뇨고위험",
-            NC["dm"],
-            NC["dm_bg"],
+            C["violet"],
+            C["violet_l"],
             "badge-dm",
             "당뇨",
         ),
@@ -553,10 +367,10 @@ def render_nursing_dashboard() -> None:
             ]
 
             st.markdown(
-                f'<div class="nr-risk-card">'
-                f'<div class="nr-risk-header">'
-                f'<span style="width:3px;height:15px;background:{_clr};border-radius:2px;"></span>'
-                f"{_title}"
+                f'<div class="wd-card" style="border-top:3px solid {_clr};padding:10px 12px 0;">'
+                f'<div class="wd-sec">'
+                f'<div class="wd-sec-bar" style="background:{_clr};"></div>'
+                f'<span style="font-size:12px;font-weight:700;color:{C["t1"]};">{_title}</span>'
                 f'<span style="background:{_bg};color:{_clr};border-radius:5px;'
                 f'padding:2px 8px;font-size:11px;font-weight:800;margin-left:auto;">'
                 f"합계 {_total_k}명</span>"
@@ -595,7 +409,7 @@ def render_nursing_dashboard() -> None:
                 )
             elif not _wards:
                 st.markdown(
-                    f'<div style="padding:24px;text-align:center;color:{NC["text4"]};">'
+                    f'<div style="padding:24px;text-align:center;color:{C["t4"]};">'
                     f'<div style="font-size:22px;margin-bottom:6px;">✅</div>'
                     f'<div style="font-size:12px;font-weight:600;">해당 없음</div>'
                     f"</div>",
@@ -614,7 +428,7 @@ def render_nursing_dashboard() -> None:
                 _wn = _r.get("병동명", "")
                 _tbl += (
                     f'<tr style="border-bottom:1px solid #F8FAFC;">'
-                    f'<td style="padding:4px 6px;font-weight:600;color:{NC["text2"]};">{_wn}</td>'
+                    f'<td style="padding:4px 6px;font-weight:600;color:{C["t2"]};">{_wn}</td>'
                     f'<td style="padding:4px 6px;text-align:right;font-weight:800;'
                     f'color:{_clr};font-family:Consolas,monospace;">{_v}명</td>'
                     f'<td style="padding:4px 6px;">'
@@ -622,13 +436,13 @@ def render_nursing_dashboard() -> None:
                     f'<div style="flex:1;height:5px;background:#F1F5F9;border-radius:3px;">'
                     f'<div style="width:{min(_pct, 100)}%;height:100%;background:{_clr};border-radius:3px;"></div>'
                     f"</div>"
-                    f'<span style="font-size:10px;color:{NC["text4"]};">{_pct}%</span>'
+                    f'<span style="font-size:10px;color:{C["t4"]};">{_pct}%</span>'
                     f"</div></td></tr>"
                 )
             if not _sorted or _total_k == 0:
                 _tbl += (
                     f'<tr><td colspan="3" style="padding:8px;text-align:center;'
-                    f'color:{NC["text4"]};font-size:11px;">'
+                    f'color:{C["t4"]};font-size:11px;">'
                     f"Oracle 연결 후 데이터 표시</td></tr>"
                 )
             _tbl += "</table>"
@@ -646,7 +460,7 @@ def render_nursing_dashboard() -> None:
         st.markdown(
             '<div class="wd-card">'
             '<div class="wd-sec">'
-            '<span class="wd-sec-accent" style="background:#EF4444;"></span>'
+            f'<span class="wd-sec-accent" style="background:{C["red"]};"></span>'
             "⚠️ 금일 낙상 사고 현황"
             f'<span class="wd-sec-sub">{time.strftime("%Y-%m-%d")} 기준</span>'
             "</div>",
@@ -674,18 +488,14 @@ def render_nursing_dashboard() -> None:
                 _type = _inc.get("사고유형", "낙상")
                 _sev = _inc.get("중증도", "경증")
                 _sev_c = (
-                    "#EF4444"
-                    if _sev in ("중증", "심각")
-                    else "#F59E0B"
-                    if _sev == "중등도"
-                    else "#059669"
+                    C["red"]    if _sev in ("중증", "심각")
+                    else C["yellow"] if _sev == "중등도"
+                    else C["green"]
                 )
                 _sev_bg = (
-                    "#FEE2E2"
-                    if _sev in ("중증", "심각")
-                    else "#FEF3C7"
-                    if _sev == "중등도"
-                    else "#DCFCE7"
+                    C["red_l"]    if _sev in ("중증", "심각")
+                    else C["yellow_l"] if _sev == "중등도"
+                    else C["green_l"]
                 )
                 _tbl += (
                     f'<tr style="border-bottom:1px solid #F8FAFC;">'
@@ -703,9 +513,9 @@ def render_nursing_dashboard() -> None:
             st.markdown(_tbl + "</div>", unsafe_allow_html=True)
         else:
             st.markdown(
-                f'<div style="padding:28px;text-align:center;color:{NC["text4"]};">'
+                f'<div style="padding:28px;text-align:center;color:{C["t4"]};">'
                 f'<div style="font-size:28px;margin-bottom:8px;">✅</div>'
-                f'<div style="font-size:13px;font-weight:700;color:#059669;">금일 낙상 사고 없음</div>'
+                f'<div style="font-size:13px;font-weight:700;color:{C["green"]};">금일 낙상 사고 없음</div>'
                 f'<div style="font-size:11px;margin-top:4px;">{"Oracle 연결 후 표시" if not oracle_ok else "현재 보고된 낙상 사고가 없습니다"}</div>'
                 f"</div></div>",
                 unsafe_allow_html=True,
@@ -763,13 +573,13 @@ def render_nursing_dashboard() -> None:
             if len(admit_cands) > 12:
                 _tbl2 += (
                     f'<tr><td colspan="4" style="padding:6px;text-align:center;'
-                    f'font-size:11px;color:{NC["text4"]};">외 {len(admit_cands) - 12}명</td></tr>'
+                    f'font-size:11px;color:{C["t4"]};">외 {len(admit_cands) - 12}명</td></tr>'
                 )
             _tbl2 += "</tbody></table>"
             st.markdown(_tbl2 + "</div>", unsafe_allow_html=True)
         else:
             st.markdown(
-                f'<div style="padding:28px;text-align:center;color:{NC["text4"]};">'
+                f'<div style="padding:28px;text-align:center;color:{C["t4"]};">'
                 f'<div style="font-size:24px;margin-bottom:8px;">📋</div>'
                 f'<div style="font-size:13px;font-weight:600;">예약 환자 데이터 없음</div>'
                 f'<div style="font-size:11px;margin-top:4px;">{"Oracle 연결 후 표시" if not oracle_ok else "금일 입원 예약이 없습니다"}</div>'
@@ -798,10 +608,10 @@ def render_nursing_dashboard() -> None:
         f'<th style="{_tH}text-align:right;">가동률</th>'
         f'<th style="{_tH}text-align:right;">입원</th>'
         f'<th style="{_tH}text-align:right;">퇴원</th>'
-        f'<th style="{_tH}text-align:right;color:#EF4444;">낙상↑</th>'
-        f'<th style="{_tH}text-align:right;color:#F59E0B;">욕창↑</th>'
-        f'<th style="{_tH}text-align:right;color:#8B5CF6;">당뇨↑</th>'
-        f'<th style="{_tH}text-align:right;color:#059669;">익일가용</th>'
+        f'<th style="{_tH}text-align:right;color:{C["red"]};">낙상↑</th>'
+        f'<th style="{_tH}text-align:right;color:{C["yellow"]};">욕창↑</th>'
+        f'<th style="{_tH}text-align:right;color:{C["violet"]};">당뇨↑</th>'
+        f'<th style="{_tH}text-align:right;color:{C["green"]};">익일가용</th>'
     )
     _rows_ward = ""
     if bed_f:
@@ -820,31 +630,25 @@ def render_nursing_dashboard() -> None:
             _sore = int(_rsk.get("욕창고위험", 0) or 0)
             _dm = int(_rsk.get("당뇨고위험", 0) or 0)
 
-            _rate_c = (
-                "#EF4444" if _rate >= 90 else "#F59E0B" if _rate >= 80 else "#059669"
-            )
-            _fall_c = (
-                f"color:#EF4444;font-weight:800;" if _fall > 0 else f"color:#CBD5E1;"
-            )
-            _sore_c = (
-                f"color:#F59E0B;font-weight:800;" if _sore > 0 else f"color:#CBD5E1;"
-            )
-            _dm_c = f"color:#8B5CF6;font-weight:800;" if _dm > 0 else f"color:#CBD5E1;"
+            _rate_c = C["red"] if _rate >= 90 else C["yellow"] if _rate >= 80 else C["green"]
+            _fall_c = f"color:{C['red']};font-weight:800;"    if _fall > 0 else f"color:{C['t5']};"
+            _sore_c = f"color:{C['yellow']};font-weight:800;" if _sore > 0 else f"color:{C['t5']};"
+            _dm_c   = f"color:{C['violet']};font-weight:800;" if _dm   > 0 else f"color:{C['t5']};"
             _bg = "#F8FAFC" if i % 2 == 0 else "#FFFFFF"
             _td = f"padding:8px 12px;background:{_bg};border-bottom:1px solid #F8FAFC;"
 
             _rows_ward += (
                 f"<tr>"
-                f'<td style="{_td}font-weight:700;color:#0F172A;">{_wn}</td>'
-                f'<td style="{_td}text-align:right;font-weight:700;color:#0F172A;font-family:Consolas,monospace;">{_stay}</td>'
-                f'<td style="{_td}text-align:right;color:#64748B;font-family:Consolas,monospace;">{_tot}</td>'
+                f'<td style="{_td}font-weight:700;color:{C["t1"]};">{_wn}</td>'
+                f'<td style="{_td}text-align:right;font-weight:700;color:{C["t1"]};font-family:Consolas,monospace;">{_stay}</td>'
+                f'<td style="{_td}text-align:right;color:{C["t3"]};font-family:Consolas,monospace;">{_tot}</td>'
                 f'<td style="{_td}text-align:right;font-weight:700;color:{_rate_c};font-family:Consolas,monospace;">{_rate:.1f}%</td>'
-                f'<td style="{_td}text-align:right;color:#1D4ED8;font-family:Consolas,monospace;">{_adm}</td>'
-                f'<td style="{_td}text-align:right;color:#475569;font-family:Consolas,monospace;">{_disc}</td>'
+                f'<td style="{_td}text-align:right;color:{C["blue"]};font-family:Consolas,monospace;">{_adm}</td>'
+                f'<td style="{_td}text-align:right;color:{C["t2"]};font-family:Consolas,monospace;">{_disc}</td>'
                 f'<td style="{_td}text-align:right;{_fall_c}font-family:Consolas,monospace;">{_fall if _fall > 0 else "─"}</td>'
                 f'<td style="{_td}text-align:right;{_sore_c}font-family:Consolas,monospace;">{_sore if _sore > 0 else "─"}</td>'
                 f'<td style="{_td}text-align:right;{_dm_c}font-family:Consolas,monospace;">{_dm if _dm > 0 else "─"}</td>'
-                f'<td style="{_td}text-align:right;font-weight:700;color:{"#059669" if _navail > 0 else "#94A3B8"};font-family:Consolas,monospace;">{_navail}</td>'
+                f'<td style="{_td}text-align:right;font-weight:700;color:{C["green"] if _navail > 0 else C["t4"]};font-family:Consolas,monospace;">{_navail}</td>'
                 f"</tr>"
             )
     else:

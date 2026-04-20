@@ -27,25 +27,26 @@ if str(_ROOT) not in sys.path:
 
 from config.settings import settings
 from utils.logger import get_logger
+from ui.design import C
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
-# ── 컬러 토큰 (인라인 style 속성 내에서도 안전한 hex/rgba 값만) ────────
+# ── 관리자 전용 토큰 (design.py C 기반 + glassmorphism 전용값) ──────────
 _C = {
-    "navy":   "#0f172a",
-    "blue":   "#2563eb",
-    "blue2":  "#1d4ed8",
-    "blue3":  "#60a5fa",
-    "light":  "#f0f6ff",
-    "white":  "#ffffff",
-    "ds1":    "#1e293b",
-    "ds2":    "#334155",
-    "ok":     "#10b981",
-    "warn":   "#f59e0b",
-    "err":    "#ef4444",
-    "t1":     "#0f172a",
+    "navy":   C["navy"],       # #0F172A
+    "blue":   "#2563EB",       # 관리자 강조 (design C["blue"] 보다 밝음)
+    "blue2":  "#1D4ED8",
+    "blue3":  "#60A5FA",
+    "light":  "#F0F6FF",
+    "white":  "#FFFFFF",
+    "ds1":    "#1E293B",
+    "ds2":    C["t2"],         # #334155
+    "ok":     C["ok"],         # #059669
+    "warn":   C["warn"],       # #F59E0B
+    "err":    C["red"],        # #DC2626
+    "t1":     C["t1"],         # #0F172A
     "t2":     "#475569",
-    "t3":     "#94a3b8",
+    "t3":     C["t4"],         # #94A3B8
     "wt1":    "rgba(255,255,255,0.92)",
     "wt2":    "rgba(255,255,255,0.60)",
     "wt3":    "rgba(255,255,255,0.35)",

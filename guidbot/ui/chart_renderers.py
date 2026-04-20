@@ -165,7 +165,7 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
                 f'<td style="{td}text-align:right;">'
                 f'<span style="font-size:16px;font-weight:800;color:{oc};font-family:Consolas,monospace;letter-spacing:-0.02em;">{occ:.1f}%</span>{lbl}</td>'
                 f'<td style="{td}text-align:right;">'
-                f'<span style="font-size:16px;font-weight:800;color:{C["primary_text"]};font-family:Consolas,monospace;">{adm}</span></td>'
+                f'<span style="font-size:16px;font-weight:800;color:{C["blue"]};font-family:Consolas,monospace;">{adm}</span></td>'
                 f'<td style="{td}text-align:right;">'
                 f'<span style="font-size:15px;font-weight:700;color:#64748B;font-family:Consolas,monospace;">{disc}</span></td>'
                 f"</tr>"
@@ -174,7 +174,7 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
             f'<table style="width:100%;border-collapse:collapse;"><thead><tr>'
             f'<th style="{_tH2}text-align:left;">날짜</th>'
             f'<th style="{_tH2}text-align:right;">가동률</th>'
-            f'<th style="{_tH2}text-align:right;color:{C["primary_text"]};">입원</th>'
+            f'<th style="{_tH2}text-align:right;color:{C["blue"]};">입원</th>'
             f'<th style="{_tH2}text-align:right;color:#475569;">퇴원</th>'
             f"</tr></thead><tbody>{rows}</tbody></table>",
             unsafe_allow_html=True,
