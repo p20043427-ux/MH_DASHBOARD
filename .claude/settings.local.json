@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/analyze.sh)",
+      "Bash(/tmp/analyze.sh)",
+      "Bash(python /tmp/func_sizes.py)",
+      "Bash(python)",
+      "Bash(python -c ' *)",
+      "Bash(awk '{print $NF}')",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -v \"^contextlib$\\\\|^contextmanager$\\\\|^datetime$\\\\|^logging$\\\\|^pathlib$\\\\|^typing$\\\\|^dataclasses$\\\\|^functools$\\\\|^enum$\\\\|^json$\\\\|^sys$\\\\|^time$\\\\|^os$\\\\|^re$\\\\|^hashlib$\\\\|^random$\\\\|^uuid$\\\\|^threading$\\\\|^shutil$\\\\|^argparse$\\\\|^math$\\\\|^hmac$\\\\|^textwrap$\\\\|^unicodedata$\\\\|^statistics$\\\\|^collections$\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(pip list *)",
+      "Bash(python -c \"import langchain_text_splitters; print\\(langchain_text_splitters.__version__\\)\")",
+      "Bash(pip show *)",
+      "Bash(venv/Scripts/pip show *)",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/python -c \"import google.genai; print\\('google.genai OK:', google.genai.__version__\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('guidbot/ui/finance_dashboard.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python3 -)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(type\\(d\\), list\\(d.keys\\(\\)\\)[:5] if isinstance\\(d,dict\\) else d[:3]\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8504\")",
+      "Bash(taskkill /PID 52524 /F)",
+      "Bash(cmd /c \"taskkill /PID 52524 /F\")",
+      "Bash(cmd /c \"taskkill /PID 52524 /F 2>&1\")",
+      "Bash(cmd /c \"taskkill /PID 52524 /F & echo EXIT:%ERRORLEVEL%\")",
+      "Bash(powershell -Command \"Stop-Process -Id 52524 -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; netstat -ano | findstr ':8504'\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(awk '/^C\\\\s*=\\\\s*\\\\{/,/^\\\\}/' guidbot/ui/finance_dashboard.py)",
+      "Bash(python -m py_compile guidbot/ui/finance_dashboard.py)",
+      "Bash(python -m py_compile guidbot/ui/hospital_dashboard.py)",
+      "Bash(python -m py_compile guidbot/ui/nursing_dashboard.py)",
+      "Bash(python -m py_compile guidbot/ui/dashboard_log_viewer.py)",
+      "Bash(python -m py_compile guidbot/db/oracle_client.py)",
+      "Bash(grep -E \"^-.*\\\\.\\(py|md|toml\\)$\")"
+    ]
+  }
+}

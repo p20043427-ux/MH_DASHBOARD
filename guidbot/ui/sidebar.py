@@ -203,7 +203,6 @@ def _render_search_mode_selector() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-
 # ── 회람 문서 노트 저장 경로 ────────────────────────────────────────
 # JSON 파일로 영구 저장 — 서버 재시작 후에도 유지됨
 def _get_note_path():
@@ -213,6 +212,7 @@ def _get_note_path():
     except Exception:
         base = "logs"
     from pathlib import Path as _P
+
     p = _P(base)
     p.mkdir(parents=True, exist_ok=True)
     return p / "shortcut_note.txt"
@@ -243,7 +243,7 @@ def _render_shortcuts() -> None:
     """
     section_label("바로가기", "")
 
-    _role     = st.session_state.get("role", "user")
+    _role = st.session_state.get("role", "user")
     _is_admin = _role == "admin"
 
     # ── 노트 로드 — 파일에서 (서버 재시작 후에도 유지) ─────────────────
@@ -253,11 +253,10 @@ def _render_shortcuts() -> None:
 
     # ── 공통 인라인 스타일 상수 ────────────────────────────────────────
     _S_TITLE = (
-        "font-size:13px;font-weight:700;color:#FFFFFF;"
-        "letter-spacing:-0.01em;flex:1;"
+        "font-size:13px;font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;flex:1;"
     )
-    _S_ARR   = "font-size:12px;color:#7BE0F5;font-weight:700;"
-    _S_NOTE  = (
+    _S_ARR = "font-size:12px;color:#7BE0F5;font-weight:700;"
+    _S_NOTE = (
         "font-size:11px;color:#FFFFFF !important;margin-top:4px;"
         "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
         "font-weight:600;"
@@ -271,14 +270,14 @@ def _render_shortcuts() -> None:
     st.markdown(
         f'<a href="{_DOCS_URL}" target="_blank" rel="noopener"'
         f' style="display:block;background:rgba(0,140,180,0.22);'
-        f'border:1.5px solid rgba(0,190,220,0.40);border-radius:8px;'
+        f"border:1.5px solid rgba(0,190,220,0.40);border-radius:8px;"
         f'padding:0.48rem 0.7rem;text-decoration:none;margin-bottom:5px;">'
         f'<div style="display:flex;align-items:center;">'
         f'<span style="{_S_TITLE}">회람 문서</span>'
         f'<span style="{_S_ARR}">↗</span>'
-        f'</div>'
+        f"</div>"
         f'<div style="{_S_NOTE}">🕒 {_note}</div>'
-        f'</a>',
+        f"</a>",
         unsafe_allow_html=True,
     )
 
@@ -328,8 +327,12 @@ def _render_shortcuts() -> None:
             placeholder="예) 2026-03-28  산부인과 지침 추가",
             label_visibility="collapsed",
         )
-        if st.button("💾 저장", key="shortcut_note_save",
-                     use_container_width=True, type="primary"):
+        if st.button(
+            "💾 저장",
+            key="shortcut_note_save",
+            use_container_width=True,
+            type="primary",
+        ):
             st.session_state["shortcut_note"] = _new_note
             _save_note(_new_note)  # 파일에 영구 저장
             st.session_state[_edit_key] = False
@@ -342,16 +345,18 @@ def _render_shortcuts() -> None:
         "border-radius:7px;padding:7px 4px;text-align:center;"
         "background:rgba(255,255,255,0.05);"
     )
-    _LBL_S  = "display:block;font-size:12px;font-weight:700;color:#D1E8F5;"
-    _SUB_S  = "display:block;font-size:9px;color:#7BAEC4;margin-top:2px;"
+    _LBL_S = "display:block;font-size:12px;font-weight:700;color:#D1E8F5;"
+    _SUB_S = "display:block;font-size:9px;color:#7BAEC4;margin-top:2px;"
 
-    _cells = "".join([
-        f'<div style="{_CELL_S}">'
-        f'<span style="{_LBL_S}">{lbl}</span>'
-        f'<span style="{_SUB_S}">준비중</span>'
-        f'</div>'
-        for lbl in ("진료", "원무", "간호")
-    ])
+    _cells = "".join(
+        [
+            f'<div style="{_CELL_S}">'
+            f'<span style="{_LBL_S}">{lbl}</span>'
+            f'<span style="{_SUB_S}">준비중</span>'
+            f"</div>"
+            for lbl in ("진료", "원무", "간호")
+        ]
+    )
     st.markdown(
         f'<div style="display:flex;gap:4px;margin-top:5px;">{_cells}</div>',
         unsafe_allow_html=True,
@@ -362,7 +367,7 @@ def _render_system_status(db_health: DBHealth) -> None:
     """시스템 상태 — v7.2"""
     section_label("시스템 상태", "")
 
-    _role     = st.session_state.get("role", "user")
+    _role = st.session_state.get("role", "user")
     _is_admin = _role == "admin"
 
     oracle_enabled: bool = getattr(settings, "oracle_enabled", False)
@@ -374,6 +379,7 @@ def _render_system_status(db_health: DBHealth) -> None:
         if st.session_state["oracle_status"] is None:
             try:
                 from db.oracle_client import test_connection
+
                 _ok, _msg = test_connection()
                 st.session_state["oracle_status"] = (_ok, _msg)
             except Exception as _exc:
@@ -387,6 +393,7 @@ def _render_system_status(db_health: DBHealth) -> None:
     if _is_admin:
         try:
             from utils.startup_optimizer import is_warmup_ready
+
             _bm25_ready = "준비 완료" if is_warmup_ready() else "워밍업 중..."
         except Exception:
             _bm25_ready = "-"
@@ -394,9 +401,9 @@ def _render_system_status(db_health: DBHealth) -> None:
         info_grid(
             [
                 ("청크 (벡터)", f"{db_health.doc_count:,} 개"),
-                ("원본 PDF",    f"{db_health.file_count:,} 개"),
-                ("AI 엔진",    "Gemini"),
-                ("검색 엔진",  f"RAG+BM25({_bm25_ready})"),
+                ("원본 PDF", f"{db_health.file_count:,} 개"),
+                ("AI 엔진", "Gemini"),
+                ("검색 엔진", f"RAG+BM25({_bm25_ready})"),
             ]
         )
 
@@ -407,26 +414,39 @@ def _render_system_status(db_health: DBHealth) -> None:
                     'margin-bottom:0.35rem;">연결 관리 — 신중하게 사용하세요</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("재연결", key="btn_oracle_reconnect",
-                             use_container_width=True, help="Oracle 연결 풀 초기화 후 재연결"):
+                if st.button(
+                    "재연결",
+                    key="btn_oracle_reconnect",
+                    use_container_width=True,
+                    help="Oracle 연결 풀 초기화 후 재연결",
+                ):
                     st.session_state["oracle_status"] = None
                     try:
                         from db.oracle_client import close_pool
+
                         close_pool()
                     except Exception:
                         pass
                     st.rerun()
 
-                if st.button("상태 확인", key="btn_oracle_check",
-                             use_container_width=True, help="연결 상태 즉시 재확인"):
+                if st.button(
+                    "상태 확인",
+                    key="btn_oracle_check",
+                    use_container_width=True,
+                    help="연결 상태 즉시 재확인",
+                ):
                     st.session_state["oracle_status"] = None
                     st.rerun()
 
-                if st.button("스키마 캐시 초기화", key="btn_schema_cache_clear",
-                             use_container_width=True,
-                             help="COLUMN_DESCS 수정 후 — 다음 SQL 생성 시 DB에서 재로드"):
+                if st.button(
+                    "스키마 캐시 초기화",
+                    key="btn_schema_cache_clear",
+                    use_container_width=True,
+                    help="COLUMN_DESCS 수정 후 — 다음 SQL 생성 시 DB에서 재로드",
+                ):
                     try:
                         from db.oracle_access_config import get_access_config_manager
+
                         get_access_config_manager().invalidate_cache()
                         st.success("캐시 초기화 완료")
                     except Exception as _e:
@@ -480,6 +500,7 @@ def _render_monitoring_panel() -> None:
     }
     try:
         from utils.monitor import get_metrics as _gm
+
         stats.update(_gm().get_stats())
     except Exception as exc:
         logger.warning(f"모니터링 stats 로드 실패: {exc}")
@@ -489,10 +510,10 @@ def _render_monitoring_panel() -> None:
     error_pct = raw_error if raw_error > 1.0 else raw_error * 100
     info_grid(
         [
-            ("총 질문",   f"{stats.get('query_count', 0):,}회"),
+            ("총 질문", f"{stats.get('query_count', 0):,}회"),
             ("평균 검색", f"{stats.get('avg_search_ms', 0):.0f}ms"),
             ("평균 응답", f"{stats.get('avg_stream_ms', 0):.0f}ms"),
-            ("오류율",    f"{error_pct:.1f}%"),
+            ("오류율", f"{error_pct:.1f}%"),
         ]
     )
     last_queries: list = stats.get("last_queries", [])
@@ -591,12 +612,20 @@ def _render_admin_panel() -> None:
                 unsafe_allow_html=True,
             )
 
-            if st.button("SQL 대시보드", key="admin_goto_sql", use_container_width=True,
-                         help="직접 SQL 입력/실행 + 자유 시각화 + AI 분석"):
+            if st.button(
+                "SQL 대시보드",
+                key="admin_goto_sql",
+                use_container_width=True,
+                help="직접 SQL 입력/실행 + 자유 시각화 + AI 분석",
+            ):
                 st.session_state["active_page"] = "sql_dashboard"
                 st.rerun()
-            if st.button("문서 관리", key="admin_goto_docs", use_container_width=True,
-                         help="쿼리 예제 · 테이블 명세 등록 / 관리"):
+            if st.button(
+                "문서 관리",
+                key="admin_goto_docs",
+                use_container_width=True,
+                help="쿼리 예제 · 테이블 명세 등록 / 관리",
+            ):
                 st.session_state["active_page"] = "doc_manager"
                 st.rerun()
 
@@ -618,15 +647,21 @@ def _render_admin_panel() -> None:
                 key="admin_upload",
                 label_visibility="collapsed",
             )
-            if st.button("DB 업데이트", use_container_width=True, type="primary",
-                         key="admin_db_update"):
+            if st.button(
+                "DB 업데이트",
+                use_container_width=True,
+                type="primary",
+                key="admin_db_update",
+            ):
                 if new_files:
                     _handle_admin_upload(new_files)
                 else:
                     st.warning("업로드할 PDF를 먼저 선택해주세요.")
         else:
             pw = st.text_input(
-                "패스워드", type="password", key="admin_pw",
+                "패스워드",
+                type="password",
+                key="admin_pw",
                 placeholder="관리자 패스워드 입력",
                 label_visibility="collapsed",
             )

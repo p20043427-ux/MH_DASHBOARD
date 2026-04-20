@@ -262,19 +262,23 @@ _AUDIT_LOGGER = None
 
 
 def _get_audit_logger():
-    """쿼리 감사 전용 로거 (쿼리 실행 이력 파일)"""
+    """쿼리 감사 전용 로거 — 일별 롤오버, 90일 보관"""
     global _AUDIT_LOGGER
     if _AUDIT_LOGGER is None:
         import logging
+        from logging.handlers import TimedRotatingFileHandler
         from pathlib import Path
 
         audit_log_dir = (
             Path(settings.log_dir) if hasattr(settings, "log_dir") else Path("logs")
         )
         audit_log_dir.mkdir(parents=True, exist_ok=True)
-        h = logging.FileHandler(
-            audit_log_dir / "query_audit.log",
-            encoding="utf-8",
+        h = TimedRotatingFileHandler(
+            filename    = str(audit_log_dir / "query_audit.log"),
+            when        = "midnight",
+            backupCount = 90,       # 감사 로그는 90일 보관
+            encoding    = "utf-8",
+            delay       = True,
         )
         h.setFormatter(
             logging.Formatter(

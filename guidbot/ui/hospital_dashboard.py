@@ -110,6 +110,14 @@ try:
 except Exception:
     import logging as _logging
     logger = _logging.getLogger(__name__)
+    if not logger.handlers:
+        _fh = _logging.StreamHandler()
+        _fh.setFormatter(_logging.Formatter(
+            "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(_fh)
+        logger.setLevel(_logging.DEBUG)
 
 from ui.dashboard_data import safe_int as _safe_int, safe_float as _safe_float, norm_sex as _norm_sex
 from ui.dashboard_ui import (
@@ -856,7 +864,7 @@ def _render_ward() -> None:
         with _r1c2:
             _kpi_card("금일 퇴원", str(disc_cnt), "명", f"전일 {_pd}명", "#475569", delta=_ds(disc_cnt, _pd))
         with _r1c3:
-            _kpi_card("금일 입원", str(admit_cnt), "명", f"전일 {_pa}명", C["primary_text"], delta=_ds(admit_cnt, _pa))
+            _kpi_card("금일 입원", str(admit_cnt), "명", f"전일 {_pa}명", C["blue"], delta=_ds(admit_cnt, _pa))
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -873,7 +881,7 @@ def _render_ward() -> None:
                 f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 3px;">'
                 f'<span style="font-size:13px;color:#64748B;font-weight:500;">입원</span>'
                 f'<div style="display:flex;align-items:baseline;gap:2px;">'
-                f'<span style="font-size:28px;font-weight:800;color:{C["primary_text"]};font-variant-numeric:tabular-nums;line-height:1;">{_next_adm}</span>'
+                f'<span style="font-size:28px;font-weight:800;color:{C["blue"]};font-variant-numeric:tabular-nums;line-height:1;">{_next_adm}</span>'
                 f'<span style="font-size:13px;color:#64748B;">명</span></div></div>'
                 f'<div style="height:1px;background:#F1F5F9;margin:2px 0;"></div>'
                 f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:3px;">'
@@ -1033,7 +1041,7 @@ def _render_ward() -> None:
                         f"<tr>"
                         f'<td style="{_td}color:#0F172A;font-weight:600;">{r.get("병동명", "")}</td>'
                         f'<td style="{_td}text-align:right;color:#64748B;font-family:Consolas,monospace;">{tot}</td>'
-                        f'<td style="{_td}text-align:right;color:{C["primary_text"]};font-family:Consolas,monospace;font-weight:700;">{adm}</td>'
+                        f'<td style="{_td}text-align:right;color:{C["blue"]};font-family:Consolas,monospace;font-weight:700;">{adm}</td>'
                         f'<td style="{_td}text-align:right;color:#0F172A;font-family:Consolas,monospace;font-weight:700;">{stay}</td>'
                         f'<td style="{_td}text-align:right;color:#475569;font-family:Consolas,monospace;font-weight:600;">{disc}</td>'
                         f'<td style="{_td}text-align:right;color:#7C3AED;font-family:Consolas,monospace;font-weight:600;">{n_disc if n_disc > 0 else "─"}</td>'
@@ -1057,7 +1065,7 @@ def _render_ward() -> None:
                     f"<tr>"
                     f'<td style="{_sth}color:#1E40AF;">합계</td>'
                     f'<td style="{_sth}text-align:right;color:#1E40AF;font-family:Consolas,monospace;">{_tb}</td>'
-                    f'<td style="{_sth}text-align:right;color:{C["primary_text"]};font-family:Consolas,monospace;">{_ta}</td>'
+                    f'<td style="{_sth}text-align:right;color:{C["blue"]};font-family:Consolas,monospace;">{_ta}</td>'
                     f'<td style="{_sth}text-align:right;color:#0F172A;font-family:Consolas,monospace;">{_ts}</td>'
                     f'<td style="{_sth}text-align:right;color:#64748B;font-family:Consolas,monospace;">{_td2}</td>'
                     f'<td style="{_sth}text-align:right;color:#7C3AED;font-family:Consolas,monospace;">{_tndc if _tndc > 0 else "─"}</td>'
@@ -1082,7 +1090,7 @@ def _render_ward() -> None:
                     f'<span style="font-size:9.5px;font-weight:700;color:#64748B;padding:0 8px;border-right:1px solid #E2E8F0;">📋 익일 예약</span>'
                     f'<span style="display:inline-flex;align-items:center;gap:3px;padding:0 8px;border-right:1px solid #E2E8F0;">'
                     f'<span style="font-size:9.5px;color:#64748B;">입원</span>'
-                    f'<b style="font-size:11px;color:{C["primary_text"]};font-family:Consolas,monospace;">{_next_adm}명</b></span>'
+                    f'<b style="font-size:11px;color:{C["blue"]};font-family:Consolas,monospace;">{_next_adm}명</b></span>'
                     f'<span style="display:inline-flex;align-items:center;gap:3px;padding:0 8px;border-right:1px solid #E2E8F0;">'
                     f'<span style="font-size:9.5px;color:#64748B;">가용</span>'
                     f'<b style="font-size:11px;color:{_cap_sum_c2};font-family:Consolas,monospace;">{_total_avail}개</b></span>'
@@ -1361,8 +1369,8 @@ def _render_ward_llm_chat(
                             card_ns=f"wh_{_hi}",
                             pdf_bytes=_bh,
                         )
-                except Exception:
-                    pass
+                except Exception as _pdf_e:
+                    logger.debug(f"[WardChat] PDF 첨부 렌더 실패 (무시): {_pdf_e}")
 
     # ── 빠른 질문 버튼 클릭 처리 ─────────────────────────────────────
     _quick_pending = st.session_state.pop("ward_chat_quick_input", None)
@@ -1723,9 +1731,10 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             oracle_ok, _ = test_connection()
             # 성공: 5분 후 재체크 / 실패: 60초 후 재체크
             _expire = _now_ts + (300 if oracle_ok else 60)
-        except Exception:
+        except Exception as _oc_e:
             oracle_ok = False
             _expire = _now_ts + 60
+            logger.warning(f"Oracle 연결 확인 예외: {_oc_e}")
         st.session_state[_oracle_check_key]  = oracle_ok
         st.session_state[_oracle_expire_key] = _expire
     else:
@@ -1744,7 +1753,8 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             _pre_bed   = _qc("ward_bed_detail")
             _pre_wards = ["전체"] + sorted({r.get("병동명", "") for r in _pre_bed if r.get("병동명", "") and r.get("병동명", "") != "전체"})
             st.session_state["ward_name_list"] = _pre_wards
-        except Exception:
+        except Exception as _wl_e:
+            logger.warning(f"병동 목록 선제 로드 실패: {_wl_e}")
             st.session_state["ward_name_list"] = ["전체"]
 
     _o_color = "#16A34A" if oracle_ok else "#F59E0B"

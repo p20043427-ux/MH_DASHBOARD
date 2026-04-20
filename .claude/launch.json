@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Hospital Ward Dashboard",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "guidbot/dashboard_app.py", "--server.port", "8501"],
+      "port": 8501
+    },
+    {
+      "name": "AI Chatbot Server",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "guidbot/main.py", "--server.port", "8502"],
+      "port": 8502
+    },
+    {
+      "name": "Finance Dashboard",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "guidbot/finance_app.py", "--server.port", "8503"],
+      "port": 8503
+    },
+    {
+      "name": "Admin Dashboard",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "guidbot/admin_app.py", "--server.port", "8504"],
+      "port": 8504
+    }
+  ]
+}
