@@ -23,12 +23,15 @@ ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.3
   V_LOS_DIST       (진료과별 분포 V_LOS_DIST_DEPT 로 대체)
 """
 
+<<<<<<< HEAD
 from db.ward_repository import ward_repo, _query, _qc, QUERIES
 from services.ward_service import (
     ward_service,
     _norm_sex, _safe_int, _safe_float,
     _filter_by_ward, _filter_dx_ward, _trend_dedup,
 )
+=======
+>>>>>>> 714a6cc09126ee830fb3d2d4b6400d2bd4ca11a1
 
 from __future__ import annotations
 import time
@@ -37,6 +40,21 @@ import streamlit as st
 import json as _json_r
 import uuid as _uuid_r
 
+<<<<<<< HEAD
+=======
+from ui.dashboard_ui import (
+    C_FINANCE as C,
+    FINANCE_CSS as _CSS,
+    finance_kpi_card as _kpi_card,
+    section_header as _sec_hd,
+    fmt_won as _fmt_won,
+    gap as _gap,
+    empty_chart as _plotly_empty,
+    PLOTLY_PALETTE as _PALETTE,
+    PLOTLY_LAYOUT as _PLOTLY_LAYOUT,
+)
+
+>>>>>>> 714a6cc09126ee830fb3d2d4b6400d2bd4ca11a1
 
 try:
     import plotly.graph_objects as go
@@ -256,6 +274,7 @@ def _fq(key: str, date_str: str = "") -> List[Dict[str, Any]]:
         return []
 
 
+<<<<<<< HEAD
 # ── 팔레트 ──────────────────────────────────────────────────────────
 C = {
     "blue": "#1E40AF", "blue_l": "#EFF6FF",
@@ -367,6 +386,8 @@ _PLOTLY_LAYOUT = dict(
     xaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
     yaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
 )
+=======
+>>>>>>> 714a6cc09126ee830fb3d2d4b6400d2bd4ca11a1
 
 
 # ════════════════════════════════════════════════════════════════════

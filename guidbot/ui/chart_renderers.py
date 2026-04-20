@@ -1,379 +1,571 @@
 """
-ui/chart_selector.py  ─  병동 대시보드 차트 타입 선택기 v1.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[설계 목표]
-    병동 대시보드의 5개 시각화 섹션에서 사용자가 원하는
-    차트 타입을 직접 선택할 수 있는 UI를 제공합니다.
-
-[대상 섹션]
-    1. 진료과별 재원 구성        → 도넛 / 가로막대 / 트리맵
-    2. 주간 추이 7일              → 라인 / 영역 / 막대
-    3. 병동별 당일 현황           → 테이블 / 가로막대 / 히트맵
-    4. 최근 7일 입원 주상병 분포  → 파이 / 가로막대 / 트리맵
-    5. 금일 vs 전일 주상병 분포   → 중첩막대 / 그룹막대 / 수평막대
-
-[UI 방식]
-    각 카드 헤더 우측에 작은 pill 버튼 형태로 표시됩니다.
-    선택 상태는 st.session_state 에 저장되어 리프레시 후에도 유지됩니다.
-
-[사용 예시]
-    from ui.chart_selector import render_chart_selector, get_chart_type
-
-    chart_type = render_chart_selector("dept_stay")
-    # chart_type → "donut" | "bar_h" | "treemap"
+ui/chart_renderers.py  ─  병동 대시보드 차트 렌더러
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hospital_dashboard.py 에서 분리한 5개의 대안 차트 렌더러.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import streamlit as st
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  차트 설정 레지스트리
-#  각 섹션마다 사용 가능한 차트 타입과 기본값을 정의합니다.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 
-# Dict 구조: {section_key: {"options": [(value, label), ...], "default": str}}
-CHART_REGISTRY: Dict[str, Dict] = {
-    # ── 섹션 1: 진료과별 재원 구성 ─────────────────────────────────
-    "dept_stay": {
-        "label": "진료과별 재원 구성",
-        "options": [
-            ("donut",   "🍩 도넛"),      # 기본값: 중앙 총계가 강조되는 도넛 차트
-            ("bar_h",   "📊 막대"),      # 가로 막대: 수치 비교가 명확
-            ("treemap", "🗺️ 트리맵"),   # 트리맵: 면적으로 비율 직관 파악
-        ],
-        "default": "donut",
-    },
-
-    # ── 섹션 2: 주간 추이 7일 ──────────────────────────────────────
-    "weekly_trend": {
-        "label": "주간 추이 7일",
-        "options": [
-            ("table", "📋 테이블"),      # 기본값: 현재 날짜·가동률·입원·퇴원 표
-            ("line",  "📈 라인"),        # 라인: 추세 변화 파악에 최적
-            ("area",  "🏔️ 영역"),       # 영역: 볼륨감 강조 (재원수 강조시)
-            ("bar",   "📊 막대"),        # 막대: 일별 절대값 비교
-        ],
-        "default": "table",
-    },
-
-    # ── 섹션 3: 병동별 당일 현황 ───────────────────────────────────
-    "ward_detail": {
-        "label": "병동별 당일 현황",
-        "options": [
-            ("table",   "📋 테이블"),    # 기본값: 모든 컬럼 정확한 수치 확인
-            ("bar_h",   "📊 막대"),      # 가로 막대: 병동간 가동률 한눈 비교
-            ("heatmap", "🔥 히트맵"),   # 히트맵: 병동×지표 색상 매핑
-        ],
-        "default": "table",
-    },
-
-    # ── 섹션 4: 최근 7일 입원 주상병 분포 ──────────────────────────
-    "dx_7day": {
-        "label": "최근 7일 주상병 분포",
-        "options": [
-            ("pie",     "🍩 파이"),      # 기본값: 비율 파악
-            ("bar_h",   "📊 막대"),      # 가로 막대: 상병명이 긴 경우 가독성 좋음
-            ("treemap", "🗺️ 트리맵"),   # 트리맵: 빈도가 높은 상병 시각적 강조
-        ],
-        "default": "pie",
-    },
-
-    # ── 섹션 5: 금일 vs 전일 입원 주상병 분포 ──────────────────────
-    "dx_compare": {
-        "label": "금일 vs 전일 비교",
-        "options": [
-            ("overlay", "🔀 중첩막대"),  # 기본값: 같은 축에 투명도로 중첩
-            ("grouped", "📊 그룹막대"),  # 그룹 막대: 나란히 비교
-            ("bar_h",   "↔️ 수평막대"), # 수평: 상병명 공간 여유
-        ],
-        "default": "overlay",
-    },
-}
-
-# ── session_state 키 접두사 ────────────────────────────────────────────
-# 섹션별 선택값을 session_state 에 저장할 때 사용하는 키 형식
-_STATE_PREFIX = "chart_type__"
+from ui.dashboard_data import safe_int as _safe_int, safe_float as _safe_float
+from ui.dashboard_ui import (
+    C_WARD as C,
+    WARD_PALETTE as _PALETTE,
+    WARD_AX as _AX,
+    ward_layout as _layout,
+)
 
 
-def get_chart_type(section_key: str) -> str:
+def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
     """
-    특정 섹션의 현재 선택된 차트 타입을 반환합니다.
-
-    session_state 에 저장된 값이 없으면 해당 섹션의 기본값을 반환합니다.
-    (처음 대시보드를 열었을 때 기본 차트로 표시되는 이유)
-
-    Args:
-        section_key: CHART_REGISTRY 에 정의된 섹션 키
-                     예: "dept_stay", "weekly_trend" 등
-
-    Returns:
-        선택된 차트 타입 문자열
-        예: "donut", "bar_h", "line" 등
-
-    Example:
-        chart_type = get_chart_type("dept_stay")
-        # → "donut"  (기본값, 사용자가 아직 변경 안 한 경우)
+    진료과별 재원 구성 대안 차트 렌더러.
+    chart_type: "donut" | "bar_h" | "treemap"
+    data: ward_dept_stay 쿼리 결과
     """
-    config = CHART_REGISTRY.get(section_key)
-    if not config:
-        # 등록되지 않은 섹션 키 → 빈 문자열 반환 (렌더러에서 기본값으로 처리)
-        return ""
+    from collections import defaultdict as _ddc2
+    if not data or not HAS_PLOTLY:
+        st.caption("데이터 없음")
+        return
 
-    state_key = _STATE_PREFIX + section_key
-    return st.session_state.get(state_key, config["default"])
+    # 진료과별 합산 집계
+    agg: Dict[str, int] = _ddc2(int)
+    for r in data:
+        agg[r.get("진료과명", "기타")] += _safe_int(r.get("재원수"))
+    sorted_items = sorted(agg.items(), key=lambda x: -x[1])
+    top8 = list(sorted_items[:8])
+    etc  = sum(v for _, v in sorted_items[8:])
+    if etc > 0:
+        top8.append(("기타", etc))
+    labels = [n for n, _ in top8]
+    values = [v for _, v in top8]
+    total  = max(sum(values), 1)
+    colors = _PALETTE[:len(labels)]
 
-
-def set_chart_type(section_key: str, chart_type: str) -> None:
-    """
-    특정 섹션의 차트 타입을 session_state 에 저장합니다.
-
-    이 함수는 render_chart_selector 내부에서 자동 호출됩니다.
-    외부에서 직접 호출하면 프로그래밍 방식으로 차트를 변경할 수 있습니다.
-
-    Args:
-        section_key: 섹션 키 (예: "dept_stay")
-        chart_type:  저장할 차트 타입 (예: "bar_h")
-    """
-    state_key = _STATE_PREFIX + section_key
-    st.session_state[state_key] = chart_type
-
-
-def render_chart_selector(
-    section_key: str,
-    *,
-    align_right: bool = True,
-) -> str:
-    """
-    카드 헤더 영역에 차트 타입 선택 pill 버튼을 렌더링합니다.
-
-    [UI 구조]
-        [섹션 제목 레이블]          [🍩 도넛 | 📊 막대 | 🗺 트리맵]
-        ←── 좌측 (자동) ───────────────────────────── 우측 (선택기) ──→
-
-    [동작 방식]
-        1. 현재 session_state 에서 선택값을 읽음
-        2. st.radio(horizontal=True) 로 pill 버튼 렌더링
-        3. 사용자가 변경하면 session_state 업데이트 → 자동 리렌더
-
-    Args:
-        section_key:  CHART_REGISTRY 에 정의된 섹션 키
-        align_right:  선택기를 우측 정렬할지 여부 (기본: True)
-
-    Returns:
-        현재 선택된 차트 타입 문자열
-
-    Example:
-        chart_type = render_chart_selector("dept_stay")
-        # → "donut"  (사용자가 선택한 값 또는 기본값)
-    """
-    config = CHART_REGISTRY.get(section_key)
-    if not config:
-        # 알 수 없는 섹션 → 빈 값 반환 (렌더러가 기본 동작)
-        return ""
-
-    state_key = _STATE_PREFIX + section_key
-    options: List[Tuple[str, str]] = config["options"]
-    current = st.session_state.get(state_key, config["default"])
-
-    # ── pill 버튼용 CSS 주입 (최초 1회만 적용되도록 key로 구분) ────────
-    # Streamlit의 radio 위젯을 pill 모양 버튼처럼 스타일링합니다.
-    # 각 섹션마다 다른 st.radio 가 존재하므로 section_key 로 CSS 범위를 지정합니다.
-    _inject_pill_css(section_key)
-
-    # ── 레이아웃: [넓은 빈 공간] | [선택기] ────────────────────────────
-    # 비율 [5, 3] → 제목 텍스트는 호출자가 별도 렌더링하므로 여기서는 빈칸
-    col_spacer, col_selector = st.columns([5, 3] if align_right else [1, 9])
-
-    with col_selector:
-        # st.radio 로 옵션 표시
-        # label_visibility="collapsed" → 라벨 숨김 (섹션 제목과 중복 방지)
-        # horizontal=True → 가로 방향으로 옵션 나열
-        labels = [label for _, label in options]
-        values = [value for value, _ in options]
-
-        try:
-            current_idx = values.index(current)
-        except ValueError:
-            current_idx = 0  # 저장된 값이 옵션 목록에 없으면 첫 번째 선택
-
-        selected_label = st.radio(
-            label=f"chart_type_{section_key}",    # 내부 식별자 (화면에 안 보임)
-            options=labels,
-            index=current_idx,
-            horizontal=True,
-            label_visibility="collapsed",          # 라벨 숨김
-            key=f"radio_{section_key}",            # 위젯 고유 키
+    if chart_type == "donut":
+        fig = go.Figure(go.Pie(
+            labels=labels, values=values, hole=0.52,
+            marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
+            textinfo="percent", textfont=dict(size=10, color="#FFFFFF"),
+            direction="clockwise", sort=True,
+            hovertemplate="<b>%{label}</b><br>%{value}명 (%{percent})<extra></extra>",
+        ))
+        fig.update_layout(
+            height=200,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=0, t=8, b=8),
+            showlegend=False,
+            annotations=[dict(text=f"<b>{total}</b><br>명", x=0.5, y=0.5,
+                              showarrow=False, font=dict(size=14, color="#0F172A"))],
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dept_donut")
+        # 범례 테이블
+        rows = ""
+        for i, (nm, val) in enumerate(zip(labels, values)):
+            pct = val / total * 100
+            bg  = "#FFFFFF" if i % 2 == 0 else "#F8FAFC"
+            clr = colors[i % len(colors)]
+            rows += (
+                f'<tr style="background:{bg};">'
+                f'<td style="padding:3px 6px;"><span style="display:inline-block;'
+                f'width:8px;height:8px;border-radius:2px;background:{clr};"></span></td>'
+                f'<td style="padding:3px 6px;color:#0F172A;font-size:11.5px;font-weight:500;">{nm}</td>'
+                f'<td style="padding:3px 6px;text-align:right;color:#1E40AF;'
+                f'font-family:Consolas,monospace;font-weight:700;font-size:11.5px;">{val}</td>'
+                f'<td style="padding:3px 6px;text-align:right;color:#64748B;'
+                f'font-family:Consolas,monospace;font-size:11px;">{pct:.0f}%</td></tr>'
+            )
+        st.markdown(
+            f'<table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid #F1F5F9;">'
+            f'<thead><tr style="background:#F8FAFC;">'
+            f'<th style="padding:4px 6px;width:20px;"></th>'
+            f'<th style="padding:4px 6px;color:#64748B;font-size:10px;text-align:left;">진료과</th>'
+            f'<th style="padding:4px 6px;color:#64748B;font-size:10px;text-align:right;">재원수</th>'
+            f'<th style="padding:4px 6px;color:#64748B;font-size:10px;text-align:right;">비율</th>'
+            f"</tr></thead><tbody>{rows}</tbody></table>",
+            unsafe_allow_html=True,
         )
 
-        # 선택된 라벨 → 값으로 역변환 후 session_state 에 저장
-        selected_value = values[labels.index(selected_label)]
-        if selected_value != current:
-            # 이전 선택과 다르면 상태 업데이트 (st.rerun 불필요, radio가 자동 처리)
-            st.session_state[state_key] = selected_value
-
-    return st.session_state.get(state_key, config["default"])
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  내부 헬퍼: CSS 주입
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 이미 CSS를 주입한 섹션 키를 추적 (동일 CSS 중복 주입 방지)
-_CSS_INJECTED: set = set()
-
-
-def _inject_pill_css(section_key: str) -> None:
-    """
-    radio 위젯을 pill 버튼처럼 보이게 하는 CSS를 한 번만 주입합니다.
-
-    [왜 CSS 주입이 필요한가?]
-    Streamlit 기본 radio 위젯은 동그란 선택 점(●) 스타일입니다.
-    CSS로 이를 숨기고 선택된 항목에 배경색을 주면 pill 버튼처럼 보입니다.
-
-    [주의]
-    이 CSS는 전체 앱에 적용됩니다. section_key 별로 다른 스타일을 주려면
-    data-testid 등을 활용하여 범위를 좁혀야 합니다. 현재는 동일 스타일 공유.
-    """
-    if section_key in _CSS_INJECTED:
-        return  # 이미 주입된 경우 스킵
-
-    # pill 버튼 스타일 CSS
-    # - input[type="radio"] 숨김 (원래 라디오 버튼 아이콘 제거)
-    # - label 에 박스 스타일 적용 (테두리, 패딩, 배경)
-    # - 선택된 항목(aria-checked 활용)에 파란 배경 적용
-    css = """
-    <style>
-    /* ── 차트 타입 선택기 pill 스타일 ── */
-
-    /* radio 위젯 wrapper 줄간격 축소 */
-    div[data-testid="stRadio"] > div {
-        gap: 4px !important;
-        flex-wrap: nowrap !important;
-    }
-
-    /* 개별 라디오 레이블 — pill 모양 */
-    div[data-testid="stRadio"] label {
-        display: inline-flex !important;
-        align-items: center !important;
-        padding: 3px 10px !important;
-        border-radius: 20px !important;
-        border: 1px solid #CBD5E1 !important;
-        background: #F8FAFC !important;
-        color: #475569 !important;
-        font-size: 11px !important;
-        font-weight: 500 !important;
-        cursor: pointer !important;
-        transition: all 0.15s ease !important;
-        white-space: nowrap !important;
-        line-height: 1.4 !important;
-        margin: 0 !important;
-    }
-
-    /* hover 효과 */
-    div[data-testid="stRadio"] label:hover {
-        background: #EFF6FF !important;
-        border-color: #93C5FD !important;
-        color: #1D4ED8 !important;
-    }
-
-    /* 선택된 항목 — 파란 pill */
-    div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),
-    div[data-testid="stRadio"] label[aria-checked="true"] {
-        background: #1E40AF !important;
-        border-color: #1E40AF !important;
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-    }
-
-    /* 라디오 원형 아이콘 숨김 */
-    div[data-testid="stRadio"] input[type="radio"] {
-        display: none !important;
-    }
-
-    /* radio 위젯 좌측 여백 제거 */
-    div[data-testid="stRadio"] {
-        padding: 0 !important;
-    }
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
-    _CSS_INJECTED.add(section_key)
-
-
-def render_section_header(
-    section_key: str,
-    title: str,
-    subtitle: str = "",
-    accent_color: str = "#1E40AF",
-) -> str:
-    """
-    섹션 헤더와 차트 선택기를 한 줄에 렌더링하는 통합 헬퍼 함수입니다.
-
-    [렌더링 결과 예시]
-        ┌──────────────────────────────────────────────────────────────┐
-        │  │ 진료과별 재원 구성  · 전체        [🍩 도넛][📊 막대][🗺 트리맵] │
-        └──────────────────────────────────────────────────────────────┘
-
-    [사용법]
-        chart_type = render_section_header(
-            section_key="dept_stay",
-            title="진료과별 재원 구성",
-            subtitle="전체 병동",
+    elif chart_type == "bar_h":
+        fig = go.Figure(go.Bar(
+            x=values, y=labels, orientation="h",
+            marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)")),
+            text=[f"{v}명 ({v/total*100:.0f}%)" for v in values],
+            textposition="outside", textfont=dict(size=10, color="#475569"),
+            hovertemplate="<b>%{y}</b><br>%{x}명<extra></extra>",
+        ))
+        fig.update_layout(
+            height=max(200, len(labels) * 30),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=70, t=8, b=8),
+            yaxis=dict(**_AX, autorange="reversed"),
+            xaxis=dict(**_AX, title=dict(text="재원 환자 수 (명)", font=dict(size=10))),
         )
-        # 반환값으로 chart_type 을 받아 렌더러 함수에 전달
+        st.plotly_chart(fig, use_container_width=True, key="dept_bar_h")
 
-    Args:
-        section_key:   CHART_REGISTRY 섹션 키
-        title:         헤더 제목 텍스트
-        subtitle:      헤더 부제목 텍스트 (선택 사항, 예: "전체 병동")
-        accent_color:  좌측 강조선 색상 (기본: 딥블루)
+    elif chart_type == "treemap":
+        fig = go.Figure(go.Treemap(
+            labels=labels, values=values, parents=[""] * len(labels),
+            marker=dict(colors=colors, line=dict(width=2, color="#FFFFFF")),
+            texttemplate="<b>%{label}</b><br>%{value}명<br>%{percentRoot:.0%}",
+            textfont=dict(size=10),
+            hovertemplate="<b>%{label}</b><br>%{value}명 (%{percentRoot:.1%})<extra></extra>",
+        ))
+        fig.update_layout(
+            height=270,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=0, t=8, b=8),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dept_treemap")
 
-    Returns:
-        현재 선택된 차트 타입 문자열
+
+def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_rate: float) -> None:
     """
-    # 제목 + 부제목 영역 (HTML로 렌더링 — Streamlit 기본 텍스트보다 정밀 제어 가능)
-    sub_html = (
-        f'<span style="font-size:10px;color:#94A3B8;margin-left:6px;">{subtitle}</span>'
-        if subtitle
-        else ""
-    )
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;margin-bottom:2px;">
-            <span style="
-                display:inline-block;width:3px;height:16px;
-                background:{accent_color};border-radius:2px;
-                margin-right:8px;flex-shrink:0;
-            "></span>
-            <span style="
-                font-size:13px;font-weight:700;color:#0F172A;
-                letter-spacing:-0.01em;
-            ">{title}</span>
-            {sub_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # 차트 선택기 pill 버튼 (우측 정렬)
-    return render_chart_selector(section_key)
-
-
-def reset_all_chart_types() -> None:
+    주간 추이 7일 대안 차트 렌더러.
+    chart_type: "table"(기존 표) | "line" | "area" | "bar"
     """
-    모든 섹션의 차트 타입을 기본값으로 초기화합니다.
+    if not data:
+        st.caption("추이 데이터 없음")
+        return
 
-    [사용 시나리오]
-    관리자 패널 또는 사이드바에 "차트 초기화" 버튼을 만들 때 사용합니다.
+    dates  = [str(r.get("기준일", ""))           for r in data]
+    occs   = [_safe_float(r.get("가동률"))     for r in data]
+    admins = [_safe_int(r.get("금일입원"))      for r in data]
+    discs  = [_safe_int(r.get("금일퇴원"))      for r in data]
+    key_sfx = chart_type
 
-    Example:
-        if st.sidebar.button("🔄 차트 초기화"):
-            reset_all_chart_types()
+    if chart_type == "table":
+        # ── 기존 HTML 표 그대로 유지 ────────────────────────────────
+        _tH2 = "padding:7px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
+        rows = ""
+        for ti, row in enumerate(data):
+            dt   = str(row.get("기준일", ""))
+            occ  = float(row.get("가동률", 0) or 0)
+            adm  = int(row.get("금일입원", 0) or 0)
+            disc = int(row.get("금일퇴원", 0) or 0)
+            tbg  = "#F8FAFC" if ti % 2 == 0 else "#FFFFFF"
+            if occ >= 90:   oc, lbl = "#EF4444", '<span style="font-size:9px;background:#FEE2E2;color:#991B1B;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;">위험</span>'
+            elif occ >= 80: oc, lbl = "#F59E0B", '<span style="font-size:9px;background:#FFFBEB;color:#92400E;border-radius:3px;padding:1px 5px;margin-left:3px;font-weight:700;">주의</span>'
+            else:            oc, lbl = "#059669", ""
+            td = f"padding:7px 10px;background:{tbg};border-bottom:1px solid #F8FAFC;font-size:13px;"
+            rows += (
+                f"<tr>"
+                f'<td style="{td}font-weight:600;color:#334155;white-space:nowrap;">{dt}</td>'
+                f'<td style="{td}text-align:right;">'
+                f'<span style="font-size:16px;font-weight:800;color:{oc};font-family:Consolas,monospace;letter-spacing:-0.02em;">{occ:.1f}%</span>{lbl}</td>'
+                f'<td style="{td}text-align:right;">'
+                f'<span style="font-size:16px;font-weight:800;color:{C["primary_text"]};font-family:Consolas,monospace;">{adm}</span></td>'
+                f'<td style="{td}text-align:right;">'
+                f'<span style="font-size:15px;font-weight:700;color:#64748B;font-family:Consolas,monospace;">{disc}</span></td>'
+                f"</tr>"
+            )
+        st.markdown(
+            f'<table style="width:100%;border-collapse:collapse;"><thead><tr>'
+            f'<th style="{_tH2}text-align:left;">날짜</th>'
+            f'<th style="{_tH2}text-align:right;">가동률</th>'
+            f'<th style="{_tH2}text-align:right;color:{C["primary_text"]};">입원</th>'
+            f'<th style="{_tH2}text-align:right;color:#475569;">퇴원</th>'
+            f"</tr></thead><tbody>{rows}</tbody></table>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    if not HAS_PLOTLY:
+        st.caption("plotly 미설치 — pip install plotly")
+        return
+
+    fig = go.Figure()
+
+    if chart_type == "line":
+        fig.add_trace(go.Scatter(x=dates, y=occs, name="가동률(%)", mode="lines+markers",
+            line=dict(color="#1E40AF", width=2.5, shape="spline"),
+            fill="tozeroy", fillcolor="rgba(30,64,175,0.06)",
+            marker=dict(size=6, color="#1E40AF", line=dict(width=2, color="#fff")),
+            yaxis="y", hovertemplate="%{x}<br>가동률 %{y:.1f}%<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dates, y=admins, name="금일입원", mode="lines+markers",
+            line=dict(color="#059669", width=1.5, dash="dot", shape="spline"),
+            marker=dict(size=4, color="#059669"), yaxis="y2",
+            hovertemplate="%{x}<br>입원 %{y}명<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dates, y=discs, name="금일퇴원", mode="lines+markers",
+            line=dict(color="#F59E0B", width=1.5, dash="dot", shape="spline"),
+            marker=dict(size=4, color="#F59E0B"), yaxis="y2",
+            hovertemplate="%{x}<br>퇴원 %{y}명<extra></extra>"))
+        fig.update_layout(
+            height=230, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12), showlegend=True,
+            margin=dict(l=0, r=0, t=8, b=40),
+            legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+            yaxis=dict(**_AX, title=dict(text="가동률(%)", font=dict(size=10)), ticksuffix="%", range=[0, 110]),
+            yaxis2=dict(**_AX, overlaying="y", side="right", title=dict(text="인원(명)", font=dict(size=10))),
+            xaxis=dict(**_AX),
+        )
+
+    elif chart_type == "area":
+        fig.add_trace(go.Scatter(x=dates, y=admins, name="금일입원", mode="lines",
+            fill="tozeroy", fillcolor="rgba(5,150,105,0.15)",
+            line=dict(color="#059669", width=1.5),
+            hovertemplate="%{x}<br>입원 %{y}명<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dates, y=discs, name="금일퇴원", mode="lines",
+            fill="tozeroy", fillcolor="rgba(245,158,11,0.15)",
+            line=dict(color="#F59E0B", width=1.5),
+            hovertemplate="%{x}<br>퇴원 %{y}명<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dates, y=occs, name="가동률(%)", mode="lines+markers",
+            line=dict(color="#1E40AF", width=2), marker=dict(size=5, color="#1E40AF"),
+            yaxis="y2", hovertemplate="%{x}<br>가동률 %{y:.1f}%<extra></extra>"))
+        fig.update_layout(
+            height=230, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12), showlegend=True,
+            margin=dict(l=0, r=0, t=8, b=40),
+            legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+            yaxis=dict(**_AX, title=dict(text="인원(명)", font=dict(size=10))),
+            yaxis2=dict(**_AX, overlaying="y", side="right", ticksuffix="%", range=[0, 110],
+                        title=dict(text="가동률(%)", font=dict(size=10))),
+            xaxis=dict(**_AX),
+        )
+
+    elif chart_type == "bar":
+        fig.add_trace(go.Bar(x=dates, y=admins, name="금일입원", marker_color="#059669",
+                             hovertemplate="%{x}<br>입원 %{y}명<extra></extra>"))
+        fig.add_trace(go.Bar(x=dates, y=discs, name="금일퇴원", marker_color="#F59E0B",
+                             hovertemplate="%{x}<br>퇴원 %{y}명<extra></extra>"))
+        fig.add_trace(go.Scatter(x=dates, y=occs, name="가동률(%)", mode="lines+markers",
+            line=dict(color="#1E40AF", width=2), marker=dict(size=5),
+            yaxis="y2", hovertemplate="%{x}<br>가동률 %{y:.1f}%<extra></extra>"))
+        fig.update_layout(
+            height=230, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=0, t=8, b=40),
+            barmode="group", showlegend=True,
+            legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+            yaxis=dict(**_AX, title=dict(text="인원(명)", font=dict(size=10))),
+            yaxis2=dict(**_AX, overlaying="y", side="right", ticksuffix="%", range=[0, 110],
+                        title=dict(text="가동률(%)", font=dict(size=10))),
+            xaxis=dict(**_AX),
+        )
+
+    st.plotly_chart(fig, use_container_width=True, key=f"trend_{key_sfx}")
+
+
+def _render_ward_alt_chart(data: List[Dict], chart_type: str, ward_surg: Dict) -> None:
     """
-    for section_key, config in CHART_REGISTRY.items():
-        state_key = _STATE_PREFIX + section_key
-        st.session_state[state_key] = config["default"]
+    병동별 당일 현황 대안 차트 렌더러.
+    chart_type: "bar_h" | "heatmap"  (table은 기존 HTML 처리)
+    """
+    if not data or not HAS_PLOTLY:
+        st.caption("데이터 없음")
+        return
+
+    wards    = [str(r.get("병동명", ""))           for r in data]
+    stays    = [_safe_int(r.get("재원수"))       for r in data]
+    admins   = [_safe_int(r.get("금일입원"))     for r in data]
+    discs    = [_safe_int(r.get("금일퇴원"))     for r in data]
+    beds     = [_safe_int(r.get("총병상"))       for r in data]
+    occs     = [_safe_float(r.get("가동률"))     for r in data]
+
+    if chart_type == "bar_h":
+        bar_colors = ["#EF4444" if r >= 90 else "#F59E0B" if r >= 80 else "#059669" for r in occs]
+        fig = go.Figure(go.Bar(
+            x=occs, y=wards, orientation="h",
+            marker=dict(color=bar_colors, line=dict(color="rgba(0,0,0,0)")),
+            text=[f"{r:.1f}%  ({s}명/{b}병상)" for r, s, b in zip(occs, stays, beds)],
+            textposition="outside", textfont=dict(size=10, color="#475569"),
+            hovertemplate="<b>%{y}</b><br>가동률 %{x:.1f}%<extra></extra>",
+        ))
+        for thr, lbl, clr in [(90, "위험 90%", "#EF4444"), (80, "주의 80%", "#F59E0B")]:
+            fig.add_vline(x=thr, line=dict(color=clr, dash="dash", width=1.2),
+                          annotation_text=lbl, annotation_font=dict(size=9, color=clr),
+                          annotation_position="top")
+        fig.update_layout(
+            height=max(200, len(wards) * 36),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=90, t=8, b=8),
+            yaxis=dict(**_AX, autorange="reversed"),
+            xaxis=dict(**_AX, range=[0, 115], ticksuffix="%",
+                       title=dict(text="병상 가동률 (%)", font=dict(size=10))),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="ward_bar_h")
+
+    elif chart_type == "heatmap":
+        indicators = ["재원수", "금일입원", "금일퇴원", "가동률(%)"]
+        z_raw = [stays, admins, discs, occs]
+        z_matrix = [list(row) for row in zip(*z_raw)]  # [병동 × 지표]
+        fig = go.Figure(go.Heatmap(
+            z=z_matrix, x=indicators, y=wards,
+            colorscale=[[0.0, "#DBEAFE"], [0.5, "#93C5FD"], [1.0, "#1E40AF"]],
+            text=[[f"{v:.1f}" if isinstance(v, float) else str(v) for v in row] for row in z_matrix],
+            texttemplate="%{text}",
+            textfont=dict(size=10, color="#FFFFFF"),
+            hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
+            showscale=True,
+            colorbar=dict(len=0.8, thickness=12, tickfont=dict(size=9)),
+        ))
+        fig.update_layout(
+            height=max(220, len(wards) * 34),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=60, t=30, b=8),
+            xaxis=dict(side="top", tickfont=dict(size=10)),
+            yaxis=dict(**_AX, autorange="reversed"),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="ward_heatmap")
+
+
+def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
+    """
+    최근 7일 주상병 분포 대안 차트 렌더러.
+    chart_type: "pie" | "bar_h" | "treemap"
+    """
+    from collections import defaultdict as _ddx7
+    if not data:
+        st.info("주상병 데이터 없음")
+        return
+
+    agg: Dict[str, int] = _ddx7(int)
+    for r in data:
+        agg[r.get("주상병명", "기타")] += _safe_int(r.get("환자수"))
+    sorted_items = sorted(agg.items(), key=lambda x: -x[1])
+    top8  = list(sorted_items[:8])
+    etc   = sum(v for _, v in sorted_items[8:])
+    if etc > 0:
+        top8.append(("기타", etc))
+    labels = [n for n, _ in top8]
+    values = [v for _, v in top8]
+    total  = max(sum(values), 1)
+    colors = _PALETTE[:len(labels)]
+
+    if chart_type == "pie":
+        if not HAS_PLOTLY:
+            st.info("주상병 데이터 없음")
+            return
+        fig = go.Figure(go.Pie(
+            labels=labels, values=values, hole=0.52,
+            marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
+            textinfo="percent", textfont=dict(size=10, color="#FFFFFF"),
+            direction="clockwise", sort=True,
+            hovertemplate="<b>%{label}</b><br>%{value}명 (%{percent})<extra></extra>",
+        ))
+        fig.update_layout(
+            height=220, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12), margin=dict(l=0, r=0, t=8, b=8), showlegend=False,
+            annotations=[dict(text=f"<b>{total}</b><br>명", x=0.5, y=0.5,
+                              showarrow=False, font=dict(size=14, color="#0F172A"))],
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dx7_pie")
+        # 범례 테이블
+        rows = ""
+        for i, (nm, cnt) in enumerate(top8):
+            pct = cnt / total * 100
+            bg  = "#FFFFFF" if i % 2 == 0 else "#F8FAFC"
+            clr = colors[i % len(colors)]
+            rows += (
+                f'<tr style="background:{bg};">'
+                f'<td style="padding:4px 6px;text-align:center;">'
+                f'<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:{clr};"></span></td>'
+                f'<td style="padding:4px 6px;color:#0F172A;font-weight:500;">{nm}</td>'
+                f'<td style="padding:4px 6px;text-align:right;color:#1E40AF;font-family:Consolas,monospace;font-weight:700;">{cnt}</td>'
+                f'<td style="padding:4px 6px;text-align:right;color:#64748B;font-family:Consolas,monospace;">{pct:.0f}%</td></tr>'
+            )
+        st.markdown(
+            '<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;border-top:1px solid #F1F5F9;">'
+            '<tr style="background:#F8FAFC;">'
+            '<th style="padding:5px 6px;color:#64748B;font-size:10px;width:24px;">#</th>'
+            '<th style="padding:5px 6px;color:#64748B;font-size:10px;text-align:left;">주상병명</th>'
+            '<th style="padding:5px 6px;color:#64748B;font-size:10px;text-align:right;width:40px;">건수</th>'
+            '<th style="padding:5px 6px;color:#64748B;font-size:10px;text-align:right;width:40px;">비율</th></tr>'
+            f'{rows}</table>',
+            unsafe_allow_html=True,
+        )
+
+    elif chart_type == "bar_h":
+        if not HAS_PLOTLY:
+            st.info("주상병 데이터 없음")
+            return
+        fig = go.Figure(go.Bar(
+            x=values, y=labels, orientation="h",
+            marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)")),
+            text=[f"{v}건" for v in values],
+            textposition="outside", textfont=dict(size=10, color="#475569"),
+            hovertemplate="<b>%{y}</b><br>%{x}건<extra></extra>",
+        ))
+        fig.update_layout(
+            height=max(200, len(labels) * 30),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=60, t=8, b=8),
+            yaxis=dict(**_AX, autorange="reversed"),
+            xaxis=dict(**_AX, title=dict(text="입원 건수", font=dict(size=10))),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dx7_bar_h")
+
+    elif chart_type == "treemap":
+        if not HAS_PLOTLY:
+            st.info("주상병 데이터 없음")
+            return
+        fig = go.Figure(go.Treemap(
+            labels=labels, values=values, parents=[""] * len(labels),
+            marker=dict(colors=colors, line=dict(width=2, color="#FFFFFF")),
+            texttemplate="<b>%{label}</b><br>%{value}건<br>%{percentRoot:.0%}",
+            textfont=dict(size=10),
+            hovertemplate="<b>%{label}</b><br>%{value}건 (%{percentRoot:.1%})<extra></extra>",
+        ))
+        fig.update_layout(height=270, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12), margin=dict(l=0, r=0, t=8, b=8))
+        st.plotly_chart(fig, use_container_width=True, key="dx7_treemap")
+
+
+def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
+    """
+    금일 vs 전일 주상병 비교 대안 차트 렌더러.
+    chart_type: "overlay" | "grouped" | "bar_h"
+    """
+    from collections import defaultdict as _ddcmp
+    if not data:
+        st.info("주상병 분포 데이터 없음")
+        return
+
+    t_map: Dict[str, int] = _ddcmp(int)
+    y_map: Dict[str, int] = _ddcmp(int)
+    for r in data:
+        nm  = r.get("주상병명", "기타") or "기타"
+        cnt = _safe_int(r.get("환자수"))
+        day = str(r.get("기준일", ""))
+        (t_map if "오늘" in day else y_map)[nm] += cnt
+
+    all_dx  = set(list(t_map.keys()) + list(y_map.keys()))
+    sorted_dx = sorted(all_dx, key=lambda d: -(t_map.get(d, 0) + y_map.get(d, 0)))
+    top_dx    = sorted_dx[:8]
+    t_vals    = [t_map.get(d, 0) for d in top_dx]
+    y_vals    = [y_map.get(d, 0) for d in top_dx]
+    x_max     = max(max(t_vals, default=1), max(y_vals, default=1)) * 1.2
+    _COL_T    = "#1D4ED8"
+    _COL_Y    = "#0EA5E9"
+
+    # 증감 주석
+    def _anns_h(names, t_vs, y_vs, x_mx):
+        anns = []
+        for i, (nm, tv, yv) in enumerate(zip(names, t_vs, y_vs)):
+            d = tv - yv
+            clr = C["danger"] if d > 0 else C["ok"] if d < 0 else "#64748B"
+            txt = f"▲{d:+d}" if d > 0 else f"▼{d}" if d < 0 else "─"
+            anns.append(dict(x=x_mx - 0.2, y=nm, text=f"<b>{txt}</b>",
+                             showarrow=False, font=dict(size=11, color=clr),
+                             xref="x", yref="y", xanchor="right"))
+        return anns
+
+    if not HAS_PLOTLY:
+        st.info("주상병 분포 데이터 없음")
+        return
+
+    if chart_type == "overlay":
+        ranked = list(reversed(top_dx))
+        rank_labels = [f"{len(top_dx) - i}위" for i in range(len(ranked))]
+        tv_r  = [t_map.get(d, 0) for d in ranked]
+        yv_r  = [y_map.get(d, 0) for d in ranked]
+        diffs = [t - y for t, y in zip(tv_r, yv_r)]
+        anns  = []
+        for i, (df, tv, yv) in enumerate(zip(diffs, tv_r, yv_r)):
+            clr = C["danger"] if df > 0 else C["ok"] if df < 0 else "#64748B"
+            txt = f"▲{df:+d}" if df > 0 else f"▼{df}" if df < 0 else "─"
+            anns.append(dict(x=x_max - 0.2, y=rank_labels[i], text=f"<b>{txt}</b>",
+                             showarrow=False, font=dict(size=12, color=clr),
+                             xref="x", yref="y", xanchor="right"))
+        fig = go.Figure()
+        fig.add_trace(go.Bar(name="전일", y=rank_labels, x=yv_r, orientation="h",
+            marker_color=_COL_Y, marker=dict(opacity=0.6, line=dict(width=0)),
+            text=yv_r, textposition="inside", textfont=dict(size=11, color="#FFFFFF"),
+            hovertemplate="전일: %{x}명<extra></extra>"))
+        fig.add_trace(go.Bar(name="금일", y=rank_labels, x=tv_r, orientation="h",
+            marker_color=_COL_T, marker=dict(line=dict(width=0)),
+            text=tv_r, textposition="inside", textfont=dict(size=12, color="#FFFFFF"),
+            hovertemplate="금일: %{x}명<extra></extra>"))
+        fig.update_layout(
+            barmode="overlay", height=270,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            margin=dict(l=0, r=50, t=8, b=46),
+            legend=dict(orientation="h", y=-0.16, x=0, font=dict(size=12, color="#1E293B"),
+                        bgcolor="rgba(0,0,0,0)", traceorder="reversed"),
+            showlegend=True, annotations=anns,
+            xaxis=dict(range=[0, x_max], gridcolor="#F1F5F9",
+                       tickfont=dict(size=10.5, color="#64748B"), zeroline=False,
+                       title=dict(text="입원 환자 수 (명)", font=dict(size=11, color="#64748B"))),
+            yaxis=dict(gridcolor="rgba(0,0,0,0)", tickfont=dict(size=12, color="#0F172A"), zeroline=False),
+            bargap=0.3,
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dx_overlay")
+        # 하단 랭킹 테이블
+        rows = ""
+        for ri, (nm, tc, yc) in enumerate(zip(top_dx, t_vals, y_vals), 1):
+            d  = tc - yc
+            dc = C["danger"] if d > 0 else C["ok"] if d < 0 else "#94A3B8"
+            dt = f"▲{d:+d}" if d > 0 else f"▼{d}" if d < 0 else "─"
+            bg = "#FFFFFF" if ri % 2 == 0 else "#F8FAFC"
+            rows += (
+                f'<tr style="background:{bg};">'
+                f'<td style="padding:4px 6px;font-weight:700;color:#1E40AF;">{ri}위</td>'
+                f'<td style="padding:4px 5px;color:#0F172A;font-weight:500;">{nm}</td>'
+                f'<td style="padding:4px 6px;text-align:right;color:{_COL_T};font-family:Consolas,monospace;font-weight:700;">{tc}</td>'
+                f'<td style="padding:4px 6px;text-align:right;color:{_COL_Y};font-family:Consolas,monospace;">{yc}</td>'
+                f'<td style="padding:4px 6px;text-align:right;color:{dc};font-weight:700;">{dt}</td></tr>'
+            )
+        st.markdown(
+            f'<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;border-top:1px solid #F1F5F9;">'
+            f'<tr style="background:#F8FAFC;">'
+            f'<th style="padding:5px 6px;color:#64748B;font-size:10px;width:30px;">#</th>'
+            f'<th style="padding:5px 6px;color:#64748B;font-size:10px;text-align:left;">주상병명</th>'
+            f'<th style="padding:5px 6px;color:{_COL_T};font-size:10px;text-align:right;width:34px;">금일</th>'
+            f'<th style="padding:5px 6px;color:{_COL_Y};font-size:10px;text-align:right;width:34px;">전일</th>'
+            f'<th style="padding:5px 6px;color:#64748B;font-size:10px;text-align:right;width:38px;">증감</th></tr>'
+            f'{rows}</table>',
+            unsafe_allow_html=True,
+        )
+
+    elif chart_type == "grouped":
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=top_dx, y=y_vals, name="전일",
+            marker=dict(color=_COL_Y, line=dict(color="rgba(0,0,0,0)")),
+            hovertemplate="전일: %{y}명<extra></extra>"))
+        fig.add_trace(go.Bar(x=top_dx, y=t_vals, name="금일",
+            marker=dict(color=_COL_T, line=dict(color="rgba(0,0,0,0)")),
+            hovertemplate="금일: %{y}명<extra></extra>"))
+        fig.update_layout(
+            height=260, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            barmode="group", showlegend=True,
+            legend=dict(orientation="h", y=-0.2, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(**_AX, tickangle=-30, tickfont=dict(size=9)),
+            yaxis=dict(**_AX, title=dict(text="입원 환자 수 (명)", font=dict(size=10))),
+            margin=dict(l=0, r=0, t=8, b=60),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dx_grouped")
+
+    elif chart_type == "bar_h":
+        deltas      = [t - y for t, y in zip(t_vals, y_vals)]
+        delta_colors = ["#EF4444" if d > 0 else "#3B82F6" if d < 0 else "#94A3B8" for d in deltas]
+        anns = [
+            dict(x=max(tv, yv) + 0.5, y=dx,
+                 text=f"{'▲' if d > 0 else '▼' if d < 0 else '─'}{abs(d)}",
+                 showarrow=False, font=dict(size=9, color=c), xanchor="left")
+            for dx, tv, yv, d, c in zip(top_dx, t_vals, y_vals, deltas, delta_colors)
+        ]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=t_vals, y=top_dx, orientation="h", name="금일",
+            marker=dict(color=_COL_T, opacity=0.9, line=dict(color="rgba(0,0,0,0)")),
+            hovertemplate="금일: %{x}명<extra></extra>"))
+        fig.add_trace(go.Bar(x=y_vals, y=top_dx, orientation="h", name="전일",
+            marker=dict(color=_COL_Y, opacity=0.6, line=dict(color="rgba(0,0,0,0)")),
+            hovertemplate="전일: %{x}명<extra></extra>"))
+        fig.update_layout(
+            height=max(200, len(top_dx) * 36),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12),
+            barmode="overlay", showlegend=True,
+            legend=dict(orientation="h", y=-0.15, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+            yaxis=dict(**_AX, autorange="reversed"),
+            xaxis=dict(**_AX, range=[0, x_max],
+                       title=dict(text="입원 환자 수 (명)", font=dict(size=10))),
+            annotations=anns,
+            margin=dict(l=0, r=50, t=8, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True, key="dx_bar_h")
