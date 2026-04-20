@@ -1,7 +1,7 @@
 # 좋은문화병원 AI 가이드봇 — 설치·배포·운영 매뉴얼
 
-> 작성일: 2026-04-20  
-> 적용 버전: Guidbot v9.x  
+> 작성일: 2026-04-20
+> 적용 버전: Guidbot v9.x
 > 담당: 개발 PC 192.1.1.234 → 운영 PC 192.1.1.231
 
 ---
@@ -35,11 +35,11 @@
 
 ### 구동 앱 3개
 
-| 앱 | 포트 | 진입점 파일 | 내부 접속 | 외부 접속 |
-|---|---|---|---|---|
+| 앱            | 포트 | 진입점 파일          | 내부 접속             | 외부 접속               |
+| ------------- | ---- | -------------------- | --------------------- | ----------------------- |
 | 병동 대시보드 | 8501 | `dashboard_app.py` | http://localhost:8501 | http://192.1.1.231:8501 |
-| AI 규정 챗봇 | 8502 | `main.py` | http://localhost:8502 | http://192.1.1.231:8502 |
-| 원무 대시보드 | 8503 | `finance_app.py` | http://localhost:8503 | http://192.1.1.231:8503 |
+| AI 규정 챗봇  | 8502 | `main.py`          | http://localhost:8502 | http://192.1.1.231:8502 |
+| 원무 대시보드 | 8503 | `finance_app.py`   | http://localhost:8503 | http://192.1.1.231:8503 |
 
 ### 디렉토리 구조 (운영 PC 기준)
 
@@ -82,9 +82,11 @@ https://www.python.org/downloads/
 ```
 
 설치 확인:
+
 ```cmd
 python --version
 ```
+
 `Python 3.11.x` 출력이면 정상.
 
 #### Git for Windows
@@ -95,9 +97,11 @@ https://git-scm.com/download/win
 ```
 
 설치 확인:
+
 ```cmd
 git --version
 ```
+
 `git version 2.x.x` 출력이면 정상.
 
 #### Oracle Instant Client (Oracle DB 사용 시만)
@@ -121,6 +125,7 @@ netsh advfirewall firewall add rule name="GuidBot-8503" protocol=TCP dir=in loca
 ```
 
 확인:
+
 ```cmd
 netsh advfirewall firewall show rule name="GuidBot-8501"
 ```
@@ -131,9 +136,11 @@ netsh advfirewall firewall show rule name="GuidBot-8501"
 
 ### STEP 1 — GitHub에서 소스 클론
 
+https://github.com/p20043427-ux/MH_DASHBOARD
+
 ```cmd
 cd C:\
-git clone https://github.com/[계정명]/[저장소명].git MH
+git clone https://github.com/[계정명]/[저장소명].git MH 
 cd C:\MH\guidbot
 ```
 
@@ -157,6 +164,7 @@ pip install -r requirements.txt
 > 최초 설치 시 약 10~20분 소요 (PyTorch 포함 약 4GB 다운로드)
 
 GPU 없는 일반 PC는 그대로 진행. GPU 사용 시 추가:
+
 ```cmd
 pip uninstall faiss-cpu -y
 pip install faiss-gpu
@@ -224,11 +232,13 @@ start.bat
 ```
 
 브라우저에서 접속 확인:
+
 - http://localhost:8501 → 병동 대시보드
 - http://localhost:8502 → AI 챗봇
 - http://localhost:8503 → 원무 대시보드
 
 다른 PC에서 접속 확인:
+
 - http://192.1.1.231:8501 ~ 8503
 
 ---
@@ -321,8 +331,9 @@ start.bat
 
 ### 서비스 종료
 
-`start.bat`을 실행한 CMD 창에서 **Ctrl+C** 또는 창 닫기.  
+`start.bat`을 실행한 CMD 창에서 **Ctrl+C** 또는 창 닫기.
 강제 종료 시:
+
 ```cmd
 taskkill /IM python.exe /F
 ```
@@ -342,7 +353,7 @@ C:\MH\guidbot\logs\
   └── finance_20260420.log      ← 원무 대시보드 로그
 ```
 
-오류 발생 시 해당 날짜 로그 파일을 메모장으로 열어 확인.  
+오류 발생 시 해당 날짜 로그 파일을 메모장으로 열어 확인.
 관리자 대시보드 접속 → 로그 뷰어 탭에서도 확인 가능.
 
 ### 정기 점검 항목 (월 1회 권장)
@@ -359,17 +370,17 @@ C:\MH\guidbot\logs\
 
 ## 6. 트러블슈팅
 
-| 증상 | 원인 | 해결 방법 |
-|---|---|---|
-| `ModuleNotFoundError` | 패키지 미설치 | `venv\Scripts\activate` 후 `pip install -r requirements.txt` |
-| 포트 이미 사용 중 오류 | 이전 프로세스 잔존 | `taskkill /IM python.exe /F` 후 재시작 |
-| Oracle 연결 실패 | Instant Client 미설치 또는 방화벽 | Client 설치 확인, DB 서버 방화벽 1521 포트 개방 |
-| AI 응답 없음 / API 오류 | Gemini API 키 만료 또는 할당량 초과 | `.env`의 `GOOGLE_API_KEY` 재발급·수정 |
-| `'xxx' key error` | 구버전 코드와 신버전 충돌 | `git pull` 후 `pip install -r requirements.txt` 재실행 |
-| `git pull` 충돌 | 운영 PC에서 파일 직접 수정됨 | `git checkout -- .` 실행 후 `git pull` 재시도 |
-| 브라우저에서 접속 불가 | 방화벽 미개방 | 섹션 2-2 방화벽 규칙 추가 확인 |
-| 앱 느림 / 메모리 부족 | 모델 캐시 미적재 | `python warmup.py` 실행 후 재시작 |
-| 챗봇만 응답 없음 | RAG 인덱스 없음 | 관리자 패널 → 문서 인덱스 재구축 실행 |
+| 증상                    | 원인                                | 해결 방법                                                        |
+| ----------------------- | ----------------------------------- | ---------------------------------------------------------------- |
+| `ModuleNotFoundError` | 패키지 미설치                       | `venv\Scripts\activate` 후 `pip install -r requirements.txt` |
+| 포트 이미 사용 중 오류  | 이전 프로세스 잔존                  | `taskkill /IM python.exe /F` 후 재시작                         |
+| Oracle 연결 실패        | Instant Client 미설치 또는 방화벽   | Client 설치 확인, DB 서버 방화벽 1521 포트 개방                  |
+| AI 응답 없음 / API 오류 | Gemini API 키 만료 또는 할당량 초과 | `.env`의 `GOOGLE_API_KEY` 재발급·수정                       |
+| `'xxx' key error`     | 구버전 코드와 신버전 충돌           | `git pull` 후 `pip install -r requirements.txt` 재실행       |
+| `git pull` 충돌       | 운영 PC에서 파일 직접 수정됨        | `git checkout -- .` 실행 후 `git pull` 재시도                |
+| 브라우저에서 접속 불가  | 방화벽 미개방                       | 섹션 2-2 방화벽 규칙 추가 확인                                   |
+| 앱 느림 / 메모리 부족   | 모델 캐시 미적재                    | `python warmup.py` 실행 후 재시작                              |
+| 챗봇만 응답 없음        | RAG 인덱스 없음                     | 관리자 패널 → 문서 인덱스 재구축 실행                           |
 
 ### git pull 충돌 발생 시 전체 초기화
 
@@ -388,12 +399,12 @@ git pull
 
 ## 7. 담당 역할 정리
 
-| 구분 | PC | 작업 내용 |
-|---|---|---|
-| 개발·코드 관리 | 192.1.1.234 | 소스 수정 → GitHub Desktop으로 Push |
-| 서비스 운영 | 192.1.1.231 | `deploy.bat` 실행으로 최신본 반영 |
-| `.env` 보안 | 운영 PC 단독 | API키·DB패스워드 — Git에 절대 올리지 않음 |
-| Oracle 연결 | 운영 PC | DB_HOST·DB_PASSWORD 설정 운영팀 관리 |
+| 구분            | PC           | 작업 내용                                   |
+| --------------- | ------------ | ------------------------------------------- |
+| 개발·코드 관리 | 192.1.1.234  | 소스 수정 → GitHub Desktop으로 Push        |
+| 서비스 운영     | 192.1.1.231  | `deploy.bat` 실행으로 최신본 반영         |
+| `.env` 보안   | 운영 PC 단독 | API키·DB패스워드 — Git에 절대 올리지 않음 |
+| Oracle 연결     | 운영 PC      | DB_HOST·DB_PASSWORD 설정 운영팀 관리       |
 
 ### 한 줄 요약
 
@@ -406,28 +417,28 @@ git pull
 
 ## 부록 A — 환경변수 전체 목록
 
-| 변수명 | 필수 | 기본값 | 설명 |
-|---|---|---|---|
-| `GOOGLE_API_KEY` | ✅ | — | Gemini API 기본 키 |
-| `GOOGLE_API_KEY_2` ~ `4` | 권장 | — | 할당량 초과 시 자동 전환 예비 키 |
-| `CHAT_MODEL` | — | `models/gemini-2.5-flash` | LLM 모델 선택 |
-| `ADMIN_PASSWORD` | ✅ | `moonhwa` | 관리자 패널 비밀번호 (운영 시 변경 필수) |
-| `DB_ENABLED` | — | `false` | Oracle/DB 연결 활성화 |
-| `DB_TYPE` | DB 시 ✅ | — | `oracle` / `mysql` / `mssql` / `postgresql` |
-| `DB_HOST` | DB 시 ✅ | — | DB 서버 IP 또는 호스트명 |
-| `DB_PORT` | — | `1521` | DB 포트 (Oracle 기본 1521) |
-| `DB_NAME` | DB 시 ✅ | — | DB 이름 (Oracle: SID 또는 서비스명) |
-| `DB_USER` | DB 시 ✅ | — | DB 계정 (SELECT 전용 권장) |
-| `DB_PASSWORD` | DB 시 ✅ | — | DB 비밀번호 |
-| `MONITORING_ENABLED` | — | `true` | 성능 모니터링 수집 ON/OFF |
-| `APP_TITLE` | — | `좋은문화병원 AI` | 브라우저 탭 제목 |
+| 변수명                       | 필수     | 기본값                      | 설명                                                |
+| ---------------------------- | -------- | --------------------------- | --------------------------------------------------- |
+| `GOOGLE_API_KEY`           | ✅       | —                          | Gemini API 기본 키                                  |
+| `GOOGLE_API_KEY_2` ~ `4` | 권장     | —                          | 할당량 초과 시 자동 전환 예비 키                    |
+| `CHAT_MODEL`               | —       | `models/gemini-2.5-flash` | LLM 모델 선택                                       |
+| `ADMIN_PASSWORD`           | ✅       | `moonhwa`                 | 관리자 패널 비밀번호 (운영 시 변경 필수)            |
+| `DB_ENABLED`               | —       | `false`                   | Oracle/DB 연결 활성화                               |
+| `DB_TYPE`                  | DB 시 ✅ | —                          | `oracle` / `mysql` / `mssql` / `postgresql` |
+| `DB_HOST`                  | DB 시 ✅ | —                          | DB 서버 IP 또는 호스트명                            |
+| `DB_PORT`                  | —       | `1521`                    | DB 포트 (Oracle 기본 1521)                          |
+| `DB_NAME`                  | DB 시 ✅ | —                          | DB 이름 (Oracle: SID 또는 서비스명)                 |
+| `DB_USER`                  | DB 시 ✅ | —                          | DB 계정 (SELECT 전용 권장)                          |
+| `DB_PASSWORD`              | DB 시 ✅ | —                          | DB 비밀번호                                         |
+| `MONITORING_ENABLED`       | —       | `true`                    | 성능 모니터링 수집 ON/OFF                           |
+| `APP_TITLE`                | —       | `좋은문화병원 AI`         | 브라우저 탭 제목                                    |
 
 ---
 
 ## 부록 B — 접속 URL 전체 목록
 
-| 서비스 | 내부 (운영 PC 직접) | 병원 내부망 |
-|---|---|---|
+| 서비스        | 내부 (운영 PC 직접)   | 병원 내부망             |
+| ------------- | --------------------- | ----------------------- |
 | 병동 대시보드 | http://localhost:8501 | http://192.1.1.231:8501 |
-| AI 규정 챗봇 | http://localhost:8502 | http://192.1.1.231:8502 |
+| AI 규정 챗봇  | http://localhost:8502 | http://192.1.1.231:8502 |
 | 원무 대시보드 | http://localhost:8503 | http://192.1.1.231:8503 |
