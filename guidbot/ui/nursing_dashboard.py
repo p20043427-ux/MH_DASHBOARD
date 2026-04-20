@@ -54,12 +54,18 @@ if _PROJECT_ROOT not in sys.path:
 try:
     from utils.logger import get_logger as _get_logger
     from config.settings import settings as _settings
-
     logger = _get_logger(__name__, log_dir=_settings.log_dir)
 except Exception:
     import logging as _logging
-
     logger = _logging.getLogger(__name__)
+    if not logger.handlers:
+        _fh = _logging.StreamHandler()
+        _fh.setFormatter(_logging.Formatter(
+            "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(_fh)
+        logger.setLevel(_logging.DEBUG)
 
 # ── Oracle VIEW 쿼리 ─────────────────────────────────────────────────
 NURSING_QUERIES: Dict[str, str] = {

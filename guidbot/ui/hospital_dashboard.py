@@ -110,6 +110,14 @@ try:
 except Exception:
     import logging as _logging
     logger = _logging.getLogger(__name__)
+    if not logger.handlers:
+        _fh = _logging.StreamHandler()
+        _fh.setFormatter(_logging.Formatter(
+            "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(_fh)
+        logger.setLevel(_logging.DEBUG)
 
 from ui.dashboard_data import safe_int as _safe_int, safe_float as _safe_float, norm_sex as _norm_sex
 from ui.dashboard_ui import (
@@ -1361,8 +1369,8 @@ def _render_ward_llm_chat(
                             card_ns=f"wh_{_hi}",
                             pdf_bytes=_bh,
                         )
-                except Exception:
-                    pass
+                except Exception as _pdf_e:
+                    logger.debug(f"[WardChat] PDF 첨부 렌더 실패 (무시): {_pdf_e}")
 
     # ── 빠른 질문 버튼 클릭 처리 ─────────────────────────────────────
     _quick_pending = st.session_state.pop("ward_chat_quick_input", None)
@@ -1723,9 +1731,10 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             oracle_ok, _ = test_connection()
             # 성공: 5분 후 재체크 / 실패: 60초 후 재체크
             _expire = _now_ts + (300 if oracle_ok else 60)
-        except Exception:
+        except Exception as _oc_e:
             oracle_ok = False
             _expire = _now_ts + 60
+            logger.warning(f"Oracle 연결 확인 예외: {_oc_e}")
         st.session_state[_oracle_check_key]  = oracle_ok
         st.session_state[_oracle_expire_key] = _expire
     else:
@@ -1744,7 +1753,8 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             _pre_bed   = _qc("ward_bed_detail")
             _pre_wards = ["전체"] + sorted({r.get("병동명", "") for r in _pre_bed if r.get("병동명", "") and r.get("병동명", "") != "전체"})
             st.session_state["ward_name_list"] = _pre_wards
-        except Exception:
+        except Exception as _wl_e:
+            logger.warning(f"병동 목록 선제 로드 실패: {_wl_e}")
             st.session_state["ward_name_list"] = ["전체"]
 
     _o_color = "#16A34A" if oracle_ok else "#F59E0B"

@@ -62,6 +62,14 @@ try:
 except Exception:
     import logging as _l
     logger = _l.getLogger(__name__)
+    if not logger.handlers:
+        _fh = _l.StreamHandler()
+        _fh.setFormatter(_l.Formatter(
+            "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(_fh)
+        logger.setLevel(_l.DEBUG)
 
 # ════════════════════════════════════════════════════════════════════
 # Oracle 쿼리 딕셔너리 — v2.3
@@ -2074,28 +2082,137 @@ def _render_folium_map(
 
 def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> None:
     """
-    지역별 환자 통계 탭 v3.
-
-    [데이터 소스]
-      · region_data    : V_REGION_DEPT_DAILY  (기준일자 YYYYMMDD, 30일 고정) — 일별 트렌드/히트맵
-      · region_monthly : V_REGION_DEPT_MONTHLY (기준월 YYYYMM, 최근 12개월)  — 월별 비교 분석
+    지역별 환자 통계 탭 v4.
+    데이터는 온디맨드 로드 (세션 캐시) — 페이지 로드 시 쿼리 미실행.
     """
     import datetime as _dt_r
     from collections import defaultdict as _ddr
+
+    # ── rgba 헬퍼 (Plotly는 8자리 hex 미지원 → rgba() 사용) ──────────
+    def _c(hex_color: str, a: float = 1.0) -> str:
+        h = hex_color.lstrip("#")
+        r2, g2, b2 = int(h[:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r2},{g2},{b2},{a:.2f})" if a < 1.0 else hex_color
+
+    # ── 온디맨드 데이터 로드 (월 지정 조회) ────────────────────────────
+    _SESS_D  = "reg_tab_daily"
+    _SESS_M  = "reg_tab_monthly"
+    _SESS_YM = "reg_tab_loaded_ym"
+
+    # 최근 24개월 목록 (YYYYMM, 최신순)
+    _ym_opts: List[str] = []
+    _td2 = _dt_r.date.today()
+    for _i in range(24):
+        _ab = _td2.year * 12 + (_td2.month - 1) - _i
+        _ym_opts.append(f"{_ab // 12}{_ab % 12 + 1:02d}")
+
+    # ── 통합 컨트롤 행 (조회월 · 비교월 · 분석기간) ────────────────────
+    _PERIOD_MAP = {"한달": 31, "2주일": 14, "1주일": 7}
+    _cmp_opts   = ["없음"] + _ym_opts[1:]
+
+    _rc1, _rc2, _rc3, _rc4, _rc5, _rc_sp = st.columns([2, 2, 2, 1, 0.8, 2], gap="small")
+    with _rc1:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">📅 조회 월</div>',
+            unsafe_allow_html=True,
+        )
+        _sel_ym = st.selectbox(
+            "조회 월", options=_ym_opts,
+            format_func=lambda x: f"{x[:4]}-{x[4:]}",
+            key="reg_ym_sel", label_visibility="collapsed",
+        )
+    with _rc2:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
+            f'📊 비교 월 <span style="opacity:.6;">(선택)</span></div>',
+            unsafe_allow_html=True,
+        )
+        _cmp_raw = st.selectbox(
+            "비교 월", options=_cmp_opts,
+            format_func=lambda x: x if x == "없음" else f"{x[:4]}-{x[4:]}",
+            key="reg_cmp_sel", label_visibility="collapsed",
+        )
+        _cmp_ym = None if _cmp_raw == "없음" else _cmp_raw
+    with _rc3:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">⏱ 분석 기간</div>',
+            unsafe_allow_html=True,
+        )
+        _period_label = st.selectbox(
+            "분석 기간", options=list(_PERIOD_MAP.keys()),
+            key="reg_period_sel", label_visibility="collapsed",
+        )
+    with _rc4:
+        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
+        _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
+    _loaded_ym = st.session_state.get(_SESS_YM)
+    with _rc5:
+        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
+        if _loaded_ym and st.button("🔄", key="reg_refresh_btn", help="다시 조회"):
+            for _k in (_SESS_D, _SESS_M, _SESS_YM):
+                st.session_state.pop(_k, None)
+            st.rerun()
+
+    # ── 이전 달 계산 (일별 비교용)
+    def _prev_ym_of(ym: str) -> str:
+        _y, _m = int(ym[:4]), int(ym[4:])
+        _m -= 1
+        if _m == 0:
+            _m, _y = 12, _y - 1
+        return f"{_y}{_m:02d}"
+    _prev_ym = _prev_ym_of(_sel_ym)
+
+    # ── 조회 실행 ─────────────────────────────────────────────────────
+    if _do_load:
+        with st.spinner(f"{_sel_ym[:4]}-{_sel_ym[4:]} 데이터 조회 중…"):
+            try:
+                from db.oracle_client import execute_query as _eq
+                _rd = _eq(
+                    "SELECT 기준일자, 진료과명, 지역, 환자수 "
+                    "FROM JAIN_WM.V_REGION_DEPT_DAILY "
+                    f"WHERE 기준일자 LIKE '{_sel_ym}%' "
+                    f"   OR 기준일자 LIKE '{_prev_ym}%' "
+                    "ORDER BY 기준일자 DESC, 진료과명, 환자수 DESC",
+                    max_rows=100000,
+                ) or []
+                _rm = _eq(
+                    "SELECT 기준월, 진료과명, 지역, 환자수 "
+                    "FROM JAIN_WM.V_REGION_DEPT_MONTHLY "
+                    "ORDER BY 기준월 DESC, 진료과명, 환자수 DESC",
+                    max_rows=100000,
+                ) or []
+                st.session_state[_SESS_D]  = _rd
+                st.session_state[_SESS_M]  = _rm
+                st.session_state[_SESS_YM] = _sel_ym
+                st.rerun()
+            except Exception as _e:
+                st.error(f"조회 오류: {_e}")
+        return
+
+    # 로드 안된 상태 → 안내 후 종료
+    if not _loaded_ym or _loaded_ym != _sel_ym:
+        if _loaded_ym and _loaded_ym != _sel_ym:
+            st.caption(
+                f"⚠️ 월이 변경됐습니다 — 🔍 조회를 눌러 "
+                f"{_sel_ym[:4]}-{_sel_ym[4:]} 데이터를 불러오세요."
+            )
+        return
+
+    # 세션 캐시에서 데이터 가져오기
+    region_data    = st.session_state.get(_SESS_D, []) or []
+    region_monthly = st.session_state.get(_SESS_M, []) or []
  
-    region_data = region_data or []
- 
-    # ── 배너
-    _gap()
+    # ── 배너 (조회된 월 표시)
+    _loaded_label = f"{_loaded_ym[:4]}-{_loaded_ym[4:]}" if _loaded_ym else ""
     st.markdown(
         f'<div style="background:linear-gradient(90deg,{C["teal"]}15,{C["green"]}10);'
         f'border-left:4px solid {C["teal"]};border-radius:0 8px 8px 0;'
-        f'padding:10px 16px;margin-bottom:6px;display:flex;align-items:center;gap:10px;">'
-        f'<span style="font-size:18px;">📍</span>'
-        f'<div><div style="font-size:13px;font-weight:700;color:{C["teal"]};">'
-        f'지역별 환자 통계 · 경영 분석</div>'
+        f'padding:8px 16px;margin:4px 0 6px;display:flex;align-items:center;gap:10px;">'
+        f'<span style="font-size:16px;">📍</span>'
+        f'<div style="flex:1;"><div style="font-size:12px;font-weight:700;color:{C["teal"]};">'
+        f'지역별 환자 통계 · {_loaded_label}</div>'
         f'<div style="font-size:11px;color:{C["t3"]};margin-top:1px;">'
-        f'진료과별 환자 주소지 분포 · 일별 지역 유입 추이 · AI 경영 인사이트</div>'
+        f'진료과별 환자 주소지 분포 · 일별 유입 추이 · AI 경영 인사이트</div>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
@@ -2125,41 +2242,29 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             _dept_total[_dp] += _cnt
     _all_depts = sorted(_dept_total.keys(), key=lambda d: -_dept_total[d])
  
-    # ── 오늘 날짜 기준
-    _today      = _dt_r.date.today()
-    _today_str  = _today.strftime("%Y%m%d")
+    # ── 오늘 날짜
+    _today = _dt_r.date.today()
  
     # ──────────────────────────────────────────────
-    # [컨트롤] 진료과 선택(필수) + 기간 선택
+    # 진료과 선택 (기간·비교월은 상단 통합 컨트롤 사용)
     # ──────────────────────────────────────────────
-    _PERIOD_MAP = {"최근 1주일": 7, "최근 2주일": 14, "최근 한달": 30}
- 
-    _c1, _c2, _c_sp = st.columns([3, 3, 6], gap="small")
+    _n_days     = _PERIOD_MAP[_period_label]
+    _date_start = f"{_sel_ym}01"
+    _date_end   = f"{_sel_ym}{min(_n_days, 31):02d}"
+
+    _c1, _c_sp = st.columns([3, 9], gap="small")
     with _c1:
         st.markdown(
             f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};padding-bottom:2px;">'
             f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
             unsafe_allow_html=True,
         )
-        # placeholder 옵션으로 미선택 상태 구현
         _dept_options = ["── 진료과를 선택하세요 ──"] + _all_depts
         _sel_dept = st.selectbox(
             "진료과", options=_dept_options, index=0,
             key="reg_dept_v3", label_visibility="collapsed",
             help="분석할 진료과를 선택하세요",
         )
-    with _c2:
-        st.markdown(
-            f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};padding-bottom:2px;">'
-            f'📅 분석 기간</div>',
-            unsafe_allow_html=True,
-        )
-        _period_label = st.selectbox(
-            "기간", options=list(_PERIOD_MAP.keys()), index=0,
-            key="reg_period_v3", label_visibility="collapsed",
-        )
-    _n_days    = _PERIOD_MAP[_period_label]
-    _cutoff    = (_today - _dt_r.timedelta(days=_n_days)).strftime("%Y%m%d")
  
     # ── 미선택 상태 → 진료과 목록 안내
     _is_dept_selected = _sel_dept != "── 진료과를 선택하세요 ──"
@@ -2172,7 +2277,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             f'<div style="font-size:14px;font-weight:700;color:{C["blue"]};margin-bottom:4px;">'
             f'👆 위에서 진료과를 선택하면 분석이 시작됩니다</div>'
             f'<div style="font-size:11px;color:{C["t3"]};">'
-            f'최근 30일 기준 / 쿼리 부하 방지를 위해 개별 진료과 조회만 지원</div>'
+            f'{_sel_ym[:4]}-{_sel_ym[4:]} {_period_label} 기준 / 진료과를 선택하면 상세 분석이 시작됩니다</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -2222,12 +2327,11 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
     # 이하: 진료과 선택 완료 상태
     # ════════════════════════════════════════════════════════════════
  
-    # ── 기간 및 진료과 필터
+    # ── 기간 및 진료과 필터 (조회월 기준)
     _filtered_data = [
         _r for _r in region_data
         if _r.get("진료과명", "") == _sel_dept
-        and str(_r.get("기준일자", "")) >= _cutoff
-        and str(_r.get("기준일자", "")) <= _today_str
+        and _date_start <= str(_r.get("기준일자", "")) <= _date_end
     ]
  
     # ── 지역 집계 (지역미상 분리)
@@ -2274,8 +2378,8 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         unsafe_allow_html=True,
     )
     _kpi_card(_kk4, "📅", "분석 기간",
-              _period_label.replace("최근 ",""), "",
-              f"{_cutoff[:4]}.{_cutoff[4:6]}.{_cutoff[6:]} ~ 오늘", C["indigo"])
+              _period_label, "",
+              f"{_sel_ym[:4]}-{_sel_ym[4:]}  {_date_start[6:]}일~{_date_end[6:]}일", C["indigo"])
     _gap()
  
     # ── 지역미상 경고
@@ -2440,17 +2544,14 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
     _sec_hd(f"🏆 {_sel_dept} — 상위 지역 TOP 5",
             f"{_period_label} · 전기간 대비 증감", C["teal"])
  
-    # 비교 기간 (직전 동일 기간)
-    _prev_cutoff = (
-        _today - _dt_r.timedelta(days=_n_days * 2)
-    ).strftime("%Y%m%d")
-    _prev_end = _cutoff  # = 이번 기간 시작 = 직전 기간 끝
- 
+    # 비교 기간 (전달 동일 기간)
+    _prev_start_d = f"{_prev_ym}01"
+    _prev_end_d   = f"{_prev_ym}{_date_end[6:]}"   # 전달의 동일 일자까지
+
     _prev_data = [
         _r for _r in region_data
         if _r.get("진료과명", "") == _sel_dept
-        and str(_r.get("기준일자", "")) >= _prev_cutoff
-        and str(_r.get("기준일자", "")) < _cutoff
+        and _prev_start_d <= str(_r.get("기준일자", "")) <= _prev_end_d
     ]
     _prev_region: dict = _ddr(int)
     for _r in _prev_data:
@@ -2614,84 +2715,348 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         )
     _gap()
 
-    # ══════════════════════════════════════════════════════════════════
-    # [섹션6] 월별 환자 추이 (V_REGION_DEPT_DAILY 1년치 → YYYYMM 집계)
-    # ══════════════════════════════════════════════════════════════════
-    # 선택 진료과의 전체 1년 데이터를 월별로 집계 (기간 필터 무관)
-    _yr_m_region: dict = _ddr(lambda: _ddr(int))   # YYYYMM → {지역: 환자수}
-    _yr_m_unknown: dict = _ddr(int)                # YYYYMM → 지역미상 환자수
-    for _r2 in region_data:
-        if _r2.get("진료과명", "") != _sel_dept:
-            continue
-        _day2 = str(_r2.get("기준일자", ""))
-        _ym2  = _day2[:6] if len(_day2) >= 6 else ""
-        _rg2  = _r2.get("지역", "")
-        _cnt2 = int(_r2.get("환자수", 0) or 0)
-        if not _ym2:
-            continue
-        if _rg2 in ("지역미상", "", None):
-            _yr_m_unknown[_ym2] += _cnt2
-        else:
-            _yr_m_region[_ym2][_rg2] += _cnt2
+    # ══════════════════════════════════════════════════════════════════════
+    # [섹션6] 지정월 전년도 대비 지역 비교 트리맵 (V_REGION_DEPT_MONTHLY)
+    # ══════════════════════════════════════════════════════════════════════
+    _rm = region_monthly or []
+    _rm_dept = [r for r in _rm if r.get("진료과명", "") == _sel_dept]
 
-    _yr_months  = sorted(_yr_m_region.keys())
-    _yr_m_total = {ym: sum(v.values()) for ym, v in _yr_m_region.items()}
+    # YYYYMM → {지역: 환자수}
+    _mo_lookup: dict = {}
+    for _r5 in _rm_dept:
+        _ym5 = str(_r5.get("기준월", ""))
+        _rg5 = _r5.get("지역", "")
+        _cnt5 = int(_r5.get("환자수", 0) or 0)
+        if not _ym5 or not _rg5 or _rg5 == "지역미상":
+            continue
+        if _ym5 not in _mo_lookup:
+            _mo_lookup[_ym5] = {}
+        _mo_lookup[_ym5][_rg5] = _mo_lookup[_ym5].get(_rg5, 0) + _cnt5
 
-    if _yr_months:
+    _mo_months = sorted(_mo_lookup.keys())
+
+    # 전년도 대비 가능한 달 (현재 월과 -100 모두 있는 달)
+    _today_ym_cap = _dt_r.date.today().strftime("%Y%m")
+    _yoy_pairs = [
+        (ym, str(int(ym) - 100))
+        for ym in _mo_months
+        if str(int(ym) - 100) in _mo_lookup
+        and ym <= _today_ym_cap
+    ]
+
+    if _yoy_pairs:
+        _gap()
+        st.markdown(
+            f'<div class="wd-card" style="border-top:3px solid {C["indigo"]};">',
+            unsafe_allow_html=True,
+        )
+        _sec_hd(
+            f"📊 {_sel_dept} — 지정월 전년도 대비 지역 비교",
+            "V_REGION_DEPT_MONTHLY · DISTINCT 환자수 기준 · 부산·경남 상세",
+            C["indigo"],
+        )
+
+        # 월 선택
+        _yoy_opts = [p[0] for p in _yoy_pairs]
+        _yoy_cur = st.selectbox(
+            "비교 기준월",
+            options=_yoy_opts,
+            index=len(_yoy_opts) - 1,
+            format_func=lambda ym: (
+                f"{ym[:4]}년 {ym[4:]}월  ←→  "
+                f"{int(ym[:4])-1}년 {ym[4:]}월 (전년 동월)"
+            ),
+            key=f"reg_yoy_mo_{_sel_dept}",
+            label_visibility="collapsed",
+        )
+        _yoy_prv = str(int(_yoy_cur) - 100)
+
+        _cur_d = _mo_lookup.get(_yoy_cur, {})
+        _prv_d = _mo_lookup.get(_yoy_prv, {})
+        _all_rgs_y = sorted(set(list(_cur_d.keys()) + list(_prv_d.keys())))
+
+        def _yoy_color(pct):
+            if pct is None:
+                return "#CBD5E1"
+            elif pct >= 15:
+                return "#1D4ED8"
+            elif pct >= 5:
+                return "#93C5FD"
+            elif pct >= -5:
+                return "#E2E8F0"
+            elif pct >= -15:
+                return "#FCA5A5"
+            else:
+                return "#DC2626"
+
+        # 시도 레벨 집계
+        _sido_agg: dict = {}
+        for _rg6 in _all_rgs_y:
+            _sido = _rg6.split(" ")[0] if " " in _rg6 else _rg6
+            if _sido not in _sido_agg:
+                _sido_agg[_sido] = {"cur": 0, "prv": 0}
+            _sido_agg[_sido]["cur"] += _cur_d.get(_rg6, 0)
+            _sido_agg[_sido]["prv"] += _prv_d.get(_rg6, 0)
+
+        # 전국 YoY KPI
+        _tot_cur_y = sum(v["cur"] for v in _sido_agg.values())
+        _tot_prv_y = sum(v["prv"] for v in _sido_agg.values())
+        _tot_diff_y = _tot_cur_y - _tot_prv_y
+        _tot_pct_y = round(_tot_diff_y / max(_tot_prv_y, 1) * 100, 1)
+        _yoy_cur_label = f"{_yoy_cur[:4]}년 {_yoy_cur[4:]}월"
+        _yoy_prv_label = f"{_yoy_prv[:4]}년 {_yoy_prv[4:]}월"
+
+        _ky1, _ky2, _ky3 = st.columns(3, gap="small")
+        _kpi_card(_ky1, "📅", _yoy_cur_label, f"{_tot_cur_y:,}", "명",
+                  "기준월 전체 환자수", C["indigo"])
+        _kpi_card(_ky2, "📅", _yoy_prv_label, f"{_tot_prv_y:,}", "명",
+                  "전년 동월 환자수", C["t2"])
+        _ky3.markdown(
+            f'<div class="fn-kpi" style="border-top:3px solid '
+            f'{C["red"] if _tot_diff_y >= 0 else C["blue"]};">'
+            f'<div class="fn-kpi-icon">{"📈" if _tot_diff_y >= 0 else "📉"}</div>'
+            f'<div class="fn-kpi-label">전년 대비</div>'
+            f'<div style="font-size:18px;font-weight:800;color:'
+            f'{C["red"] if _tot_diff_y >= 0 else C["blue"]};">'
+            f'{"▲" if _tot_diff_y > 0 else "▼"}&nbsp;{abs(_tot_diff_y):,}'
+            f'<span style="font-size:11px;color:{C["t3"]};">명</span></div>'
+            f'<div style="font-size:11px;font-weight:700;color:'
+            f'{C["red"] if _tot_diff_y >= 0 else C["blue"]};">'
+            f'{_tot_pct_y:+.1f}%</div></div>',
+            unsafe_allow_html=True,
+        )
+        _gap()
+
+        # ── 전국 시도 트리맵
+        if HAS_PLOTLY and _sido_agg:
+            _tm_labels = ["전국"]
+            _tm_parents = [""]
+            _tm_values = [_tot_cur_y]
+            _tm_colors = ["#F1F5F9"]
+            _tm_custom = [[None, _tot_cur_y, _tot_prv_y, "전국"]]
+
+            _sido_labels = {
+                "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
+                "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
+                "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기",
+                "강원특별자치도": "강원", "강원도": "강원", "충청북도": "충북",
+                "충청남도": "충남", "전라북도": "전북", "전라남도": "전남",
+                "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
+            }
+            for _sido, _sv in sorted(_sido_agg.items(),
+                                     key=lambda x: -x[1]["cur"]):
+                _sc = _sv["cur"]
+                _sp = _sv["prv"]
+                _spct = round((_sc - _sp) / max(_sp, 1) * 100, 1) if _sp > 0 else None
+                _lbl = _sido_labels.get(_sido, _sido)
+                _tm_labels.append(_lbl)
+                _tm_parents.append("전국")
+                _tm_values.append(_sc)
+                _tm_colors.append(_yoy_color(_spct))
+                _tm_custom.append([_spct, _sc, _sp, _sido])
+
+            _fig_tm = go.Figure(go.Treemap(
+                labels=_tm_labels,
+                parents=_tm_parents,
+                values=_tm_values,
+                marker=dict(colors=_tm_colors, line=dict(width=1.5, color="#fff")),
+                texttemplate=(
+                    "<b>%{label}</b><br>"
+                    "<span style='font-size:11px'>%{customdata[0]:+.1f}%</span>"
+                ),
+                customdata=_tm_custom,
+                hovertemplate=(
+                    "<b>%{customdata[3]}</b><br>"
+                    "전년 대비: <b>%{customdata[0]:+.1f}%</b><br>"
+                    f"{_yoy_cur_label}: %{{customdata[1]:,}}명<br>"
+                    f"{_yoy_prv_label}: %{{customdata[2]:,}}명"
+                    "<extra></extra>"
+                ),
+                textfont=dict(size=13),
+                pathbar=dict(visible=False),
+                root_color="#F8FAFC",
+            ))
+            _fig_tm.update_layout(
+                **_PLOTLY_LAYOUT, height=340,
+                margin=dict(l=0, r=0, t=8, b=0),
+            )
+            st.plotly_chart(_fig_tm, use_container_width=True,
+                            key=f"reg_yoy_tm_{_sel_dept}_{_yoy_cur}")
+
+            # ── 범례
+            _legend_items = [
+                ("#1D4ED8", "+15%↑ 강한 증가"),
+                ("#93C5FD", "+5~15%"),
+                ("#E2E8F0", "±5% 보합"),
+                ("#FCA5A5", "-5~-15%"),
+                ("#DC2626", "-15%↓ 강한 감소"),
+            ]
+            _leg_html = (
+                '<div style="display:flex;gap:14px;justify-content:center;'
+                'padding:6px 0 10px;flex-wrap:wrap;">'
+            )
+            for _lc, _lt in _legend_items:
+                _leg_html += (
+                    f'<div style="display:flex;align-items:center;gap:5px;">'
+                    f'<div style="width:14px;height:14px;border-radius:3px;'
+                    f'background:{_lc};"></div>'
+                    f'<span style="font-size:11px;color:{C["t2"]};">{_lt}</span>'
+                    f'</div>'
+                )
+            st.markdown(_leg_html + "</div>", unsafe_allow_html=True)
+
+        _gap()
+
+        # ── 부산 구별 + 경남 시군별 상세 YoY 바 차트
+        _yoy_row = []
+        for _rg6 in _all_rgs_y:
+            _c6 = _cur_d.get(_rg6, 0)
+            _p6 = _prv_d.get(_rg6, 0)
+            _pct6 = round((_c6 - _p6) / max(_p6, 1) * 100, 1) if _p6 > 0 else None
+            _yoy_row.append({"지역": _rg6, "cur": _c6, "prv": _p6, "pct": _pct6})
+
+        _busan_yoy = sorted(
+            [r for r in _yoy_row if r["지역"].startswith("부산")],
+            key=lambda x: -x["cur"],
+        )
+        _gynam_yoy = sorted(
+            [r for r in _yoy_row if r["지역"].startswith("경상남도")],
+            key=lambda x: -x["cur"],
+        )
+
+        def _detail_yoy_chart(rows, title, color_up, color_dn, chart_key):
+            if not rows or not HAS_PLOTLY:
+                return
+            _lbl7 = [r["지역"].split(" ", 1)[-1] if " " in r["지역"] else r["지역"]
+                     for r in rows]
+            _cur7 = [r["cur"] for r in rows]
+            _prv7 = [r["prv"] for r in rows]
+            _pct7 = [r["pct"] for r in rows]
+            _clr7 = [
+                color_up if (p is not None and p >= 0) else color_dn
+                for p in _pct7
+            ]
+            _pct_txt = [
+                f"{p:+.1f}%" if p is not None else "신규" for p in _pct7
+            ]
+
+            _fig7 = go.Figure()
+            _fig7.add_trace(go.Bar(
+                name=_yoy_prv_label, x=_lbl7, y=_prv7,
+                marker_color=_c(C["t3"], 0.53),
+                hovertemplate="<b>%{x}</b><br>전년: %{y:,}명<extra></extra>",
+            ))
+            _fig7.add_trace(go.Bar(
+                name=_yoy_cur_label, x=_lbl7, y=_cur7,
+                marker_color=_clr7,
+                text=_pct_txt,
+                textposition="outside",
+                textfont=dict(size=10),
+                hovertemplate="<b>%{x}</b><br>현년: %{y:,}명<extra></extra>",
+            ))
+            _fig7.update_layout(
+                **_PLOTLY_LAYOUT,
+                height=300,
+                margin=dict(l=0, r=0, t=30, b=8),
+                barmode="group",
+                bargap=0.15,
+                bargroupgap=0.05,
+                legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
+                            font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+                title=dict(text=title, font=dict(size=13, color=C["t1"]), x=0),
+            )
+            _fig7.update_xaxes(tickfont=dict(size=10), tickangle=-20)
+            _fig7.update_yaxes(showticklabels=False)
+            st.plotly_chart(_fig7, use_container_width=True, key=chart_key)
+
+        _dc1, _dc2 = st.columns(2, gap="small")
+        with _dc1:
+            st.markdown(
+                f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
+                unsafe_allow_html=True,
+            )
+            _detail_yoy_chart(
+                _busan_yoy,
+                f"🏙️ 부산 구별  ({_yoy_cur_label} vs {_yoy_prv_label})",
+                C["blue"], _c(C["red"], 0.80),
+                f"reg_yoy_busan_{_sel_dept}_{_yoy_cur}",
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        with _dc2:
+            st.markdown(
+                f'<div class="wd-card" style="border-top:3px solid {C["green"]};">',
+                unsafe_allow_html=True,
+            )
+            _detail_yoy_chart(
+                _gynam_yoy,
+                f"🏞️ 경상남도 시군별  ({_yoy_cur_label} vs {_yoy_prv_label})",
+                C["green"], _c(C["red"], 0.80),
+                f"reg_yoy_gynam_{_sel_dept}_{_yoy_cur}",
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)  # card
+        _gap()
+
+    # ══════════════════════════════════════════════════════════════════════
+    # [섹션7] 월별 환자 추이 + 선택적 비교 (V_REGION_DEPT_MONTHLY 기반)
+    # ══════════════════════════════════════════════════════════════════════
+    if _mo_months:
+        _mo_total = {ym: sum(v.values()) for ym, v in _mo_lookup.items()}
+
         st.markdown(
             f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
             unsafe_allow_html=True,
         )
-        _sec_hd(f"📅 {_sel_dept} — 월별 환자 추이 (1년)",
-                "일별 데이터 → 월 합산 · 지역미상 제외", C["blue"])
+        _sec_hd(f"📅 {_sel_dept} — 월별 환자 추이",
+                f"V_REGION_DEPT_MONTHLY · {len(_mo_months)}개월 · 지역미상 제외",
+                C["blue"])
 
-        # ── 전월 대비 KPI
-        if len(_yr_months) >= 2:
-            _cur_ym  = _yr_months[-1]
-            _prv_ym  = _yr_months[-2]
-            _cur_tot = _yr_m_total.get(_cur_ym, 0)
-            _prv_tot = _yr_m_total.get(_prv_ym, 0)
-            _mom_d   = _cur_tot - _prv_tot
-            _mom_pct = round(_mom_d / max(_prv_tot, 1) * 100, 1)
-            _mom_clr = C["red"] if _mom_d > 0 else C["blue"] if _mom_d < 0 else C["t3"]
-            _mom_arr = "▲" if _mom_d > 0 else "▼" if _mom_d < 0 else "─"
-            _max_ym  = max(_yr_m_total, key=_yr_m_total.get)
+        # KPI (전월 대비)
+        if len(_mo_months) >= 2:
+            _cm = _mo_months[-1]
+            _pm = _mo_months[-2]
+            _ct = _mo_total.get(_cm, 0)
+            _pt = _mo_total.get(_pm, 0)
+            _md = _ct - _pt
+            _mp = round(_md / max(_pt, 1) * 100, 1)
+            _mc = C["red"] if _md > 0 else C["blue"] if _md < 0 else C["t3"]
+            _mxm = max(_mo_total, key=_mo_total.get)
 
             _km1, _km2, _km3, _km4 = st.columns(4, gap="small")
-            _kpi_card(_km1, "📅", f"당월 ({_cur_ym[:4]}.{_cur_ym[4:]})",
-                      f"{_cur_tot:,}", "명", "지역미상 제외", C["blue"])
-            _kpi_card(_km2, "📅", f"전월 ({_prv_ym[:4]}.{_prv_ym[4:]})",
-                      f"{_prv_tot:,}", "명", "지역미상 제외", C["t2"])
+            _kpi_card(_km1, "📅", f"당월 ({_cm[:4]}.{_cm[4:]})", f"{_ct:,}", "명",
+                      "지역미상 제외", C["blue"])
+            _kpi_card(_km2, "📅", f"전월 ({_pm[:4]}.{_pm[4:]})", f"{_pt:,}", "명",
+                      "지역미상 제외", C["t2"])
             _km3.markdown(
-                f'<div class="fn-kpi" style="border-top:3px solid {_mom_clr};">'
-                f'<div class="fn-kpi-icon">{"📈" if _mom_d >= 0 else "📉"}</div>'
+                f'<div class="fn-kpi" style="border-top:3px solid {_mc};">'
+                f'<div class="fn-kpi-icon">{"📈" if _md >= 0 else "📉"}</div>'
                 f'<div class="fn-kpi-label">전월 대비</div>'
-                f'<div style="font-size:18px;font-weight:800;color:{_mom_clr};">'
-                f'{_mom_arr}&nbsp;{abs(_mom_d):,}'
+                f'<div style="font-size:18px;font-weight:800;color:{_mc};">'
+                f'{"▲" if _md > 0 else "▼"}&nbsp;{abs(_md):,}'
                 f'<span style="font-size:11px;color:{C["t3"]};">명</span></div>'
-                f'<div style="font-size:11px;color:{_mom_clr};font-weight:700;">'
-                f'{_mom_pct:+.1f}%</div></div>',
+                f'<div style="font-size:11px;color:{_mc};font-weight:700;">'
+                f'{_mp:+.1f}%</div></div>',
                 unsafe_allow_html=True,
             )
-            _kpi_card(_km4, "🏆", "최대 월",
-                      f"{_yr_m_total[_max_ym]:,}", "명",
-                      f"{_max_ym[:4]}.{_max_ym[4:]}", C["teal"])
+            _kpi_card(_km4, "🏆", "최대 월", f"{_mo_total[_mxm]:,}", "명",
+                      f"{_mxm[:4]}.{_mxm[4:]}", C["teal"])
             _gap()
 
-        # ── 월별 추이 바 차트
+        # 월별 추이 바 차트
         if HAS_PLOTLY:
-            _ym_labels  = [f"{ym[:4]}.{ym[4:]}" for ym in _yr_months]
-            _ym_values  = [_yr_m_total.get(ym, 0) for ym in _yr_months]
-            _bar_clrs_m = [
-                C["blue"] if ym == _yr_months[-1]
-                else C["indigo"] if ym == _yr_months[-2]
-                else C["indigo"] + "88"
-                for ym in _yr_months
+            _ml = [f"{ym[:4]}.{ym[4:]}" for ym in _mo_months]
+            _mv = [_mo_total.get(ym, 0) for ym in _mo_months]
+            _mc2 = [
+                C["blue"] if ym == _mo_months[-1]
+                else _c(C["indigo"], 0.67) if ym == _mo_months[-2]
+                else _c(C["indigo"], 0.33)
+                for ym in _mo_months
             ]
             _fig_mo = go.Figure(go.Bar(
-                x=_ym_labels, y=_ym_values,
-                marker=dict(color=_bar_clrs_m, line=dict(color="rgba(0,0,0,0)", width=0)),
-                text=[f"{v:,}" for v in _ym_values],
+                x=_ml, y=_mv,
+                marker=dict(color=_mc2, line=dict(color="rgba(0,0,0,0)")),
+                text=[f"{v:,}" for v in _mv],
                 textposition="outside",
                 textfont=dict(size=10, color=C["t2"]),
                 hovertemplate="<b>%{x}</b><br>%{y:,}명<extra></extra>",
@@ -2707,67 +3072,99 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             st.plotly_chart(_fig_mo, use_container_width=True,
                             key=f"reg_mo_bar_{_sel_dept}")
 
-        # ── 월별 TOP3 테이블
+        # 월별 요약 테이블 (최근 12개월 · 컴팩트)
+        _mo_recent = list(reversed(_mo_months))[:12]
         _TH_MO = (
-            "padding:6px 8px;font-size:11px;font-weight:700;color:#64748B;"
+            "padding:5px 8px;font-size:11px;font-weight:700;color:#64748B;"
             "border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
         )
-        _mo_table = (
+        _mo_tbl = (
             '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
             f'<thead><tr>'
-            f'<th style="{_TH_MO}text-align:left;">월</th>'
-            f'<th style="{_TH_MO}text-align:right;color:{C["blue"]};">총 환자수</th>'
-            f'<th style="{_TH_MO}text-align:left;">1위 지역</th>'
-            f'<th style="{_TH_MO}text-align:left;">2위 지역</th>'
-            f'<th style="{_TH_MO}text-align:left;">3위 지역</th>'
+            f'<th style="{_TH_MO}text-align:left;width:72px;">월</th>'
+            f'<th style="{_TH_MO}text-align:right;color:{C["blue"]};">환자수</th>'
+            f'<th style="{_TH_MO}text-align:right;">전월대비</th>'
+            f'<th style="{_TH_MO}">1위 지역</th>'
+            f'<th style="{_TH_MO}text-align:right;width:48px;">점유율</th>'
             f'</tr></thead><tbody>'
         )
-        for _ri3, _ym3 in enumerate(reversed(_yr_months)):
-            _rbg3  = "#F8FAFC" if _ri3 % 2 == 0 else "#FFFFFF"
-            _td3   = (f"padding:6px 8px;background:{_rbg3};"
-                      "border-bottom:1px solid #F1F5F9;font-size:12px;")
-            _tot3  = _yr_m_total.get(_ym3, 0)
-            _tops3 = sorted(_yr_m_region[_ym3].items(), key=lambda x: -x[1])[:3]
-            _cells3 = []
-            for _ii3 in range(3):
-                if _ii3 < len(_tops3):
-                    _r3, _c3 = _tops3[_ii3]
-                    _p3 = round(_c3 / max(_tot3, 1) * 100, 1)
-                    _cells3.append(
-                        f'{_r3}<br>'
-                        f'<span style="color:{C["t3"]};font-size:10px;">'
-                        f'{_c3:,}명 ({_p3}%)</span>'
-                    )
-                else:
-                    _cells3.append("─")
-            _mo_table += (
+        for _ri8, _ym8 in enumerate(_mo_recent):
+            _rbg8 = "#F8FAFC" if _ri8 % 2 == 0 else "#FFFFFF"
+            _td8  = (f"padding:5px 8px;background:{_rbg8};"
+                     "border-bottom:1px solid #F1F5F9;font-size:12px;")
+            _tot8    = _mo_total.get(_ym8, 0)
+            _prev_ym8 = _mo_recent[_ri8 + 1] if _ri8 + 1 < len(_mo_recent) else None
+            _prev8    = _mo_total.get(_prev_ym8, 0) if _prev_ym8 else None
+            if _prev8 is not None and _prev8 > 0:
+                _diff8  = _tot8 - _prev8
+                _pct8   = round(_diff8 / _prev8 * 100, 1)
+                _dc8    = C["red"] if _diff8 > 0 else C["blue"] if _diff8 < 0 else C["t3"]
+                _darr8  = "▲" if _diff8 > 0 else "▼" if _diff8 < 0 else "─"
+                _mom8   = (f'<span style="color:{_dc8};font-weight:700;">'
+                           f'{_darr8} {abs(_diff8):,} ({_pct8:+.1f}%)</span>')
+            else:
+                _mom8 = '<span style="color:#CBD5E1;">─</span>'
+            _tops8   = sorted(_mo_lookup[_ym8].items(), key=lambda x: -x[1])
+            _top1_rg8 = _tops8[0][0] if _tops8 else "─"
+            _top1_pt8 = round(_tops8[0][1] / max(_tot8, 1) * 100, 1) if _tops8 else 0
+            _is_cur8  = (_ym8 == _mo_months[-1])
+            _ym_clr8  = C["blue"] if _is_cur8 else C["t2"]
+            _ym_fw8   = "800" if _is_cur8 else "600"
+            _mo_tbl += (
                 f"<tr>"
-                f'<td style="{_td3}font-weight:700;color:{C["blue"]};">'
-                f'{_ym3[:4]}.{_ym3[4:]}</td>'
-                f'<td style="{_td3}text-align:right;font-weight:800;color:{C["t1"]};">'
-                f'{_tot3:,}</td>'
-                + "".join(f'<td style="{_td3}">{cell}</td>' for cell in _cells3)
-                + "</tr>"
+                f'<td style="{_td8}font-weight:{_ym_fw8};color:{_ym_clr8};">'
+                f'{_ym8[:4]}.{_ym8[4:]}</td>'
+                f'<td style="{_td8}text-align:right;font-weight:700;color:{C["t1"]};">'
+                f'{_tot8:,}</td>'
+                f'<td style="{_td8}text-align:right;">{_mom8}</td>'
+                f'<td style="{_td8}color:{C["t2"]};">{_top1_rg8}</td>'
+                f'<td style="{_td8}text-align:right;color:{C["t3"]};">{_top1_pt8}%</td>'
+                f"</tr>"
             )
-        st.markdown(_mo_table + "</tbody></table>", unsafe_allow_html=True)
+        st.markdown(_mo_tbl + "</tbody></table>", unsafe_allow_html=True)
+        if len(_mo_months) > 12:
+            with st.expander(f"📋 전체 {len(_mo_months)}개월 보기"):
+                _mo_all_tbl = (
+                    '<table style="width:100%;border-collapse:collapse;font-size:11.5px;">'
+                    f'<thead><tr>'
+                    f'<th style="{_TH_MO}text-align:left;">월</th>'
+                    f'<th style="{_TH_MO}text-align:right;">환자수</th>'
+                    f'<th style="{_TH_MO}">1위 지역</th>'
+                    f'<th style="{_TH_MO}">2위 지역</th>'
+                    f'</tr></thead><tbody>'
+                )
+                for _ri9, _ym9 in enumerate(reversed(_mo_months)):
+                    _rbg9 = "#F8FAFC" if _ri9 % 2 == 0 else "#FFFFFF"
+                    _td9  = f"padding:4px 8px;background:{_rbg9};border-bottom:1px solid #F1F5F9;font-size:11.5px;"
+                    _tot9 = _mo_total.get(_ym9, 0)
+                    _tops9 = sorted(_mo_lookup[_ym9].items(), key=lambda x: -x[1])[:2]
+                    _rg9  = [f"{r}({c:,}명)" for r, c in _tops9]
+                    while len(_rg9) < 2: _rg9.append("─")
+                    _mo_all_tbl += (
+                        f"<tr>"
+                        f'<td style="{_td9}font-weight:600;color:{C["t2"]};">{_ym9[:4]}.{_ym9[4:]}</td>'
+                        f'<td style="{_td9}text-align:right;font-weight:700;">{_tot9:,}</td>'
+                        f'<td style="{_td9}">{_rg9[0]}</td>'
+                        f'<td style="{_td9}">{_rg9[1]}</td>'
+                        f"</tr>"
+                    )
+                st.markdown(_mo_all_tbl + "</tbody></table>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         _gap()
 
-    # ══════════════════════════════════════════════════════════════════
-    # [섹션7] 월별 지역 비교 분석 (선택적 — 체크박스)
-    # ══════════════════════════════════════════════════════════════════
-    if len(_yr_months) >= 2:
+    # ── 월별 지역 비교 (선택적)
+    if len(_mo_months) >= 2:
         _show_cmp = st.checkbox(
-            f"📊 {_sel_dept} — 월별 지역 비교 분석 (두 달 선택 → 지역별 증감 비교)",
+            f"📊 {_sel_dept} — 월별 지역 비교 (두 달 선택 → 지역별 증감)",
             key=f"reg_mo_cmp_{_sel_dept}",
         )
         if _show_cmp:
             st.markdown(
-                f'<div class="wd-card" style="border-top:3px solid {C["indigo"]};">',
+                f'<div class="wd-card" style="border-top:3px solid {C["violet"]};">',
                 unsafe_allow_html=True,
             )
             _sec_hd("📊 월별 지역 비교 분석",
-                    f"{_sel_dept} · 두 달 선택 → 지역별 환자 증감", C["indigo"])
+                    f"{_sel_dept} · 두 달 선택", C["violet"])
 
             def _fmt_ym_ko(ym: str) -> str:
                 return f"{ym[:4]}년 {ym[4:]}월"
@@ -2776,12 +3173,16 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             with _cc1:
                 st.markdown(
                     f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};'
-                    f'padding-bottom:2px;">📅 A월 (기준월)</div>',
+                    f'padding-bottom:2px;">📅 A월 (기준)</div>',
                     unsafe_allow_html=True,
                 )
+                _cmp_a_default = (
+                    _mo_months.index(_sel_ym) if _sel_ym in _mo_months
+                    else max(0, len(_mo_months) - 2)
+                )
                 _cmp_a = st.selectbox(
-                    "A월", options=_yr_months,
-                    index=max(0, len(_yr_months) - 2),
+                    "A월", options=_mo_months,
+                    index=_cmp_a_default,
                     format_func=_fmt_ym_ko,
                     key=f"reg_cmp_a_{_sel_dept}",
                     label_visibility="collapsed",
@@ -2789,12 +3190,17 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             with _cc2:
                 st.markdown(
                     f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};'
-                    f'padding-bottom:2px;">📅 B월 (비교월)</div>',
+                    f'padding-bottom:2px;">📅 B월 (비교)</div>',
                     unsafe_allow_html=True,
                 )
+                _cmp_b_default = (
+                    _mo_months.index(_cmp_ym) if _cmp_ym and _cmp_ym in _mo_months
+                    else (_mo_months.index(_prev_ym) if _prev_ym in _mo_months
+                          else len(_mo_months) - 1)
+                )
                 _cmp_b = st.selectbox(
-                    "B월", options=_yr_months,
-                    index=len(_yr_months) - 1,
+                    "B월", options=_mo_months,
+                    index=_cmp_b_default,
                     format_func=_fmt_ym_ko,
                     key=f"reg_cmp_b_{_sel_dept}",
                     label_visibility="collapsed",
@@ -2803,189 +3209,105 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             if _cmp_a == _cmp_b:
                 st.warning("⚠️ A월과 B월이 같습니다. 서로 다른 달을 선택하세요.")
             else:
-                _agg_a = dict(_yr_m_region.get(_cmp_a, {}))
-                _agg_b = dict(_yr_m_region.get(_cmp_b, {}))
-                _tot_a = sum(_agg_a.values())
-                _tot_b = sum(_agg_b.values())
-                _all_rgs_c = sorted(set(list(_agg_a.keys()) + list(_agg_b.keys())))
+                _a_d = dict(_mo_lookup.get(_cmp_a, {}))
+                _b_d = dict(_mo_lookup.get(_cmp_b, {}))
+                _tot_a2 = sum(_a_d.values())
+                _tot_b2 = sum(_b_d.values())
+                _all_r2 = sorted(set(list(_a_d.keys()) + list(_b_d.keys())))
 
                 _cmp_rows = []
-                for _rg_c in _all_rgs_c:
-                    _ca = _agg_a.get(_rg_c, 0)
-                    _cb = _agg_b.get(_rg_c, 0)
-                    _diff_c = _cb - _ca
-                    _pct_c  = round(_diff_c / max(_ca, 1) * 100, 1) if _ca > 0 else None
-                    _cmp_rows.append({
-                        "지역": _rg_c, "A": _ca, "B": _cb,
-                        "증감": _diff_c, "증감률": _pct_c,
-                    })
+                for _rg2 in _all_r2:
+                    _ca2 = _a_d.get(_rg2, 0)
+                    _cb2 = _b_d.get(_rg2, 0)
+                    _diff2 = _cb2 - _ca2
+                    _pct2 = round(_diff2 / max(_ca2, 1) * 100, 1) if _ca2 > 0 else None
+                    _cmp_rows.append({"지역": _rg2, "A": _ca2, "B": _cb2,
+                                      "증감": _diff2, "증감률": _pct2})
                 _cmp_rows.sort(key=lambda x: -x["증감"])
 
-                _inc_n  = sum(1 for r in _cmp_rows if r["증감"] > 0)
-                _dec_n  = sum(1 for r in _cmp_rows if r["증감"] < 0)
-                _diff_t = _tot_b - _tot_a
-                _diff_p = round(_diff_t / max(_tot_a, 1) * 100, 1)
+                _inc_n2 = sum(1 for r in _cmp_rows if r["증감"] > 0)
+                _dec_n2 = sum(1 for r in _cmp_rows if r["증감"] < 0)
+                _diff_t2 = _tot_b2 - _tot_a2
+                _diff_p2 = round(_diff_t2 / max(_tot_a2, 1) * 100, 1)
 
-                # KPI
                 _kc1, _kc2, _kc3, _kc4 = st.columns(4, gap="small")
-                _kpi_card(_kc1, "📅", _fmt_ym_ko(_cmp_a),
-                          f"{_tot_a:,}", "명", "A월 환자수", C["indigo"])
-                _kpi_card(_kc2, "📅", _fmt_ym_ko(_cmp_b),
-                          f"{_tot_b:,}", "명", "B월 환자수", C["blue"])
-                _kpi_card(_kc3, "📊", "총 증감",
-                          f"{_diff_t:+,}", "명",
-                          f"{_diff_p:+.1f}%",
-                          C["red"] if _diff_t > 0 else C["blue"])
+                _kpi_card(_kc1, "📅", _fmt_ym_ko(_cmp_a), f"{_tot_a2:,}", "명",
+                          "A월 환자수", C["indigo"])
+                _kpi_card(_kc2, "📅", _fmt_ym_ko(_cmp_b), f"{_tot_b2:,}", "명",
+                          "B월 환자수", C["blue"])
+                _kpi_card(_kc3, "📊", "총 증감", f"{_diff_t2:+,}", "명",
+                          f"{_diff_p2:+.1f}%",
+                          C["red"] if _diff_t2 > 0 else C["blue"])
                 _kpi_card(_kc4, "🔄", "지역 변화",
-                          f"▲{_inc_n} ▼{_dec_n}", "",
+                          f"▲{_inc_n2} ▼{_dec_n2}", "",
                           f"총 {len(_cmp_rows)}개 지역", C["teal"])
                 _gap()
 
-                # 증가/감소 TOP10 바 차트
-                _top_inc = [r for r in _cmp_rows if r["증감"] > 0][:10]
-                _top_dec = sorted(
+                _cc_l2, _cc_r2 = st.columns(2, gap="small")
+                _top_inc2 = [r for r in _cmp_rows if r["증감"] > 0][:10]
+                _top_dec2 = sorted(
                     [r for r in _cmp_rows if r["증감"] < 0], key=lambda x: x["증감"]
                 )[:10]
 
-                _cc_l, _cc_r = st.columns(2, gap="small")
-                with _cc_l:
+                with _cc_l2:
                     st.markdown(
                         f'<div class="wd-card" style="border-top:3px solid {C["red"]};">',
                         unsafe_allow_html=True,
                     )
-                    _sec_hd(
-                        f"📈 증가 TOP {len(_top_inc)}"
-                        f" ({_fmt_ym_ko(_cmp_a)} → {_fmt_ym_ko(_cmp_b)})",
-                        "", C["red"],
-                    )
-                    if _top_inc and HAS_PLOTLY:
-                        _fig_inc = go.Figure(go.Bar(
-                            x=[r["증감"] for r in _top_inc],
-                            y=[r["지역"] for r in _top_inc],
+                    _sec_hd(f"📈 증가 TOP {len(_top_inc2)}", "", C["red"])
+                    if _top_inc2 and HAS_PLOTLY:
+                        _fig_i = go.Figure(go.Bar(
+                            x=[r["증감"] for r in _top_inc2],
+                            y=[r["지역"] for r in _top_inc2],
                             orientation="h",
-                            marker_color=C["red"] + "cc",
-                            text=[f"+{r['증감']:,}명" for r in _top_inc],
+                            marker_color=_c(C["red"], 0.80),
+                            text=[f"+{r['증감']:,}명" for r in _top_inc2],
                             textposition="outside",
                             textfont=dict(size=10, color=C["red"]),
-                            hovertemplate="<b>%{y}</b><br>+%{x:,}명<extra></extra>",
                         ))
-                        _fig_inc.update_layout(
+                        _fig_i.update_layout(
                             **_PLOTLY_LAYOUT,
-                            height=max(200, len(_top_inc) * 28 + 60),
-                            margin=dict(l=0, r=90, t=8, b=8),
-                            showlegend=False,
+                            height=max(200, len(_top_inc2) * 28 + 60),
+                            margin=dict(l=0, r=90, t=8, b=8), showlegend=False,
                         )
-                        _fig_inc.update_xaxes(showticklabels=False, showgrid=False)
-                        _fig_inc.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-                        st.plotly_chart(_fig_inc, use_container_width=True,
-                                        key=f"reg_cmp_inc_{_sel_dept}_{_cmp_a}_{_cmp_b}")
+                        _fig_i.update_xaxes(showticklabels=False, showgrid=False)
+                        _fig_i.update_yaxes(tickfont=dict(size=10), autorange="reversed")
+                        st.plotly_chart(_fig_i, use_container_width=True,
+                                        key=f"reg_cmp_inc2_{_sel_dept}_{_cmp_a}_{_cmp_b}")
                     else:
                         st.info("증가 지역 없음")
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                with _cc_r:
+                with _cc_r2:
                     st.markdown(
                         f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
                         unsafe_allow_html=True,
                     )
-                    _sec_hd(
-                        f"📉 감소 TOP {len(_top_dec)}"
-                        f" ({_fmt_ym_ko(_cmp_a)} → {_fmt_ym_ko(_cmp_b)})",
-                        "", C["blue"],
-                    )
-                    if _top_dec and HAS_PLOTLY:
-                        _fig_dec = go.Figure(go.Bar(
-                            x=[r["증감"] for r in _top_dec],
-                            y=[r["지역"] for r in _top_dec],
+                    _sec_hd(f"📉 감소 TOP {len(_top_dec2)}", "", C["blue"])
+                    if _top_dec2 and HAS_PLOTLY:
+                        _fig_d = go.Figure(go.Bar(
+                            x=[r["증감"] for r in _top_dec2],
+                            y=[r["지역"] for r in _top_dec2],
                             orientation="h",
-                            marker_color=C["blue"] + "cc",
-                            text=[f"{r['증감']:,}명" for r in _top_dec],
+                            marker_color=_c(C["blue"], 0.80),
+                            text=[f"{r['증감']:,}명" for r in _top_dec2],
                             textposition="outside",
                             textfont=dict(size=10, color=C["blue"]),
-                            hovertemplate="<b>%{y}</b><br>%{x:,}명<extra></extra>",
                         ))
-                        _fig_dec.update_layout(
+                        _fig_d.update_layout(
                             **_PLOTLY_LAYOUT,
-                            height=max(200, len(_top_dec) * 28 + 60),
-                            margin=dict(l=0, r=90, t=8, b=8),
-                            showlegend=False,
+                            height=max(200, len(_top_dec2) * 28 + 60),
+                            margin=dict(l=0, r=90, t=8, b=8), showlegend=False,
                         )
-                        _fig_dec.update_xaxes(showticklabels=False, showgrid=False)
-                        _fig_dec.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-                        st.plotly_chart(_fig_dec, use_container_width=True,
-                                        key=f"reg_cmp_dec_{_sel_dept}_{_cmp_a}_{_cmp_b}")
+                        _fig_d.update_xaxes(showticklabels=False, showgrid=False)
+                        _fig_d.update_yaxes(tickfont=dict(size=10), autorange="reversed")
+                        st.plotly_chart(_fig_d, use_container_width=True,
+                                        key=f"reg_cmp_dec2_{_sel_dept}_{_cmp_a}_{_cmp_b}")
                     else:
                         st.info("감소 지역 없음")
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                _gap()
-
-                # 전체 비교 테이블
-                st.markdown(
-                    f'<div class="wd-card" style="border-top:3px solid {C["violet"]};">',
-                    unsafe_allow_html=True,
-                )
-                _sec_hd(
-                    f'📋 지역별 비교표 · {_fmt_ym_ko(_cmp_a)} vs {_fmt_ym_ko(_cmp_b)}',
-                    f"{_sel_dept} · {len(_cmp_rows)}개 지역 전체", C["violet"],
-                )
-                _TH_CT = (
-                    "padding:6px 10px;font-size:11px;font-weight:700;color:#64748B;"
-                    "border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
-                )
-                _cmp_tbl = (
-                    '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-                    f'<thead><tr>'
-                    f'<th style="{_TH_CT}text-align:left;">지역</th>'
-                    f'<th style="{_TH_CT}text-align:right;color:{C["indigo"]};">'
-                    f'{_fmt_ym_ko(_cmp_a)} (A)</th>'
-                    f'<th style="{_TH_CT}text-align:right;color:{C["blue"]};">'
-                    f'{_fmt_ym_ko(_cmp_b)} (B)</th>'
-                    f'<th style="{_TH_CT}text-align:right;">증감</th>'
-                    f'<th style="{_TH_CT}text-align:right;">증감률</th>'
-                    f'<th style="{_TH_CT}">추이</th>'
-                    f'</tr></thead><tbody>'
-                )
-                _max_v_ct = max((max(r["A"], r["B"]) for r in _cmp_rows), default=1)
-                for _ri5, _rw in enumerate(_cmp_rows):
-                    _rbg5 = "#F8FAFC" if _ri5 % 2 == 0 else "#FFFFFF"
-                    _td5  = (f"padding:6px 10px;background:{_rbg5};"
-                             "border-bottom:1px solid #F1F5F9;font-size:12px;")
-                    _d5   = _rw["증감"]
-                    _p5   = _rw["증감률"]
-                    _clr5 = C["red"] if _d5 > 0 else C["blue"] if _d5 < 0 else C["t3"]
-                    _arr5 = "▲" if _d5 > 0 else "▼" if _d5 < 0 else "─"
-                    _p5s  = f"{_p5:+.1f}%" if _p5 is not None else "신규"
-                    _bw_a = round(_rw["A"] / max(_max_v_ct, 1) * 80)
-                    _bw_b = round(_rw["B"] / max(_max_v_ct, 1) * 80)
-                    _bar5 = (
-                        f'<div style="display:flex;flex-direction:column;gap:2px;'
-                        f'min-width:80px;">'
-                        f'<div style="height:5px;width:{_bw_a}%;'
-                        f'background:{C["indigo"]}88;border-radius:2px;"></div>'
-                        f'<div style="height:5px;width:{_bw_b}%;'
-                        f'background:{C["blue"]}cc;border-radius:2px;"></div>'
-                        f'</div>'
-                    )
-                    _cmp_tbl += (
-                        f"<tr>"
-                        f'<td style="{_td5}font-weight:600;color:{C["t1"]};">'
-                        f'{_rw["지역"]}</td>'
-                        f'<td style="{_td5}text-align:right;color:{C["indigo"]};">'
-                        f'{_rw["A"]:,}</td>'
-                        f'<td style="{_td5}text-align:right;font-weight:700;'
-                        f'color:{C["blue"]};">{_rw["B"]:,}</td>'
-                        f'<td style="{_td5}text-align:right;font-weight:700;'
-                        f'color:{_clr5};">{_arr5}{abs(_d5):,}</td>'
-                        f'<td style="{_td5}text-align:right;font-weight:700;'
-                        f'color:{_clr5};">{_p5s}</td>'
-                        f'<td style="{_td5}">{_bar5}</td>'
-                        f"</tr>"
-                    )
-                st.markdown(_cmp_tbl + "</tbody></table>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            st.markdown("</div>", unsafe_allow_html=True)  # cmp card
+            st.markdown("</div>", unsafe_allow_html=True)
         _gap()
 
     # ══════════════════════════════════════
@@ -3462,12 +3784,15 @@ def render_finance_dashboard() -> None:
     """원무 현황 대시보드 v2.3 — 4탭 구조."""
     st.markdown(_CSS, unsafe_allow_html=True)
 
+    logger.info("render_finance_dashboard 시작")
     oracle_ok = False
     try:
         from db.oracle_client import test_connection
         oracle_ok, _ = test_connection()
-    except Exception:
-        pass
+        if not oracle_ok:
+            logger.warning("Oracle 연결 확인: 실패 — 데모 모드로 전환")
+    except Exception as _e:
+        logger.warning(f"Oracle 연결 확인 예외: {_e}")
 
     import datetime as _dt_main
     _is_custom = st.session_state.get("fn_use_custom_date", False)
@@ -3500,8 +3825,8 @@ def render_finance_dashboard() -> None:
     # ── 주간/월간 분석
     los_dist_dept    = _fq("los_dist_dept")            # 신규 — 날짜 무관(현재 재원)
     monthly_opd_dept = _fq("monthly_opd_dept")         # 신규 — 최근 12개월
-    region_dept_data    = _fq("region_dept_daily")    # 일별 트렌드/히트맵 (30일 고정)
-    region_monthly_data = _fq("region_dept_monthly", max_rows=50000)  # 월별: 진료과×지역×월 행 많음
+    region_dept_data    = []   # 지역별 탭 온디맨드 로드 (_tab_region 내부 처리)
+    region_monthly_data = []   # 지역별 탭 온디맨드 로드 (_tab_region 내부 처리)
 
     # ── 탑바
     st.markdown('<div class="fn-topbar"></div>', unsafe_allow_html=True)
