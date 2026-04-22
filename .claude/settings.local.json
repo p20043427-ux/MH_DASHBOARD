@@ -34,7 +34,25 @@
       "Bash(python -m py_compile guidbot/ui/nursing_dashboard.py)",
       "Bash(python -m py_compile guidbot/ui/dashboard_log_viewer.py)",
       "Bash(python -m py_compile guidbot/db/oracle_client.py)",
-      "Bash(grep -E \"^-.*\\\\.\\(py|md|toml\\)$\")"
+      "Bash(grep -E \"^-.*\\\\.\\(py|md|toml\\)$\")",
+      "Bash(find /d/MH/guidbot -type f -name \"*.py\" -not -path \"*/.venv/*\" -not -path \"*/venv/*\" -not -path \"*/docs/*\" -exec wc -l {} +)",
+      "Bash(python -c \"import sys; [print\\(l\\) for l in sys.stdin]\")",
+      "Bash(git -C \"D:/MH/guidbot\" status \"ui/finance_dashboard.bak\" \"ui/hospital_dashboard.bak\" \"ui/sidebar.bak\")",
+      "Bash(git -C \"D:/MH/guidbot\" ls-files \"ui/finance_dashboard.bak\" \"ui/hospital_dashboard.bak\" \"ui/sidebar.bak\")",
+      "Bash(git -C \"D:/MH/guidbot\" rm \"ui/finance_dashboard.bak\" \"ui/hospital_dashboard.bak\" \"ui/sidebar.bak\")",
+      "Bash(git -C \"D:/MH/guidbot\" status --short)",
+      "Bash(git -C \"D:/MH/guidbot\" add \"ui/finance_dashboard.py\" \"ui/hospital_dashboard.py\" \"ui/nursing_dashboard.py\")",
+      "Bash(git -C \"D:/MH/guidbot\" diff --cached --stat)",
+      "Bash(git -C \"D:/MH/guidbot\" log --oneline -3)",
+      "Bash(git -C D:/MH/guidbot commit -m ' *)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" status --short)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" diff --stat HEAD)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" log --oneline -3)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" add ui/admin_dashboard.py ui/finance_dashboard.py ui/panels/)",
+      "Bash(git -C 'D:\\\\MH\\\\guidbot' commit -m ' *)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" log --oneline -4)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" add admin_app.py start.bat)",
+      "Bash(git -C \"D:\\\\MH\\\\guidbot\" add ui/admin_dashboard.py)"
     ]
   }
 }

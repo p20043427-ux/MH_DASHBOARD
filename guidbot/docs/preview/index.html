@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>좋은문화병원 대시보드 UI 검토</title>
+<style>
+
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#F0F4F8;color:#0F172A;font-size:14px;}
+
+/* ── 네비 ── */
+.nav{position:sticky;top:0;z-index:100;background:#1E40AF;display:flex;gap:0;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.nav a{color:rgba(255,255,255,.7);text-decoration:none;padding:12px 20px;font-size:12px;font-weight:600;border-bottom:3px solid transparent;transition:.15s;}
+.nav a:hover,.nav a.active{color:#fff;border-bottom-color:#60A5FA;}
+.page{display:none;padding:12px 16px 32px;min-height:100vh;}
+.page.active{display:block;}
+
+/* ── 상단 그라데이션 바 ── */
+.fn-topbar{height:3px;background:linear-gradient(90deg,#1E40AF 0%,#7C3AED 50%,#E2E8F0 100%);border-radius:2px 2px 0 0;margin-bottom:8px;}
+.fn-topbar.teal{background:linear-gradient(90deg,#0891B2 0%,#06B6D4 55%,#E2E8F0 100%);}
+.fn-topbar.green{background:linear-gradient(90deg,#059669 0%,#10B981 55%,#E2E8F0 100%);}
+.fn-topbar.admin{background:linear-gradient(135deg,#1E3A8A 0%,#2563EB 50%,#60A5FA 100%);}
+
+/* ── 탑바 헤더 행 ── */
+.topbar-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:10px;}
+.topbar-title{font-size:17px;font-weight:800;letter-spacing:-.03em;color:#0F172A;}
+.topbar-sub{font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.15em;}
+.topbar-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#475569;background:#F1F5F9;border-radius:20px;padding:3px 10px;}
+.topbar-badge .dot{width:7px;height:7px;border-radius:50%;background:#10B981;}
+.topbar-badge .dot.warn{background:#F59E0B;}
+
+/* ── KPI 카드 그리드 ── */
+.kpi-row{display:grid;gap:10px;margin-bottom:12px;}
+.kpi-row.col4{grid-template-columns:repeat(4,1fr);}
+.kpi-row.col3{grid-template-columns:repeat(3,1fr);}
+.kpi-row.col5{grid-template-columns:repeat(5,1fr);}
+
+.fn-kpi{background:#fff;border:1px solid #F0F4F8;border-radius:12px;padding:13px 15px;min-height:118px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 3px 10px rgba(0,0,0,.06);transition:box-shadow .12s;}
+.fn-kpi:hover{box-shadow:0 6px 18px rgba(0,0,0,.10);}
+.fn-kpi-icon{font-size:18px;margin-bottom:3px;}
+.fn-kpi-label{font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.12em;}
+.fn-kpi-value{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;}
+.fn-kpi-unit{font-size:13px;color:#64748B;font-weight:500;margin-left:2px;}
+.fn-kpi-sub{font-size:11px;color:#94A3B8;margin-top:3px;}
+.goal-bar-wrap{height:5px;background:#F1F5F9;border-radius:3px;margin-top:5px;overflow:hidden;}
+.goal-bar-fill{height:100%;border-radius:3px;}
+
+/* ── 섹션 카드 ── */
+.wd-card{background:#fff;border:1px solid #E8EDF2;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(15,23,42,.06);margin-bottom:10px;}
+.wd-card.border-blue{border-top:3px solid #1E40AF;}
+.wd-card.border-teal{border-top:3px solid #0891B2;}
+.wd-card.border-green{border-top:3px solid #059669;}
+.wd-card.border-violet{border-top:3px solid #7C3AED;}
+.wd-card.border-red{border-top:3px solid #DC2626;}
+.wd-card.border-yellow{border-top:3px solid #D97706;}
+
+/* ── 섹션 헤더 ── */
+.wd-sec{font-size:13px;font-weight:700;color:#0F172A;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:7px;}
+.wd-sec-bar{width:3px;height:15px;border-radius:2px;flex-shrink:0;}
+.wd-sec-sub{font-size:11px;color:#94A3B8;font-weight:400;margin-left:3px;}
+.wd-sec-badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;}
+
+/* ── 컨트롤 행 ── */
+.ctrl-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-radius:10px;margin-bottom:10px;flex-wrap:wrap;}
+.ctrl-label{font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;}
+.ctrl-select{height:32px;border:1.5px solid #BFDBFE;border-radius:8px;background:#EFF6FF;font-size:12px;font-weight:600;color:#1E40AF;padding:0 10px;cursor:pointer;font-family:inherit;}
+.ctrl-select.teal{border-color:#A5F3FC;background:#ECFEFF;color:#0E7490;}
+.ctrl-btn{height:32px;padding:0 14px;border-radius:20px;border:1.5px solid #E2E8F0;background:linear-gradient(180deg,#fff 0%,#F8FAFC 100%);font-size:11.5px;font-weight:600;color:#475569;cursor:pointer;white-space:nowrap;transition:.12s;}
+.ctrl-btn:hover{background:linear-gradient(180deg,#F1F5F9 0%,#E2E8F0 100%);color:#1E293B;}
+.ctrl-btn.primary{background:#1E40AF;color:#fff;border-color:#1E40AF;box-shadow:0 2px 6px rgba(30,64,175,.2);}
+.ctrl-btn.primary:hover{background:#1D3A9A;box-shadow:0 4px 12px rgba(30,64,175,.3);}
+.ctrl-btn.teal-btn{background:#0891B2;color:#fff;border-color:#0891B2;}
+.ctrl-divider{width:1px;height:20px;background:#E2E8F0;flex-shrink:0;}
+.ctrl-caption{font-size:10.5px;color:#94A3B8;margin-left:auto;}
+
+/* ── 탭 ── */
+.tab-bar{display:flex;border-bottom:1.5px solid #E2E8F0;margin-bottom:12px;gap:0;}
+.tab-item{padding:8px 18px;font-size:13px;font-weight:600;color:#64748B;cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;transition:.1s;white-space:nowrap;}
+.tab-item.active{color:#1E40AF;border-bottom-color:#1E40AF;}
+.tab-item:hover:not(.active){color:#334155;}
+
+/* ── 2/3단 레이아웃 ── */
+.row2{display:grid;gap:10px;margin-bottom:10px;}
+.row2.split-6-4{grid-template-columns:6fr 4fr;}
+.row2.split-5-5{grid-template-columns:1fr 1fr;}
+.row2.split-7-3{grid-template-columns:7fr 3fr;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+
+/* ── 테이블 ── */
+.wd-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.wd-th{padding:7px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748B;background:#F8FAFC;border-bottom:1.5px solid #E2E8F0;white-space:nowrap;}
+.wd-td{padding:8px 10px;border-bottom:1px solid #F8FAFC;color:#334155;font-size:12.5px;}
+.wd-td.num{font-family:Consolas,monospace;font-variant-numeric:tabular-nums;}
+.wd-tr:nth-child(even){background:#FAFBFC;}
+.wd-tr:hover{background:#F0F7FF;}
+
+/* ── 배지 ── */
+.badge{border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;display:inline-block;}
+.badge-blue{background:#DBEAFE;color:#1E40AF;}
+.badge-green{background:#DCFCE7;color:#15803D;}
+.badge-yellow{background:#FEF3C7;color:#92400E;}
+.badge-red{background:#FEE2E2;color:#991B1B;}
+.badge-violet{background:#EDE9FE;color:#5B21B6;}
+.badge-gray{background:#F1F5F9;color:#475569;}
+.badge-teal{background:#CFFAFE;color:#0E7490;}
+.badge-ok{background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;}
+.badge-warn{background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;}
+.badge-err{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;}
+
+/* ── 차트 플레이스홀더 ── */
+.chart-ph{background:#F8FAFC;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#CBD5E1;font-size:12px;font-weight:600;border:1.5px dashed #E2E8F0;}
+
+/* ── 미니 바 차트 ── */
+.bar-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFC;}
+.bar-label{font-size:12px;font-weight:600;color:#334155;width:80px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bar-wrap{flex:1;height:8px;background:#F1F5F9;border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;}
+.bar-val{font-size:11px;font-weight:700;font-family:Consolas,monospace;width:50px;text-align:right;flex-shrink:0;}
+
+/* ── 상태 도트 ── */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.dot-green{background:#10B981;}
+.dot-yellow{background:#F59E0B;}
+.dot-red{background:#EF4444;}
+
+/* ── 관리자 카드 ── */
+.adm-hero{background:linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%);border-radius:14px;padding:20px 24px;color:#fff;margin-bottom:12px;box-shadow:0 8px 24px rgba(30,58,138,.25);}
+.adm-kpi{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px;color:#fff;}
+.adm-kpi-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;}
+.adm-kpi-value{font-size:28px;font-weight:800;line-height:1;margin:4px 0;}
+.adm-kpi-sub{font-size:11px;color:rgba(255,255,255,.5);}
+.progress-wrap{height:8px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden;margin-top:8px;}
+.progress-fill{height:100%;border-radius:4px;}
+.svc-card{background:#fff;border:1px solid #E8EDF2;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 4px rgba(15,23,42,.06);}
+.svc-name{font-weight:700;font-size:13px;color:#0F172A;}
+.svc-url{font-size:11px;color:#64748B;font-family:Consolas,monospace;}
+.svc-port{background:#EFF6FF;color:#1E40AF;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;font-family:Consolas,monospace;}
+
+/* ── 핸드오버 박스 ── */
+.handover-box{background:linear-gradient(135deg,#F0FDFF,#ECFEFF);border:1.5px solid #A5F3FC;border-left:4px solid #0891B2;border-radius:10px;padding:16px 20px;font-size:14px;color:#0C4A6E;line-height:1.7;margin-bottom:10px;}
+
+/* ── 위험 카드 ── */
+.risk-card{background:#fff;border:1px solid #E8EDF2;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(15,23,42,.06);}
+
+/* ── 인라인 통계 ── */
+.stat-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F8FAFC;}
+.stat-label{font-size:12px;color:#64748B;}
+.stat-val{font-size:13px;font-weight:700;font-family:Consolas,monospace;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="#" class="active" onclick="show('finance')">💼 원무 대시보드</a>
+  <a href="#" onclick="show('hospital')">🏥 병동 대시보드</a>
+  <a href="#" onclick="show('nursing')">💊 간호 대시보드</a>
+  <a href="#" onclick="show('admin')">⚙️ 관리자</a>
+</nav>
+
+<!-- ════════════════════════════════════════════════
+     💼 원무 대시보드
+════════════════════════════════════════════════ -->
+<div id="finance" class="page active">
+  <div class="fn-topbar"></div>
+
+  <!-- 탑바 헤더 -->
+  <div class="topbar-row">
+    <div>
+      <div class="topbar-sub">좋은문화병원</div>
+      <div class="topbar-title">💼 원무 현황</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="topbar-badge"><span class="dot"></span>Oracle 정상</span>
+      <span style="font-size:11px;color:#94A3B8;font-family:Consolas;">2026-04-21 09:32</span>
+    </div>
+  </div>
+
+  <!-- 탭 -->
+  <div class="tab-bar">
+    <div class="tab-item active">📊 지역별 통계</div>
+    <div class="tab-item">📅 월별 추이</div>
+    <div class="tab-item">🏥 진료과 분석</div>
+    <div class="tab-item">💳 미수금 현황</div>
+    <div class="tab-item">🔄 전월 비교</div>
+  </div>
+
+  <!-- 지역별 통계 탭 -->
+  <!-- 조회 컨트롤 행 -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">조회 월</span>
+    <select class="ctrl-select">
+      <option>2026-04 (이번달)</option>
+      <option>2026-03</option>
+      <option>2026-02</option>
+    </select>
+    <span class="ctrl-label">비교 월</span>
+    <select class="ctrl-select">
+      <option>없음</option>
+      <option>2026-03</option>
+      <option>2026-02</option>
+    </select>
+    <span class="ctrl-label">분석 기간</span>
+    <select class="ctrl-select">
+      <option>한달</option>
+      <option>2주일</option>
+      <option>1주일</option>
+    </select>
+    <div class="ctrl-divider"></div>
+    <button class="ctrl-btn primary">🔍 조회</button>
+    <button class="ctrl-btn">🔄 새로고침</button>
+    <span class="ctrl-caption">📌 2026-04-01 ~ 04-30 기준</span>
+  </div>
+
+  <!-- KPI 4개 -->
+  <div class="kpi-row col4">
+    <div class="fn-kpi" style="border-top:3px solid #1E40AF;">
+      <div class="fn-kpi-icon">👥</div>
+      <div class="fn-kpi-label">총 환자수</div>
+      <div class="fn-kpi-value" style="color:#1E40AF;">8,432<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">지역미상 제외 · 4월 누계</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #059669;">
+      <div class="fn-kpi-icon">📍</div>
+      <div class="fn-kpi-label">최다 지역</div>
+      <div class="fn-kpi-value" style="color:#059669;">부산<span class="fn-kpi-unit">시</span></div>
+      <div class="fn-kpi-sub">2,841명 · 33.7%</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #D97706;">
+      <div class="fn-kpi-icon">📈</div>
+      <div class="fn-kpi-label">전월 대비</div>
+      <div class="fn-kpi-value" style="color:#D97706;">+5.2<span class="fn-kpi-unit">%</span></div>
+      <div class="fn-kpi-sub">전월 8,015명 → 8,432명</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #7C3AED;">
+      <div class="fn-kpi-icon">🏥</div>
+      <div class="fn-kpi-label">진료과 수</div>
+      <div class="fn-kpi-value" style="color:#7C3AED;">14<span class="fn-kpi-unit">개</span></div>
+      <div class="fn-kpi-sub">내과 최다 · 2,104명</div>
+    </div>
+  </div>
+
+  <!-- 지역별 현황 + 진료과 -->
+  <div class="row2 split-6-4">
+    <div class="wd-card border-blue">
+      <div class="wd-sec">
+        <span class="wd-sec-bar" style="background:#1E40AF;"></span>
+        지역별 환자 분포
+        <span class="wd-sec-sub">상위 8개 지역</span>
+        <span class="wd-sec-badge badge badge-blue" style="margin-left:auto;">4월 기준</span>
+      </div>
+      <div class="bar-row"><span class="bar-label">부산</span><div class="bar-wrap"><div class="bar-fill" style="width:85%;background:#1E40AF;"></div></div><span class="bar-val" style="color:#1E40AF;">2,841</span></div>
+      <div class="bar-row"><span class="bar-label">경남</span><div class="bar-wrap"><div class="bar-fill" style="width:58%;background:#4F46E5;"></div></div><span class="bar-val" style="color:#4F46E5;">1,942</span></div>
+      <div class="bar-row"><span class="bar-label">울산</span><div class="bar-wrap"><div class="bar-fill" style="width:42%;background:#0891B2;"></div></div><span class="bar-val" style="color:#0891B2;">1,401</span></div>
+      <div class="bar-row"><span class="bar-label">경북</span><div class="bar-wrap"><div class="bar-fill" style="width:28%;background:#059669;"></div></div><span class="bar-val" style="color:#059669;">941</span></div>
+      <div class="bar-row"><span class="bar-label">서울</span><div class="bar-wrap"><div class="bar-fill" style="width:20%;background:#D97706;"></div></div><span class="bar-val" style="color:#D97706;">672</span></div>
+      <div class="bar-row"><span class="bar-label">기타</span><div class="bar-wrap"><div class="bar-fill" style="width:18%;background:#94A3B8;"></div></div><span class="bar-val" style="color:#94A3B8;">635</span></div>
+    </div>
+    <div class="wd-card border-violet">
+      <div class="wd-sec">
+        <span class="wd-sec-bar" style="background:#7C3AED;"></span>
+        진료과별 환자수
+        <span class="wd-sec-sub">상위 6개과</span>
+      </div>
+      <div class="chart-ph" style="height:220px;">📊 도넛/바 차트 영역</div>
+    </div>
+  </div>
+
+  <!-- 월별 추이 요약 테이블 -->
+  <div class="wd-card border-teal">
+    <div class="wd-sec">
+      <span class="wd-sec-bar" style="background:#0891B2;"></span>
+      📅 월별 환자 추이
+      <span class="wd-sec-sub">최근 12개월 요약</span>
+      <button class="ctrl-btn" style="margin-left:auto;font-size:10.5px;height:26px;">📋 전체 24개월 보기</button>
+    </div>
+    <table class="wd-tbl">
+      <thead><tr>
+        <th class="wd-th">월</th>
+        <th class="wd-th" style="text-align:right;">환자수</th>
+        <th class="wd-th" style="text-align:right;">전월대비</th>
+        <th class="wd-th">1위 지역</th>
+        <th class="wd-th" style="text-align:right;">점유율</th>
+      </tr></thead>
+      <tbody>
+        <tr class="wd-tr"><td class="wd-td" style="font-weight:700;">2026-04</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#1E40AF;">8,432</td><td class="wd-td" style="text-align:right;"><span class="badge badge-green">▲ 5.2%</span></td><td class="wd-td">부산</td><td class="wd-td num" style="text-align:right;">33.7%</td></tr>
+        <tr class="wd-tr"><td class="wd-td">2026-03</td><td class="wd-td num" style="text-align:right;">8,015</td><td class="wd-td" style="text-align:right;"><span class="badge badge-red">▼ 2.1%</span></td><td class="wd-td">부산</td><td class="wd-td num" style="text-align:right;">34.1%</td></tr>
+        <tr class="wd-tr"><td class="wd-td">2026-02</td><td class="wd-td num" style="text-align:right;">8,188</td><td class="wd-td" style="text-align:right;"><span class="badge badge-green">▲ 1.8%</span></td><td class="wd-td">부산</td><td class="wd-td num" style="text-align:right;">33.2%</td></tr>
+        <tr class="wd-tr"><td class="wd-td">2026-01</td><td class="wd-td num" style="text-align:right;">8,044</td><td class="wd-td" style="text-align:right;"><span class="badge badge-yellow">▲ 0.3%</span></td><td class="wd-td">부산</td><td class="wd-td num" style="text-align:right;">34.5%</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     🏥 병동 대시보드
+════════════════════════════════════════════════ -->
+<div id="hospital" class="page">
+  <div class="fn-topbar green"></div>
+
+  <div class="topbar-row">
+    <div>
+      <div class="topbar-sub">좋은문화병원</div>
+      <div class="topbar-title">🏥 병동·외래 현황</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <select class="ctrl-select" style="height:30px;font-size:11px;">
+        <option>전체 병동</option>
+        <option>내과 병동</option>
+        <option>외과 병동</option>
+      </select>
+      <span class="topbar-badge"><span class="dot"></span>Oracle 정상</span>
+      <span style="font-size:11px;color:#94A3B8;font-family:Consolas;">2026-04-21 09:32</span>
+    </div>
+  </div>
+
+  <!-- 탭 -->
+  <div class="tab-bar">
+    <div class="tab-item active">🛏️ 병상 현황</div>
+    <div class="tab-item">📋 입원·퇴원</div>
+    <div class="tab-item">📊 외래 통계</div>
+    <div class="tab-item">💰 재원 현황</div>
+  </div>
+
+  <!-- KPI 4개 -->
+  <div class="kpi-row col4">
+    <div class="fn-kpi" style="border-top:3px solid #059669;">
+      <div class="fn-kpi-icon">🛏️</div>
+      <div class="fn-kpi-label">병상 가동률</div>
+      <div class="fn-kpi-value" style="color:#059669;">82.4<span class="fn-kpi-unit">%</span></div>
+      <div class="fn-kpi-sub">재원 247 / 총 300병상</div>
+      <div class="goal-bar-wrap"><div class="goal-bar-fill" style="width:82%;background:#059669;"></div></div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #1E40AF;">
+      <div class="fn-kpi-icon">🏥</div>
+      <div class="fn-kpi-label">재원 환자</div>
+      <div class="fn-kpi-value" style="color:#1E40AF;">247<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">전일 대비 ▲3명</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #D97706;">
+      <div class="fn-kpi-icon">🚪</div>
+      <div class="fn-kpi-label">금일 퇴원</div>
+      <div class="fn-kpi-value" style="color:#D97706;">18<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">예정 22명 중 18명 완료</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #0891B2;">
+      <div class="fn-kpi-icon">📋</div>
+      <div class="fn-kpi-label">금일 입원</div>
+      <div class="fn-kpi-value" style="color:#0891B2;">21<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">익일 예약 14명</div>
+    </div>
+  </div>
+
+  <!-- 병동별 현황 테이블 + 가용병상 -->
+  <div class="row2 split-7-3">
+    <div class="wd-card border-green">
+      <div class="wd-sec">
+        <span class="wd-sec-bar" style="background:#059669;"></span>
+        병동별 현황
+        <span class="wd-sec-sub">실시간 · 익일 가용 포함</span>
+      </div>
+      <table class="wd-tbl">
+        <thead><tr>
+          <th class="wd-th">병동</th>
+          <th class="wd-th" style="text-align:right;">재원</th>
+          <th class="wd-th" style="text-align:right;">총병상</th>
+          <th class="wd-th" style="text-align:right;">가동률</th>
+          <th class="wd-th" style="text-align:right;">입원</th>
+          <th class="wd-th" style="text-align:right;">퇴원</th>
+          <th class="wd-th" style="text-align:right;color:#DC2626;">낙상↑</th>
+          <th class="wd-th" style="text-align:right;color:#D97706;">욕창↑</th>
+          <th class="wd-th" style="text-align:right;color:#059669;">익일가용</th>
+        </tr></thead>
+        <tbody>
+          <tr class="wd-tr"><td class="wd-td" style="font-weight:700;">내과 1병동</td><td class="wd-td num" style="text-align:right;font-weight:700;">42</td><td class="wd-td num" style="text-align:right;color:#94A3B8;">50</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#D97706;">84.0%</td><td class="wd-td num" style="text-align:right;color:#1E40AF;">5</td><td class="wd-td num" style="text-align:right;">4</td><td class="wd-td num" style="text-align:right;color:#DC2626;font-weight:800;">3</td><td class="wd-td num" style="text-align:right;color:#CBD5E1;">─</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#059669;">12</td></tr>
+          <tr class="wd-tr"><td class="wd-td" style="font-weight:700;">외과 1병동</td><td class="wd-td num" style="text-align:right;font-weight:700;">38</td><td class="wd-td num" style="text-align:right;color:#94A3B8;">45</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#DC2626;">91.1%</td><td class="wd-td num" style="text-align:right;color:#1E40AF;">3</td><td class="wd-td num" style="text-align:right;">5</td><td class="wd-td num" style="text-align:right;color:#CBD5E1;">─</td><td class="wd-td num" style="text-align:right;color:#D97706;font-weight:800;">2</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#059669;">9</td></tr>
+          <tr class="wd-tr"><td class="wd-td" style="font-weight:700;">정형외과</td><td class="wd-td num" style="text-align:right;font-weight:700;">29</td><td class="wd-td num" style="text-align:right;color:#94A3B8;">40</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#059669;">72.5%</td><td class="wd-td num" style="text-align:right;color:#1E40AF;">6</td><td class="wd-td num" style="text-align:right;">3</td><td class="wd-td num" style="text-align:right;color:#CBD5E1;">─</td><td class="wd-td num" style="text-align:right;color:#CBD5E1;">─</td><td class="wd-td num" style="text-align:right;font-weight:700;color:#059669;">14</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="wd-card border-blue" style="margin-bottom:10px;">
+        <div class="wd-sec"><span class="wd-sec-bar" style="background:#1E40AF;"></span>익일 예약<span class="wd-sec-sub">입원·퇴원</span></div>
+        <div style="display:flex;justify-content:space-around;padding:8px 0;">
+          <div style="text-align:center;"><div style="font-size:28px;font-weight:800;color:#1E40AF;font-variant-numeric:tabular-nums;">14</div><div style="font-size:11px;color:#64748B;margin-top:2px;">입원</div></div>
+          <div style="width:1px;background:#F1F5F9;"></div>
+          <div style="text-align:center;"><div style="font-size:28px;font-weight:800;color:#7C3AED;font-variant-numeric:tabular-nums;">19</div><div style="font-size:11px;color:#64748B;margin-top:2px;">퇴원예고</div></div>
+          <div style="width:1px;background:#F1F5F9;"></div>
+          <div style="text-align:center;"><div style="font-size:28px;font-weight:800;color:#059669;font-variant-numeric:tabular-nums;">24</div><div style="font-size:11px;color:#64748B;margin-top:2px;">가용병상</div></div>
+        </div>
+      </div>
+      <div class="wd-card border-teal">
+        <div class="wd-sec"><span class="wd-sec-bar" style="background:#0891B2;"></span>가용병상 배정<span class="wd-sec-sub">빠른 검색</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <select class="ctrl-select teal" style="width:100%;">
+            <option>진료과 선택</option>
+          </select>
+          <select class="ctrl-select teal" style="width:100%;">
+            <option>성별 무관</option>
+            <option>남</option><option>여</option>
+          </select>
+          <button class="ctrl-btn teal-btn" style="width:100%;border-radius:8px;height:34px;">🔍 가용 병상 검색</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     💊 간호 대시보드
+════════════════════════════════════════════════ -->
+<div id="nursing" class="page">
+  <div class="fn-topbar teal"></div>
+
+  <div class="topbar-row">
+    <div>
+      <div class="topbar-sub">좋은문화병원</div>
+      <div class="topbar-title">💊 간호 현황</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <select class="ctrl-select teal" style="height:30px;font-size:11px;">
+        <option>전체 병동</option>
+        <option>내과 1병동</option>
+        <option>외과 1병동</option>
+      </select>
+      <button class="ctrl-btn teal-btn" style="height:30px;">📋 인수인계 AI 요약</button>
+      <button class="ctrl-btn" style="height:30px;">🔄 새로고침</button>
+      <span class="topbar-badge" style="background:#CFFAFE;color:#0E7490;border:none;">
+        <span class="dot" style="background:#0891B2;"></span>Oracle 정상
+      </span>
+    </div>
+  </div>
+
+  <!-- KPI 4개 -->
+  <div class="kpi-row col4">
+    <div class="fn-kpi" style="border-top:3px solid #059669;">
+      <div class="fn-kpi-icon">🏥</div>
+      <div class="fn-kpi-label">재원 환자</div>
+      <div class="fn-kpi-value" style="color:#059669;">247<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">총병상 300개 · 가동률 82.4%</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #DC2626;">
+      <div class="fn-kpi-icon">🚨</div>
+      <div class="fn-kpi-label">고위험 합계</div>
+      <div class="fn-kpi-value" style="color:#DC2626;">18<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">낙상 8 · 욕창 5 · 당뇨 5</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #D97706;">
+      <div class="fn-kpi-icon">⚠️</div>
+      <div class="fn-kpi-label">금일 낙상</div>
+      <div class="fn-kpi-value" style="color:#D97706;">1<span class="fn-kpi-unit">건</span></div>
+      <div class="fn-kpi-sub">금일 발생 낙상 사고 보고 기준</div>
+    </div>
+    <div class="fn-kpi" style="border-top:3px solid #0891B2;">
+      <div class="fn-kpi-icon">📤</div>
+      <div class="fn-kpi-label">퇴원 예정</div>
+      <div class="fn-kpi-value" style="color:#0891B2;">12<span class="fn-kpi-unit">명</span></div>
+      <div class="fn-kpi-sub">퇴원예고(DC) 처리 대상</div>
+    </div>
+  </div>
+
+  <!-- 인수인계 AI 요약 -->
+  <div class="handover-box" style="margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:700;color:#0E7490;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">🤖 AI 인수인계 요약 — 내과 1병동 · 2026-04-21 09:30</div>
+    현재 병동 재원 환자 42명 중 낙상 고위험 3명에 대한 집중 관찰 필요. 오늘 퇴원 예정 4명의 DC 처리 및 신규 입원 5명 수용 준비 완료 상태입니다.
+  </div>
+
+  <!-- 고위험 3컬럼 -->
+  <div class="row3" style="margin-bottom:10px;">
+    <div class="wd-card" style="border-top:3px solid #DC2626;padding:10px 12px 0;">
+      <div class="wd-sec"><div class="wd-sec-bar" style="background:#DC2626;"></div><span style="font-size:12px;font-weight:700;">낙상고위험</span><span class="wd-sec-badge badge badge-err" style="margin-left:auto;">합계 8명</span></div>
+      <div class="bar-row"><span class="bar-label">내과 1병동</span><div class="bar-wrap"><div class="bar-fill" style="width:75%;background:#DC2626;"></div></div><span class="bar-val" style="color:#DC2626;">3명</span></div>
+      <div class="bar-row"><span class="bar-label">외과 1병동</span><div class="bar-wrap"><div class="bar-fill" style="width:50%;background:#DC2626;"></div></div><span class="bar-val" style="color:#DC2626;">2명</span></div>
+      <div class="bar-row"><span class="bar-label">정형외과</span><div class="bar-wrap"><div class="bar-fill" style="width:37%;background:#DC2626;"></div></div><span class="bar-val" style="color:#DC2626;">1명</span></div>
+    </div>
+    <div class="wd-card" style="border-top:3px solid #D97706;padding:10px 12px 0;">
+      <div class="wd-sec"><div class="wd-sec-bar" style="background:#D97706;"></div><span style="font-size:12px;font-weight:700;">욕창고위험</span><span class="wd-sec-badge badge badge-warn" style="margin-left:auto;">합계 5명</span></div>
+      <div class="bar-row"><span class="bar-label">외과 1병동</span><div class="bar-wrap"><div class="bar-fill" style="width:60%;background:#D97706;"></div></div><span class="bar-val" style="color:#D97706;">2명</span></div>
+      <div class="bar-row"><span class="bar-label">내과 2병동</span><div class="bar-wrap"><div class="bar-fill" style="width:40%;background:#D97706;"></div></div><span class="bar-val" style="color:#D97706;">1명</span></div>
+    </div>
+    <div class="wd-card" style="border-top:3px solid #7C3AED;padding:10px 12px 0;">
+      <div class="wd-sec"><div class="wd-sec-bar" style="background:#7C3AED;"></div><span style="font-size:12px;font-weight:700;">당뇨고위험</span><span class="wd-sec-badge badge badge-violet" style="margin-left:auto;">합계 5명</span></div>
+      <div class="bar-row"><span class="bar-label">내과 1병동</span><div class="bar-wrap"><div class="bar-fill" style="width:60%;background:#7C3AED;"></div></div><span class="bar-val" style="color:#7C3AED;">2명</span></div>
+      <div class="bar-row"><span class="bar-label">정형외과</span><div class="bar-wrap"><div class="bar-fill" style="width:40%;background:#7C3AED;"></div></div><span class="bar-val" style="color:#7C3AED;">1명</span></div>
+    </div>
+  </div>
+
+  <!-- 낙상사고 + 입원예약 -->
+  <div class="row2 split-5-5">
+    <div class="wd-card border-red">
+      <div class="wd-sec">
+        <span class="wd-sec-bar" style="background:#DC2626;"></span>⚠️ 금일 낙상 사고 현황
+        <span class="wd-sec-sub">2026-04-21 기준</span>
+      </div>
+      <table class="wd-tbl">
+        <thead><tr>
+          <th class="wd-th">발생 시각</th><th class="wd-th">병동/병실</th>
+          <th class="wd-th" style="text-align:center;">유형</th><th class="wd-th" style="text-align:center;">중증도</th>
+        </tr></thead>
+        <tbody>
+          <tr class="wd-tr"><td class="wd-td" style="font-family:Consolas;font-size:12px;">2026-04-21 07:14</td><td class="wd-td" style="font-weight:600;">내과 1병동 105</td><td class="wd-td" style="text-align:center;"><span class="badge badge-red">낙상</span></td><td class="wd-td" style="text-align:center;"><span class="badge badge-yellow">중등도</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="wd-card border-teal">
+      <div class="wd-sec">
+        <span class="wd-sec-bar" style="background:#0891B2;"></span>📋 금일 입원 예약
+        <span class="wd-sec-sub">5명 예약</span>
+      </div>
+      <table class="wd-tbl">
+        <thead><tr>
+          <th class="wd-th">진료과</th><th class="wd-th" style="text-align:center;">성별</th>
+          <th class="wd-th" style="text-align:center;">나이</th><th class="wd-th" style="text-align:center;">상태</th>
+        </tr></thead>
+        <tbody>
+          <tr class="wd-tr"><td class="wd-td" style="font-weight:600;">내과</td><td class="wd-td" style="text-align:center;color:#1E40AF;font-weight:700;">남</td><td class="wd-td" style="text-align:center;font-family:Consolas;">67세</td><td class="wd-td" style="text-align:center;"><span class="badge badge-green">예약확정</span></td></tr>
+          <tr class="wd-tr"><td class="wd-td" style="font-weight:600;">정형외과</td><td class="wd-td" style="text-align:center;color:#BE185D;font-weight:700;">여</td><td class="wd-td" style="text-align:center;font-family:Consolas;">54세</td><td class="wd-td" style="text-align:center;"><span class="badge badge-yellow">대기중</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     ⚙️ 관리자 대시보드
+════════════════════════════════════════════════ -->
+<div id="admin" class="page">
+  <div class="fn-topbar admin"></div>
+
+  <div class="topbar-row">
+    <div>
+      <div class="topbar-sub">시스템 관리</div>
+      <div class="topbar-title">⚙️ 관리자 대시보드</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="topbar-badge"><span class="dot"></span>시스템 정상</span>
+      <span style="font-size:11px;color:#94A3B8;font-family:Consolas;">가동 시간 14일 06:22</span>
+    </div>
+  </div>
+
+  <!-- Hero 카드 -->
+  <div class="adm-hero">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      <div class="adm-kpi">
+        <div class="adm-kpi-label">CPU 사용률</div>
+        <div class="adm-kpi-value">34<span style="font-size:16px;">%</span></div>
+        <div class="progress-wrap"><div class="progress-fill" style="width:34%;background:#60A5FA;"></div></div>
+        <div class="adm-kpi-sub">4코어 · i5-10500</div>
+      </div>
+      <div class="adm-kpi">
+        <div class="adm-kpi-label">메모리</div>
+        <div class="adm-kpi-value">9.2<span style="font-size:16px;">GB</span></div>
+        <div class="progress-wrap"><div class="progress-fill" style="width:57%;background:#34D399;"></div></div>
+        <div class="adm-kpi-sub">16GB 중 57% 사용</div>
+      </div>
+      <div class="adm-kpi">
+        <div class="adm-kpi-label">디스크</div>
+        <div class="adm-kpi-value">124<span style="font-size:16px;">GB</span></div>
+        <div class="progress-wrap"><div class="progress-fill" style="width:41%;background:#FBBF24;"></div></div>
+        <div class="adm-kpi-sub">300GB 중 41% 사용</div>
+      </div>
+      <div class="adm-kpi">
+        <div class="adm-kpi-label">활성 세션</div>
+        <div class="adm-kpi-value">3<span style="font-size:16px;">명</span></div>
+        <div class="progress-wrap"><div class="progress-fill" style="width:60%;background:#A78BFA;"></div></div>
+        <div class="adm-kpi-sub">최대 5명 권장</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 서비스 상태 + 로그 -->
+  <div class="row2 split-5-5">
+    <div class="wd-card border-blue">
+      <div class="wd-sec"><span class="wd-sec-bar" style="background:#1E40AF;"></span>서비스 현황</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="svc-card">
+          <div><div class="svc-name">병동 대시보드</div><div class="svc-url">dashboard_app.py</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span class="svc-port">:8501</span><span class="badge badge-ok">정상</span></div>
+        </div>
+        <div class="svc-card">
+          <div><div class="svc-name">AI 규정 챗봇</div><div class="svc-url">main.py</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span class="svc-port">:8502</span><span class="badge badge-ok">정상</span></div>
+        </div>
+        <div class="svc-card">
+          <div><div class="svc-name">원무 대시보드</div><div class="svc-url">finance_app.py</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span class="svc-port">:8503</span><span class="badge badge-ok">정상</span></div>
+        </div>
+        <div class="svc-card">
+          <div><div class="svc-name">Oracle DB</div><div class="svc-url">192.1.1.xxx:1521</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span class="svc-port">:1521</span><span class="badge badge-warn">지연</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="wd-card border-violet">
+      <div class="wd-sec"><span class="wd-sec-bar" style="background:#7C3AED;"></span>최근 로그
+        <button class="ctrl-btn" style="margin-left:auto;font-size:10px;height:24px;">새로고침</button>
+      </div>
+      <div style="background:#0F172A;border-radius:8px;padding:10px 12px;font-family:Consolas;font-size:11px;color:#E2E8F0;line-height:1.8;max-height:160px;overflow-y:auto;">
+        <div><span style="color:#60A5FA;">[09:32:14]</span> <span style="color:#34D399;">INFO</span> Oracle 연결 정상</div>
+        <div><span style="color:#60A5FA;">[09:31:05]</span> <span style="color:#34D399;">INFO</span> 지역별 통계 쿼리 완료 (0.42s)</div>
+        <div><span style="color:#60A5FA;">[09:28:50]</span> <span style="color:#FBBF24;">WARN</span> Oracle 응답 지연 (2.1s)</div>
+        <div><span style="color:#60A5FA;">[09:25:11]</span> <span style="color:#34D399;">INFO</span> warmup 완료</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
