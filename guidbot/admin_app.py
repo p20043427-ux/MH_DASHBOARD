@@ -38,14 +38,15 @@ st.set_page_config(
 #       HTML style="" 속성 안에서는 절대 font-family 선언 금지
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
-/* 전역 폰트 */
+/* 전역 폰트 — Pretendard (design.py와 동일) */
 html, body,
 [data-testid], [class*="st-"],
 p, div, span, a, li, ul, ol,
 button, input, label, select, textarea {
-  font-family: "Helvetica Neue", "Noto Sans KR", Helvetica, Arial, sans-serif !important;
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont,
+               "Apple SD Gothic Neo", sans-serif !important;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -53,7 +54,7 @@ button, input, label, select, textarea {
 header[data-testid="stHeader"] { display: none !important; }
 .main .block-container { padding: 0 !important; max-width: 100% !important; }
 
-/* 사이드바 */
+/* ── 사이드바 배경 ──────────────────────────────────────────── */
 [data-testid="stSidebar"] {
   background: rgba(15,23,42,0.97) !important;
   backdrop-filter: saturate(180%) blur(20px) !important;
@@ -65,9 +66,15 @@ header[data-testid="stHeader"] { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
   background: transparent !important;
 }
+
+/* 사이드바 일반 텍스트
+   — .sb-link 내부 span 은 제외(아래에서 별도 제어) */
 [data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span:not(.sbi-port):not(.sbi-arrow),
 [data-testid="stSidebar"] label {
+  color: rgba(255,255,255,0.86) !important;
+  font-size: 13px !important;
+}
+[data-testid="stSidebar"] span:not(.sb-link-name):not(.sb-link-port):not(.sb-link-sub) {
   color: rgba(255,255,255,0.86) !important;
   font-size: 13px !important;
 }
@@ -76,7 +83,7 @@ header[data-testid="stHeader"] { display: none !important; }
   margin: 12px 0 !important;
 }
 
-/* 사이드바 버튼 */
+/* ── 사이드바 버튼 ──────────────────────────────────────────── */
 [data-testid="stSidebar"] .stButton > button {
   background: rgba(255,255,255,0.08) !important;
   border: 1px solid rgba(255,255,255,0.15) !important;
@@ -98,7 +105,7 @@ header[data-testid="stHeader"] { display: none !important; }
   background: transparent !important;
 }
 
-/* 사이드바 입력 */
+/* ── 사이드바 입력 ──────────────────────────────────────────── */
 [data-testid="stSidebar"] input {
   background: rgba(255,255,255,0.08) !important;
   border: 1px solid rgba(255,255,255,0.15) !important;
@@ -110,40 +117,50 @@ header[data-testid="stHeader"] { display: none !important; }
   color: rgba(255,255,255,0.30) !important;
 }
 
-/* 사이드바 앱 링크 카드 */
+/* ── 사이드바 앱 링크 카드 ──────────────────────────────────── */
 .sb-link {
   display: block;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-left: 3px solid rgba(99,179,237,0.55);  /* 기본 액센트(스카이블루) */
   border-radius: 9px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   text-decoration: none !important;
-  margin-bottom: 6px;
-  transition: background 150ms ease;
+  margin-bottom: 7px;
+  transition: background 150ms ease, border-color 150ms ease;
 }
-.sb-link:hover { background: rgba(255,255,255,0.11); }
+.sb-link:hover {
+  background: rgba(255,255,255,0.12) !important;
+  border-left-color: rgba(99,179,237,0.85) !important;
+}
+/* sb-link 내 Streamlit wrapping p 태그 마진 제거 */
+.sb-link p { margin: 0 !important; padding: 0 !important; }
+
 .sb-link-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
+/* 개별 색상 — 인라인 border-left-color 로 덮어씀 */
 .sb-link-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.84) !important;
-  letter-spacing: -0.1px;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: rgba(255,255,255,0.90) !important;
+  letter-spacing: -0.1px !important;
 }
 .sb-link-port {
-  font-size: 10px;
-  color: rgba(255,255,255,0.28) !important;
+  font-size: 10.5px !important;
+  color: rgba(255,255,255,0.32) !important;
+  font-weight: 400 !important;
 }
 .sb-link-sub {
-  font-size: 11px;
-  color: rgba(255,255,255,0.36) !important;
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.40) !important;
+  font-weight: 400 !important;
 }
 
-/* 탭 */
+/* ── 탭 ────────────────────────────────────────────────────── */
 [data-testid="stTabs"] > div:first-child {
   background: #ffffff !important;
   border-bottom: 1px solid rgba(15,23,42,0.10) !important;
@@ -168,7 +185,7 @@ header[data-testid="stHeader"] { display: none !important; }
   border-bottom-color: #2563eb !important;
 }
 
-/* metric */
+/* ── metric ────────────────────────────────────────────────── */
 [data-testid="stMetricLabel"] p,
 [data-testid="stMetricLabel"] label {
   font-size: 11px !important;
@@ -184,7 +201,7 @@ header[data-testid="stHeader"] { display: none !important; }
   letter-spacing: -0.4px !important;
 }
 
-/* 스크롤바 */
+/* ── 스크롤바 ───────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 9999px; }
@@ -301,13 +318,16 @@ def _sidebar() -> bool:
             unsafe_allow_html=True,
         )
         _ip = "192.1.1.231"
-        for port, name, sub in [
-            ("8501", "병동 대시보드", "입퇴원 현황"),
-            ("8502", "AI 챗봇",       "규정·지침 검색"),
-            ("8503", "원무 대시보드", "수납·미수금"),
-        ]:
+        # 포트별 액센트 색상 (border-left)
+        _LINK_APPS = [
+            ("8501", "병동 대시보드", "입퇴원 현황",   "#3B82F6"),   # 파랑
+            ("8502", "AI 챗봇",       "규정·지침 검색", "#8B5CF6"),  # 보라
+            ("8503", "원무 대시보드", "수납·미수금",   "#14B8A6"),   # 청록
+        ]
+        for port, name, sub, accent in _LINK_APPS:
             st.markdown(
-                f'<a href="http://{_ip}:{port}/" target="_blank" class="sb-link">'
+                f'<a href="http://{_ip}:{port}/" target="_blank" class="sb-link"'
+                f' style="border-left-color:{accent};">'
                 '<div class="sb-link-row">'
                 f'<span class="sb-link-name">{name}</span>'
                 f'<span class="sb-link-port">:{port} ↗</span>'
