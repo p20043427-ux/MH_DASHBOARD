@@ -357,40 +357,134 @@ def _sidebar() -> bool:
 #  메인
 # ══════════════════════════════════════════════════════════════════════
 
+def _login_center() -> None:
+    """
+    미인증 상태 — 메인 영역 중앙에 로그인 카드 표시 (2026-04-22 개선).
+    사이드바가 닫혀 있어도 패스워드를 입력할 수 있도록
+    사이드바 의존 없이 메인 컨텐츠 안에 폼을 배치한다.
+    """
+    st.markdown(
+        """
+<style>
+html, body { background:#0f172a !important; }
+.main .block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+    background: #0f172a !important;
+}
+/* Streamlit 기본 입력 필드 — 어두운 배경에 맞춰 재정의 */
+.adm-login-wrap .stTextInput input {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    color: #fff !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    padding: 10px 14px !important;
+}
+.adm-login-wrap .stTextInput label {
+    color: rgba(255,255,255,0.55) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+}
+.adm-login-wrap .stButton > button {
+    width: 100%;
+    background: #2563eb !important;
+    border: none !important;
+    color: #fff !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    padding: 11px 0 !important;
+    margin-top: 4px !important;
+    letter-spacing: -0.1px !important;
+    transition: background 150ms ease !important;
+}
+.adm-login-wrap .stButton > button:hover {
+    background: #1d4ed8 !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # ── 중앙 정렬: 빈 컬럼으로 좌우 패딩 ──────────────────────────────
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
+        st.markdown('<div class="adm-login-wrap">', unsafe_allow_html=True)
+
+        # 로고 / 타이틀
+        st.markdown(
+            '<div style="text-align:center;padding:60px 0 32px;">'
+            '<div style="font-size:40px;margin-bottom:10px;">⚙️</div>'
+            '<div style="font-size:26px;font-weight:700;color:#fff;'
+            'letter-spacing:-0.5px;margin-bottom:6px;">관리자 대시보드</div>'
+            '<div style="font-size:13px;color:rgba(255,255,255,0.38);'
+            'letter-spacing:0.04em;">좋은문화병원 · Admin Only</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # 로그인 카드
+        st.markdown(
+            '<div style="background:rgba(255,255,255,0.04);'
+            'border:1px solid rgba(255,255,255,0.09);'
+            'border-radius:16px;padding:32px 28px 28px;">'
+            '<div style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.55);'
+            'letter-spacing:0.05em;text-transform:uppercase;margin-bottom:16px;">'
+            '관리자 패스워드</div>',
+            unsafe_allow_html=True,
+        )
+
+        pw = st.text_input(
+            "패스워드",
+            type="password",
+            placeholder="패스워드를 입력하세요",
+            key="adm_pw_main",
+            label_visibility="collapsed",
+        )
+        login_clicked = st.button("로그인", key="adm_login_main")
+
+        st.markdown("</div>", unsafe_allow_html=True)  # 카드 닫기
+
+        # 로그인 처리
+        if login_clicked:
+            if pw:
+                try:
+                    if settings.check_admin(pw):
+                        st.session_state["adm_authed"] = True
+                        st.session_state["adm_login_time"] = (
+                            "인증: " + datetime.now().strftime("%H:%M:%S")
+                        )
+                        logger.info("관리자 대시보드 인증 성공 (메인폼)")
+                        st.rerun()
+                    else:
+                        st.markdown(
+                            '<div style="margin-top:12px;padding:10px 14px;'
+                            'background:rgba(239,68,68,0.12);'
+                            'border:1px solid rgba(239,68,68,0.30);'
+                            'border-radius:8px;font-size:13px;font-weight:600;'
+                            'color:#ef4444;text-align:center;">'
+                            '❌ 패스워드가 올바르지 않습니다</div>',
+                            unsafe_allow_html=True,
+                        )
+                        logger.warning("관리자 대시보드 인증 실패 (메인폼)")
+                except Exception as e:
+                    st.error(f"인증 오류: {e}")
+            else:
+                st.warning("패스워드를 입력해 주세요.")
+
+        st.markdown("</div>", unsafe_allow_html=True)  # adm-login-wrap 닫기
+
+
 def main() -> None:
     logger.info("admin_app v3.0 시작 (포트 8504)")
     authed = _sidebar()
 
+    # ── 미인증: 사이드바 의존 없이 메인 영역에 로그인 폼 표시 (2026-04-22) ──
     if not authed:
-        st.markdown(
-            """
-<style>
-html, body { background: #0f172a !important; }
-.main .block-container { padding: 0 !important; max-width: 100% !important; }
-</style>
-<div style="min-height:100vh;background:#0f172a;
-  display:flex;flex-direction:column;
-  align-items:center;justify-content:center;">
-  <div style="text-align:center;max-width:440px;padding:40px 24px;">
-    <div style="font-size:48px;font-weight:700;
-                letter-spacing:-0.5px;color:#fff;margin-bottom:14px;">
-      관리자 전용
-    </div>
-    <div style="font-size:16px;color:rgba(255,255,255,0.55);
-                line-height:1.6;margin-bottom:32px;">
-      이 페이지는 시스템 관리자만 접근할 수 있습니다.<br>
-      좌측 사이드바에서 패스워드를 입력하세요.
-    </div>
-    <div style="display:inline-block;padding:8px 22px;border-radius:9999px;
-                border:1px solid rgba(255,255,255,0.18);
-                font-size:14px;color:rgba(255,255,255,0.45);">
-      Admin Access Required
-    </div>
-  </div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+        _login_center()
         return
 
     try:
