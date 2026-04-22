@@ -154,6 +154,25 @@ def parse_args() -> argparse.Namespace:
         default=150,
         help="청크 간 중복 크기 (기본: 150, --use-markdown 적용 시에만 사용)",
     )
+    # ── v3.3 신규: 부서별 재구축 ────────────────────────────────────────────
+    parser.add_argument(
+        "--dept",
+        type=str,
+        default=None,
+        metavar="DEPT_NAME",
+        help=(
+            "[v3.3 신규] 부서명을 지정하여 해당 부서만 재구축합니다.\n"
+            "예: --dept 간호부  → 간호부 동기화→재구축→마스터병합\n"
+            "    --dept all     → 모든 부서 재구축 + 마스터병합\n"
+            "G드라이브 규정집/ 하위 폴더명과 일치해야 합니다."
+        ),
+    )
+    parser.add_argument(
+        "--no-merge",
+        action="store_true",
+        default=False,
+        help="[--dept 와 함께 사용] 재구축 후 마스터 병합 건너뜀 (부서 인덱스만 갱신)",
+    )
     return parser.parse_args()
 
 
@@ -519,9 +538,118 @@ def main(args: argparse.Namespace) -> int:
     return 0
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  부서별 재구축 모드 (v3.3)
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _run_dept_mode(args: argparse.Namespace) -> int:
+    """
+    --dept 옵션이 있을 때 실행되는 부서별 재구축 진입점.
+
+    [모드]
+    --dept all      : 모든 부서 동기화 → 재구축 → 마스터 병합
+    --dept {이름}   : 한 부서만 동기화 → 재구축 → 마스터 병합
+    --dept {이름} --no-merge : 마스터 병합 생략 (부서 FAISS만 갱신)
+
+    [실행 예시]
+    python build_db.py --dept 간호부
+    python build_db.py --dept 간호부 --use-markdown
+    python build_db.py --dept all
+    python build_db.py --dept 간호부 --no-merge   # 마스터 병합 없이 부서만
+    """
+    from core.dept_vector_store import DeptVectorStoreManager
+
+    mgr = DeptVectorStoreManager()
+    dept_arg     = args.dept
+    sync_first   = not args.no_sync
+    use_markdown = args.use_markdown
+    no_merge     = getattr(args, "no_merge", False)
+
+    logger.info("=" * 65)
+    logger.info(f"[부서별 재구축 모드] --dept {dept_arg}")
+    logger.info(f"  동기화:       {'건너뜀' if not sync_first else '실행'}")
+    logger.info(f"  Markdown변환: {'사용' if use_markdown else '미사용'}")
+    logger.info(f"  마스터병합:   {'건너뜀' if no_merge else '실행'}")
+    logger.info("=" * 65)
+
+    if dept_arg == "all":
+        # ── 전체 부서 재구축 ─────────────────────────────────────────────
+        logger.info("[부서전체] 동기화 시작...")
+        results, merge = mgr.rebuild_all_depts_and_merge(
+            sync_first=sync_first,
+            use_markdown=use_markdown,
+        )
+        ok = sum(1 for r in results if r.success)
+        ng = len(results) - ok
+        logger.info(f"[부서전체] 재구축 완료: {ok}개 성공 / {ng}개 실패")
+        for r in results:
+            status = "OK" if r.success else f"FAIL({r.error})"
+            logger.info(f"  {r.dept_name:15s}: {status} — {r.chunk_count:,}청크 {r.elapsed_sec}s")
+        if not no_merge:
+            if merge.success:
+                logger.info(
+                    f"[마스터병합] 완료: {merge.dept_count}개 부서, "
+                    f"{merge.total_chunks:,}청크 ({merge.elapsed_sec}s)"
+                )
+            else:
+                logger.error(f"[마스터병합] 실패: {merge.error}")
+        return 0 if ok > 0 else 1
+
+    else:
+        # ── 한 부서 재구축 ─────────────────────────────────────────────
+        available = mgr.list_source_depts() + mgr.list_local_depts()
+        if dept_arg not in available:
+            logger.warning(
+                f"[경고] '{dept_arg}' 부서를 찾을 수 없습니다.\n"
+                f"사용 가능한 부서: {sorted(set(available))}"
+            )
+            # 경고만 출력하고 계속 시도 (로컬에 PDF 있을 수 있음)
+
+        if sync_first:
+            logger.info(f"[{dept_arg}] G드라이브 동기화 시작...")
+            sr = mgr.sync_dept(dept_arg)
+            logger.info(
+                f"[{dept_arg}] 동기화: 신규 {len(sr.copied)} / "
+                f"업데이트 {len(sr.updated)} / 실패 {len(sr.failed)}"
+            )
+
+        logger.info(f"[{dept_arg}] 재구축 시작...")
+        rb = mgr.rebuild_dept(dept_arg, use_markdown=use_markdown)
+
+        if not rb.success:
+            logger.error(f"[{dept_arg}] 재구축 실패: {rb.error}")
+            return 1
+
+        logger.info(
+            f"[{dept_arg}] 재구축 완료: {rb.chunk_count:,}청크 ({rb.elapsed_sec}s)"
+        )
+
+        if no_merge:
+            logger.info(f"[{dept_arg}] --no-merge: 마스터 병합 생략")
+        else:
+            logger.info("[마스터병합] 시작...")
+            mg = mgr.merge_all_to_master()
+            if mg.success:
+                logger.info(
+                    f"[마스터병합] 완료: {mg.dept_count}개 부서, "
+                    f"{mg.total_chunks:,}청크 ({mg.elapsed_sec}s)"
+                )
+            else:
+                logger.error(f"[마스터병합] 실패: {mg.error}")
+                return 1
+
+        return 0
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main(parse_args()))
+        _args = parse_args()
+        # --dept 옵션이 있으면 부서별 모드, 없으면 기존 전체 재구축 모드
+        if _args.dept is not None:
+            sys.exit(_run_dept_mode(_args))
+        else:
+            sys.exit(main(_args))
     except KeyboardInterrupt:
         logger.warning("사용자 중단 (Ctrl+C)")
         sys.exit(1)

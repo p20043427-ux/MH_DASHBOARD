@@ -655,142 +655,204 @@ def _tab_logs() -> None:
 #  탭 3 — 벡터DB 관리
 # ══════════════════════════════════════════════════════════════════════════
 
+def _load_dept_stats() -> list:
+    """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다."""
+    try:
+        from core.dept_vector_store import DeptVectorStoreManager
+        return DeptVectorStoreManager().get_dept_stats()
+    except Exception:
+        return []
+
+
+def _run_dept_rebuild(dept_name: str, sync: bool = True) -> tuple[bool, str]:
+    """부서 재구축 + 마스터 병합을 실행하고 (성공여부, 메시지) 반환."""
+    try:
+        from core.dept_vector_store import DeptVectorStoreManager
+        mgr = DeptVectorStoreManager()
+        rb, mg = mgr.rebuild_dept_and_merge(dept_name, sync_first=sync)
+        if not rb.success:
+            return False, f"재구축 실패: {rb.error}"
+        if not mg.success:
+            return False, f"재구축 완료({rb.chunk_count:,}청크) — 마스터병합 실패: {mg.error}"
+        return True, (f"{dept_name} 완료 | {rb.chunk_count:,}청크 ({rb.elapsed_sec}s) "
+                      f"| 마스터 {mg.total_chunks:,}청크")
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _run_all_dept_rebuild(sync: bool = True) -> tuple[bool, str]:
+    """전체 부서 재구축."""
+    try:
+        from core.dept_vector_store import DeptVectorStoreManager
+        mgr = DeptVectorStoreManager()
+        results, mg = mgr.rebuild_all_depts_and_merge(sync_first=sync)
+        ok  = sum(1 for r in results if r.success)
+        ng  = len(results) - ok
+        msg = f"전체 재구축: {ok}개 부서 성공 / {ng}개 실패"
+        if mg.success:
+            msg += f" | 마스터 {mg.total_chunks:,}청크"
+        else:
+            msg += f" | 마스터병합 실패: {mg.error}"
+        return ok > 0, msg
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _tab_vectordb() -> None:
     topbar()
-    section_header("벡터DB 관리", "FAISS 인덱스 통계 · 문서 목록 · 파트별 재구축 · 백업/복구")
+    section_header("벡터DB 관리", "부서별 FAISS 인덱스 · G드라이브 동기화 · 재구축 · 백업/복구")
 
     vs  = _vector_store_stats()
     reg = _doc_registry_stats()
     fi  = vs.get("index.faiss", {})
 
-    # KPI
+    # ── KPI 카드 ────────────────────────────────────────────────────────────
     k1, k2, k3, k4 = st.columns(4, gap="small")
-    k1.metric("메인 인덱스", "있음" if fi.get("exists") else "없음")
-    k2.metric("인덱스 크기", f'{fi.get("mb","—")} MB')
-    k3.metric("등록 문서",   f'{reg["total"]}건')
-    k4.metric("인덱스 대기", f'{reg["unindexed"]}건',
-              delta="재구축 필요" if reg["unindexed"] > 0 else None,
-              delta_color="inverse")
+    kpis = [
+        _adm_kpi("마스터 인덱스", "있음" if fi.get("exists") else "없음", "",
+                 str(_ROOT / "vector_store")[:40], C["blue"] if fi.get("exists") else C["warn"]),
+        _adm_kpi("인덱스 크기", str(fi.get("mb", "—")), " MB",
+                 f'mtime: {fi.get("mtime","—")}', C["indigo"]),
+        _adm_kpi("등록 문서", str(reg["total"]), " 건",
+                 "doc_registry.json", C["teal"]),
+        _adm_kpi("인덱스 대기", str(reg["unindexed"]), " 건",
+                 "재구축 필요" if reg["unindexed"] > 0 else "최신 상태",
+                 C["warn"] if reg["unindexed"] > 0 else C["ok"]),
+    ]
+    for col, card in zip([k1, k2, k3, k4], kpis):
+        col.markdown(card, unsafe_allow_html=True)
 
-    gap(16)
-    ic1, ic2 = st.columns(2, gap="medium")
-    with ic1:
-        pi = vs.get("index.pkl", {})
-        _html(_info_card("메인 벡터 인덱스", [
-            ("index.faiss", f'{fi.get("mb","—")} MB' if fi.get("exists") else "없음"),
-            ("index.pkl",   f'{pi.get("mb","—")} MB' if pi.get("exists") else "없음"),
-            ("마지막 수정",  fi.get("mtime", "—")),
-            ("저장 위치",    str(_ROOT / "vector_store")[:50]),
-        ]))
-    with ic2:
-        by_cat  = reg.get("by_category", {})
-        cat_str = " · ".join(f"{k} {v}건" for k, v in list(by_cat.items())[:3]) or "—"
-        _html(_info_card("문서 레지스트리", [
-            ("총 등록 문서",    f'{reg["total"]}건'),
-            ("인덱스 대기",     f'{reg["unindexed"]}건'),
-            ("카테고리",        cat_str),
-            ("레지스트리 크기", f'{reg.get("size_kb","—")} KB'),
-        ]))
-
-    gap(16)
-    sub_label = {"doc_db": "규정집", "query_db": "쿼리 예제", "schema_db": "테이블 명세"}
-    rows = []
-    for key in ["doc_db", "query_db", "schema_db"]:
-        s   = vs.get(key, {})
-        sz  = f'{s.get("mb","—")} MB' if s.get("exists") else "없음"
-        bge = badge_html("정상", "ok") if s.get("exists") else badge_html("미생성", "warn")
-        rows.append([f"<b>{key}</b>", sub_label[key], sz, bge])
-    _html(_table(["인덱스", "용도", "크기", "상태"], rows))
-
-    # ── 파트별 재구축 ───────────────────────────────────────────────────
+    # ── 부서별 인덱스 현황 ─────────────────────────────────────────────────
     gap(16)
     st.divider()
-    section_header("인덱스 재구축", "파트별 또는 전체 재구축")
-    _html('<div class="adm-warn">⚠️ 재구축은 수 분 소요됩니다. 재구축 중 챗봇 응답이 느려질 수 있습니다.</div>')
+    section_header("부서별 FAISS 인덱스 현황", "G드라이브 규정집 폴더 구조 기반", C["blue"])
 
-    r1, r2, r3 = st.columns(3, gap="small")
-    with r1:
-        if st.button("규정집 재구축 (doc_db)", key="adm_rb_doc", use_container_width=True):
-            prog = st.progress(0, text="규정집 재구축 중...")
-            try:
-                from db.knowledge_db_builder import rebuild_doc_index
-                rebuild_doc_index(); prog.progress(100, text="완료")
-                st.success("규정집 인덱스 완료")
-            except AttributeError:
-                try:
-                    from db.knowledge_db_builder import rebuild_vector_store
-                    rebuild_vector_store(part="doc_db")
-                    prog.progress(100, text="완료"); st.success("규정집 인덱스 완료")
-                except Exception as e2:
-                    prog.empty(); st.error(f"오류: {e2}")
-            except Exception as e:
-                prog.empty(); st.error(f"오류: {e}")
-    with r2:
-        if st.button("쿼리예제 재구축 (query_db)", key="adm_rb_query", use_container_width=True):
-            prog = st.progress(0, text="쿼리 예제 재구축 중...")
-            try:
-                from db.knowledge_db_builder import rebuild_query_index
-                rebuild_query_index(); prog.progress(100, text="완료")
-                st.success("쿼리 예제 인덱스 완료")
-            except AttributeError:
-                try:
-                    from db.knowledge_db_builder import rebuild_vector_store
-                    rebuild_vector_store(part="query_db")
-                    prog.progress(100, text="완료"); st.success("쿼리 예제 인덱스 완료")
-                except Exception as e2:
-                    prog.empty(); st.error(f"오류: {e2}")
-            except Exception as e:
-                prog.empty(); st.error(f"오류: {e}")
-    with r3:
-        if st.button("스키마 재구축 (schema_db)", key="adm_rb_schema", use_container_width=True):
-            prog = st.progress(0, text="스키마 재구축 중...")
-            try:
-                from db.schema_vector_store import rebuild_schema_index
-                rebuild_schema_index(); prog.progress(100, text="완료")
-                st.success("스키마 인덱스 완료")
-            except Exception as e:
-                prog.empty(); st.error(f"오류: {e}")
+    dept_stats = _load_dept_stats()
+    if not dept_stats:
+        st.info("부서 정보를 불러올 수 없습니다. G드라이브 연결 또는 data_rag_working/depts/ 를 확인하세요.")
+    else:
+        # 부서 현황 테이블
+        rows_dept = []
+        for ds in dept_stats:
+            name    = ds["dept_name"]
+            pdfs    = f'{ds["pdf_count"]}개' if ds["pdf_count"] > 0 else badge_html("없음", "warn")
+            chunks  = f'{ds["chunk_count"]:,}' if ds.get("chunk_count") else "—"
+            faiss   = f'{ds["faiss_mb"]} MB' if ds["indexed"] else "—"
+            mtime   = ds.get("mtime", "—")
+            idx_bge = badge_html("인덱스됨", "ok") if ds["indexed"] else badge_html("미생성", "warn")
+            src_bge = badge_html("G드라이브 연결", "blue") if ds.get("src_exists") else badge_html("로컬만", "gray")
+            rows_dept.append([f"<b>{name}</b>", pdfs, chunks, faiss, mtime, idx_bge, src_bge])
+        _html(_table(
+            ["부서명", "PDF 수", "청크 수", "FAISS 크기", "인덱스 수정일", "상태", "소스"],
+            rows_dept,
+        ))
 
-    r4, r5, r6 = st.columns(3, gap="small")
-    with r4:
-        if st.button("메인 전체 재구축", key="adm_rb_main", use_container_width=True):
-            prog = st.progress(0, text="메인 재구축 중...")
-            try:
-                from db.knowledge_db_builder import rebuild_vector_store
-                prog.progress(30, text="문서 로딩 중...")
-                rebuild_vector_store(); prog.progress(100, text="완료")
-                st.success("메인 인덱스 완료")
-            except Exception as e:
-                prog.empty(); st.error(f"오류: {e}")
-    with r5:
-        if st.button("전체 재구축 (메인+스키마)", key="adm_rb_all", use_container_width=True):
-            prog = st.progress(0, text="전체 재구축 시작..."); errs = []
-            try:
-                from db.knowledge_db_builder import rebuild_vector_store
-                prog.progress(20, text="메인 재구축 중..."); rebuild_vector_store()
-                prog.progress(60, text="스키마 재구축 중...")
-            except Exception as e:
-                errs.append(f"메인: {e}")
-            try:
-                from db.schema_vector_store import rebuild_schema_index
-                rebuild_schema_index(); prog.progress(100, text="완료")
-            except Exception as e:
-                errs.append(f"스키마: {e}")
-            if errs:
-                st.error(" | ".join(errs))
+    # ── 부서별 재구축 ───────────────────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("부서별 재구축", "G드라이브 동기화 → 부서 FAISS 구축 → 마스터 병합")
+    _html('<div class="adm-warn">⚠️ 재구축은 부서당 2~10분 소요됩니다. 실행 중 챗봇 응답이 느려질 수 있습니다.</div>')
+
+    # 재구축 컨트롤
+    ctrl1, ctrl2, ctrl3 = st.columns([3, 1, 1], gap="small")
+    with ctrl1:
+        dept_list = [ds["dept_name"] for ds in dept_stats] if dept_stats else []
+        sel_dept  = st.selectbox(
+            "재구축할 부서 선택",
+            ["선택하세요..."] + dept_list,
+            key="adm_dept_sel",
+            label_visibility="collapsed",
+        )
+    with ctrl2:
+        do_sync = st.checkbox("G드라이브 동기화", value=True, key="adm_dept_sync")
+    with ctrl3:
+        btn_dept = st.button(
+            "선택 부서 재구축",
+            key="adm_rb_dept_one",
+            use_container_width=True,
+            type="primary",
+            disabled=(sel_dept == "선택하세요..."),
+        )
+
+    if btn_dept and sel_dept != "선택하세요...":
+        with st.spinner(f"{sel_dept} 재구축 중... (동기화 → 임베딩 → 마스터 병합)"):
+            ok, msg = _run_dept_rebuild(sel_dept, sync=do_sync)
+        if ok:
+            st.success(msg)
+        else:
+            st.error(msg)
+
+    gap(8)
+    rb2a, rb2b, rb2c = st.columns(3, gap="small")
+    with rb2a:
+        if st.button("전체 부서 재구축 + 마스터 병합", key="adm_rb_all_dept",
+                     use_container_width=True):
+            with st.spinner("전체 부서 재구축 중... (시간이 걸립니다)"):
+                ok, msg = _run_all_dept_rebuild(sync=do_sync)
+            if ok:
+                st.success(msg)
             else:
-                st.success("전체 재구축 완료")
-    with r6:
-        if st.button("백업 생성", key="adm_backup", use_container_width=True):
+                st.error(msg)
+    with rb2b:
+        if st.button("마스터 병합만 (재구축 없이)", key="adm_merge_only",
+                     use_container_width=True):
+            with st.spinner("마스터 병합 중..."):
+                try:
+                    from core.dept_vector_store import DeptVectorStoreManager
+                    mg = DeptVectorStoreManager().merge_all_to_master()
+                    if mg.success:
+                        st.success(f"병합 완료: {mg.dept_count}개 부서, {mg.total_chunks:,}청크")
+                    else:
+                        st.error(f"병합 실패: {mg.error}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+    with rb2c:
+        if st.button("스키마 재구축 (schema_db)", key="adm_rb_schema2",
+                     use_container_width=True):
+            with st.spinner("스키마 재구축 중..."):
+                try:
+                    from db.schema_vector_store import rebuild_schema_index
+                    rebuild_schema_index()
+                    st.success("스키마 인덱스 완료")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+
+    gap(8)
+    rb3a, rb3b, rb3c = st.columns(3, gap="small")
+    with rb3a:
+        if st.button("전체 통합 재구축 (build_db.py)", key="adm_rb_full",
+                     use_container_width=True):
+            with st.spinner("전체 재구축 중 (G드라이브→임베딩→FAISS, 10~20분)..."):
+                try:
+                    import subprocess, sys
+                    r = subprocess.run(
+                        [sys.executable, str(_ROOT / "build_db.py"),
+                         "--no-sync" if not do_sync else ""],
+                        capture_output=True, text=True, timeout=1800,
+                        cwd=str(_ROOT),
+                    )
+                    if r.returncode == 0:
+                        st.success("전체 재구축 완료")
+                    else:
+                        st.error(f"오류 (코드 {r.returncode})\n{r.stderr[-800:]}")
+                except subprocess.TimeoutExpired:
+                    st.error("시간 초과 (30분). 터미널에서 직접 실행하세요.")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+    with rb3b:
+        if st.button("백업 생성", key="adm_backup2", use_container_width=True):
             with st.spinner("백업 생성 중..."):
                 try:
-                    import shutil
+                    import shutil as _sh
                     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
                     dst = _ROOT / "vector_store_backup" / ts
-                    shutil.copytree(str(_ROOT / "vector_store"), str(dst))
+                    _sh.copytree(str(_ROOT / "vector_store"), str(dst),
+                                 ignore=_sh.ignore_patterns("depts"))
                     st.success(f"백업 완료 → vector_store_backup/{ts}")
                 except Exception as e:
                     st.error(f"백업 오류: {e}")
+    with rb3c:
+        st.caption("※ 전체 통합 재구축은 규정집+DB명세서+스키마 모두 포함. 부서별 재구축은 규정집만.")
 
     # 백업 목록
     bk_dir = _ROOT / "vector_store_backup"
@@ -806,12 +868,12 @@ def _tab_vectordb() -> None:
                     if st.button("선택 백업으로 복구", key="adm_restore",
                                  use_container_width=True, type="primary"):
                         try:
-                            import shutil
+                            import shutil as _sh2
                             vs_path = _ROOT / "vector_store"
                             ets     = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
-                            shutil.copytree(str(vs_path), str(bk_dir / ets))
-                            shutil.rmtree(str(vs_path))
-                            shutil.copytree(str(bk_dir / sel_bk), str(vs_path))
+                            _sh2.copytree(str(vs_path), str(bk_dir / ets))
+                            _sh2.rmtree(str(vs_path))
+                            _sh2.copytree(str(bk_dir / sel_bk), str(vs_path))
                             st.success(f"복구 완료: {sel_bk}")
                         except Exception as e:
                             st.error(f"복구 오류: {e}")
@@ -822,7 +884,20 @@ def _tab_vectordb() -> None:
                     rows_bk.append([b.name, mtime, f"{mb:.1f} MB"])
                 _html(_table(["백업명", "생성일시", "크기"], rows_bk, "12px"))
 
-    # ── 문서 목록 브라우저 ──────────────────────────────────────────────
+    # ── 서브 인덱스 현황 ────────────────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("보조 인덱스", "schema_db · query_db · doc_db")
+    sub_label = {"doc_db": "규정집(구)", "query_db": "쿼리 예제", "schema_db": "테이블 명세"}
+    rows_sub = []
+    for key in ["schema_db", "query_db", "doc_db"]:
+        s   = vs.get(key, {})
+        sz  = f'{s.get("mb","—")} MB' if s.get("exists") else "없음"
+        bge = badge_html("정상", "ok") if s.get("exists") else badge_html("미생성", "warn")
+        rows_sub.append([f"<b>{key}</b>", sub_label[key], sz, bge])
+    _html(_table(["인덱스", "용도", "크기", "상태"], rows_sub))
+
+    # ── 문서 목록 브라우저 ──────────────────────────────────────────────────
     gap(8)
     st.divider()
     section_header("인덱스된 문서 목록", "doc_registry.json 기반", C["ok"])

@@ -1,5 +1,10 @@
 """
-utils/file_sync.py ─ G드라이브 PDF 파일 동기화 유틸리티 (v2.1)
+utils/file_sync.py ─ G드라이브 PDF 파일 동기화 유틸리티 (v2.2)
+
+[v2.2 추가사항 — 2026-04-22]
+- sync_dept_structure(): 부서별 폴더 구조를 유지하며 동기화 (부서별 FAISS 지원)
+  G드라이브 규정집\\{부서명}\\*.pdf → data_rag_working\\depts\\{부서명}\\*.pdf
+  반환: Dict[str, SyncResult] (부서명 → 동기화 결과)
 
 [v2.1 수정사항]
 - BUG#3 수정: get_logger(__name__, log_dir=settings.log_dir) 추가
@@ -9,11 +14,12 @@ utils/file_sync.py ─ G드라이브 PDF 파일 동기화 유틸리티 (v2.1)
 [설계 원칙]
 - mtime(수정 시각) 비교 기반 증분 복사 → 변경된 파일만 재복사 (속도 최적화)
 - rglob 으로 하위 폴더(부서별 폴더 구조)까지 재귀 탐색
-- dst 는 항상 flat 구조 → 부서 폴더 관계없이 동일한 경로에서 PDF 접근
+- sync_pdf_files: dst 는 flat 구조 (기존 동작 유지)
+- sync_dept_structure: dst 에 부서별 하위폴더 생성 (신규)
 - SyncResult 데이터클래스로 결과 명확히 반환 (호출부에서 성공/실패 판단)
 - G드라이브 미연결 시 warning 만 출력 후 계속 진행 (Fail-Soft 원칙)
 
-[동작 흐름]
+[동작 흐름 — sync_pdf_files (기존)]
 G드라이브 경로 (src_dir)
   ├── 원무팀/원무규정.pdf        ─┐
   ├── 간호팀/간호지침.pdf         │  rglob 재귀 탐색
@@ -23,6 +29,15 @@ G드라이브 경로 (src_dir)
   ├── 원무규정.pdf
   ├── 간호지침.pdf
   └── 취업규칙.pdf
+
+[동작 흐름 — sync_dept_structure (신규)]
+G드라이브 경로 (src_dir = 규정집/)
+  ├── 간호부/간호지침.pdf
+  └── 원무심사팀/원무규정.pdf
+         ↓ (부서별 폴더 유지)
+로컬 작업 경로 (dst_dir = data_rag_working/depts/)
+  ├── 간호부/간호지침.pdf
+  └── 원무심사팀/원무규정.pdf
 """
 
 from __future__ import annotations
@@ -30,7 +45,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from config.settings import settings    # BUG#3: settings import (log_dir 참조용)
 from utils.logger import get_logger
@@ -171,3 +186,98 @@ def sync_pdf_files(
 
     result.log_summary()
     return result
+
+
+def sync_dept_structure(
+    src_dir: Path,
+    depts_dst_dir: Path,
+    *,
+    extensions: tuple[str, ...] = (".pdf",),
+    dept_names: List[str] | None = None,
+) -> Dict[str, SyncResult]:
+    """
+    G드라이브 규정집 폴더 구조(부서별 하위 폴더)를 유지하며 로컬로 동기화합니다.
+
+    [sync_pdf_files 와의 차이]
+    sync_pdf_files : dst 를 항상 flat 구조로 복사 (폴더 제거)
+    sync_dept_structure : src 의 부서 폴더 구조를 dst 에 그대로 반영
+
+    [경로 예시]
+    src_dir   = G:\\공유드라이브\\좋은문화병원_DATA\\규정집
+    dst_dir   = D:\\MH\\guidbot\\data_rag_working\\depts
+
+    처리 결과:
+    src: 규정집\\간호부\\간호지침.pdf → dst: depts\\간호부\\간호지침.pdf
+    src: 규정집\\원무심사팀\\원무규정.pdf → dst: depts\\원무심사팀\\원무규정.pdf
+
+    [루트 PDF 처리]
+    src_dir 루트에 직접 있는 PDF 는 depts\\_공통(루트)\\ 에 복사합니다.
+
+    Args:
+        src_dir:      G드라이브 규정집 경로 (settings.rag_source_path)
+        depts_dst_dir: 로컬 부서별 동기화 대상 경로 (settings.local_work_dir / "depts")
+        extensions:   동기화할 파일 확장자 (기본: .pdf)
+        dept_names:   동기화할 부서 이름 목록. None이면 전체 하위 폴더 대상
+
+    Returns:
+        Dict[str, SyncResult] — 부서명 → 동기화 결과
+    """
+    results: Dict[str, SyncResult] = {}
+    depts_dst_dir.mkdir(parents=True, exist_ok=True)
+
+    if not src_dir.exists():
+        logger.warning(
+            f"원본 경로를 찾을 수 없습니다 (G드라이브 미연결 가능성): {src_dir}"
+        )
+        return results
+
+    # ── 루트 PDF (폴더 없이 규정집 최상위에 있는 파일) ────────────────────
+    root_pdfs = [
+        f for ext in extensions
+        for f in src_dir.glob(f"*{ext}") if f.is_file()
+    ]
+    if root_pdfs:
+        root_dst = depts_dst_dir / "_공통(루트)"
+        result_root = SyncResult()
+        root_dst.mkdir(parents=True, exist_ok=True)
+        for src in sorted(root_pdfs):
+            dst = root_dst / src.name
+            try:
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                    result_root.copied.append(src.name)
+                elif src.stat().st_mtime > dst.stat().st_mtime:
+                    shutil.copy2(src, dst)
+                    result_root.updated.append(src.name)
+                else:
+                    result_root.skipped += 1
+            except OSError as exc:
+                result_root.failed.append(src.name)
+                logger.error(f"  [실패] {src.name}: {exc}")
+        result_root.log_summary()
+        results["_공통(루트)"] = result_root
+
+    # ── 부서 하위 폴더 ─────────────────────────────────────────────────────
+    dept_dirs = sorted(
+        d for d in src_dir.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    )
+    if dept_names is not None:
+        dept_dirs = [d for d in dept_dirs if d.name in dept_names]
+
+    for dept_dir in dept_dirs:
+        dept_dst = depts_dst_dir / dept_dir.name
+        logger.info(f"[부서 동기화] {dept_dir.name}: {dept_dir} → {dept_dst}")
+        r = sync_pdf_files(dept_dir, dept_dst, extensions=extensions)
+        results[dept_dir.name] = r
+
+    total_copied  = sum(len(r.copied)  for r in results.values())
+    total_updated = sum(len(r.updated) for r in results.values())
+    total_failed  = sum(len(r.failed)  for r in results.values())
+    total_skipped = sum(r.skipped      for r in results.values())
+    logger.info(
+        f"[부서 전체 동기화] {len(results)}개 부서 | "
+        f"신규 {total_copied}개 | 업데이트 {total_updated}개 | "
+        f"건너뜀 {total_skipped}개 | 실패 {total_failed}개"
+    )
+    return results
