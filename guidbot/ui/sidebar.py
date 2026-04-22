@@ -253,13 +253,13 @@ def _render_shortcuts() -> None:
 
     # ── 공통 인라인 스타일 상수 ────────────────────────────────────────
     _S_TITLE = (
-        "font-size:13px;font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;flex:1;"
+        "font-size:13px;font-weight:700;color:rgba(255,255,255,0.90);letter-spacing:-0.01em;flex:1;"
     )
-    _S_ARR = "font-size:12px;color:#7BE0F5;font-weight:700;"
+    _S_ARR = "font-size:12px;color:rgba(255,255,255,0.45);font-weight:600;"
     _S_NOTE = (
-        "font-size:11px;color:#FFFFFF !important;margin-top:4px;"
+        "font-size:11px;color:rgba(255,255,255,0.52) !important;margin-top:4px;"
         "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-        "font-weight:600;"
+        "font-weight:400;"
     )
 
     # ── 회람 문서 버튼 ────────────────────────────────────────────────
@@ -269,8 +269,11 @@ def _render_shortcuts() -> None:
     )
     st.markdown(
         f'<a href="{_DOCS_URL}" target="_blank" rel="noopener"'
-        f' style="display:block;background:rgba(0,140,180,0.22);'
-        f"border:1.5px solid rgba(0,190,220,0.40);border-radius:8px;"
+        f' style="display:block;width:100%;box-sizing:border-box;'
+        f'background:rgba(255,255,255,0.06);'
+        f"border:1px solid rgba(255,255,255,0.15);"
+        f'border-left:3px solid rgba(99,179,237,0.60);'
+        f"border-radius:8px;"
         f'padding:0.48rem 0.7rem;text-decoration:none;margin-bottom:5px;">'
         f'<div style="display:flex;align-items:center;">'
         f'<span style="{_S_TITLE}">회람 문서</span>'
