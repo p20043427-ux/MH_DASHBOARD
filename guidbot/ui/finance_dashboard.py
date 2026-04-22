@@ -58,6 +58,24 @@ except Exception:
         logger.setLevel(_l.DEBUG)
 
 # ════════════════════════════════════════════════════════════════════
+# 디자인 토큰 — ui/design.py 단일 소스 (2026-04-22 Phase 1 리팩토링)
+#   · 기존 로컬 C 딕셔너리·_CSS·헬퍼 함수를 모두 제거하고
+#     ui/design.py 의 단일 소스에서 임포트한다.
+#   · 기존 호출부(_kpi_card, _sec_hd 등)는 하위 호환 별칭으로 유지.
+# ════════════════════════════════════════════════════════════════════
+from ui.design import (          # noqa: E402
+    C,               # 색상 팔레트 — 프로젝트 전체 단일 소스
+    APP_CSS,         # 마스터 CSS — fn-kpi / wd-card / badge 등 공통 클래스
+    PLOTLY_PALETTE,  # Plotly 색상 시퀀스
+    PLOTLY_CFG,      # Plotly 공통 레이아웃 설정
+    kpi_card,        # KPI 카드 컴포넌트
+    section_header,  # 섹션 헤더 (wd-sec 스타일)
+    gap,             # 빈 세로 여백
+    fmt_won,         # 금액 → 억/만 단위 포맷
+    empty_state,     # 데이터 없음 플레이스홀더
+)
+
+# ════════════════════════════════════════════════════════════════════
 # Oracle 쿼리 딕셔너리 — v2.3
 # [보안 원칙]
 #   · VIEW 경유만 허용 (RAG_READONLY 원본 테이블 접근 금지)
@@ -260,117 +278,20 @@ def _fq(key: str, date_str: str = "", max_rows: int = 5000) -> List[Dict[str, An
         return []
 
 
-# ── 팔레트 ──────────────────────────────────────────────────────────
-C = {
-    "blue": "#1E40AF", "blue_l": "#EFF6FF",
-    "indigo": "#4F46E5", "indigo_l": "#EEF2FF",
-    "violet": "#7C3AED", "violet_l": "#F5F3FF",
-    "teal": "#0891B2", "teal_l": "#ECFEFF",
-    "green": "#059669", "green_l": "#DCFCE7",
-    "yellow": "#D97706", "yellow_l": "#FEF3C7",
-    "orange": "#EA580C", "orange_l": "#FFF7ED",
-    "red": "#DC2626", "red_l": "#FEE2E2",
-    "t1": "#0F172A", "t2": "#334155", "t3": "#64748B", "t4": "#94A3B8",
-}
-
-_CSS = """
-<style>
-@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
-.main,[data-testid="stAppViewContainer"],[data-testid="stMarkdownContainer"]{
-  font-family:'Pretendard Variable','Malgun Gothic',sans-serif!important;font-size:14px!important;}
-[data-testid="stAppViewContainer"]>.main{padding-top:.3rem!important;padding-left:.75rem!important;padding-right:.75rem!important;}
-[data-testid="stVerticalBlock"]{gap:.4rem!important;}
-.element-container{margin-bottom:0!important;}
-[data-testid="stMarkdownContainer"]:empty{display:none!important;}
-.fn-topbar{height:3px;background:linear-gradient(90deg,#1E40AF 0%,#7C3AED 50%,#E2E8F0 100%);border-radius:2px 2px 0 0;}
-.fn-kpi{background:#fff;border:1px solid #F0F4F8;border-radius:12px;padding:13px 15px;min-height:118px;
-  display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 3px 10px rgba(0,0,0,.06);}
-.fn-kpi:hover{box-shadow:0 6px 18px rgba(0,0,0,.10);}
-.fn-kpi-icon{font-size:18px;margin-bottom:3px;}
-.fn-kpi-label{font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.12em;}
-.fn-kpi-value{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;}
-.fn-kpi-unit{font-size:13px;color:#64748B;font-weight:500;margin-left:2px;}
-.fn-kpi-sub{font-size:11px;color:#94A3B8;margin-top:3px;}
-.goal-bar-wrap{height:5px;background:#F1F5F9;border-radius:3px;margin-top:5px;overflow:hidden;}
-.goal-bar-fill{height:100%;border-radius:3px;}
-.wd-card{background:#fff;border:1px solid #F0F4F8;border-radius:12px;padding:14px 16px;box-shadow:0 3px 10px rgba(0,0,0,.06);}
-.wd-sec{font-size:13px;font-weight:700;color:#0F172A;margin-bottom:10px;padding-bottom:8px;
-  border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:7px;}
-.wd-sec-bar{width:3px;height:15px;border-radius:2px;flex-shrink:0;}
-.wd-sec-sub{font-size:11px;color:#94A3B8;font-weight:400;margin-left:3px;}
-.badge{border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;display:inline-block;}
-.badge-blue{background:#DBEAFE;color:#1E40AF;}.badge-green{background:#DCFCE7;color:#15803D;}
-.badge-yellow{background:#FEF3C7;color:#92400E;}.badge-red{background:#FEE2E2;color:#991B1B;}
-.badge-purple{background:#EDE9FE;color:#5B21B6;}.badge-gray{background:#F1F5F9;color:#475569;}
-.overdue-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F8FAFC;}
-.overdue-label{font-size:12px;font-weight:700;width:80px;flex-shrink:0;}
-.overdue-bar-wrap{flex:1;height:8px;background:#F1F5F9;border-radius:4px;overflow:hidden;}
-.overdue-bar{height:100%;border-radius:4px;}
-.overdue-val{font-size:12px;font-weight:700;font-family:Consolas,monospace;width:65px;text-align:right;flex-shrink:0;}
-[data-testid="stTabs"]>div:first-child{border-bottom:1.5px solid #E2E8F0!important;gap:0!important;}
-[data-testid="stTabs"] button{font-size:13px!important;font-weight:600!important;padding:6px 16px!important;border-radius:0!important;color:#64748B!important;}
-[data-testid="stTabs"] button[aria-selected="true"]{color:#1E40AF!important;border-bottom:2.5px solid #1E40AF!important;background:transparent!important;}
-[data-testid="stSelectbox"]>div>div,[data-testid="stMultiSelect"]>div>div{
-  border-radius:8px!important;border:1.5px solid #BFDBFE!important;
-  background:#EFF6FF!important;font-size:13px!important;font-weight:600!important;color:#1E40AF!important;}
-button[kind="secondary"]{font-size:13px!important;height:34px!important;border-radius:8px!important;}
-</style>
-"""
-
-
-# ── 헬퍼 ─────────────────────────────────────────────────────────────
-def _kpi_card(col, icon, label, val, unit, sub, color, goal_pct: Optional[float] = None):
-    _bar = ""
-    if goal_pct is not None:
-        _p  = min(max(int(goal_pct), 0), 100)
-        _bc = C["green"] if _p >= 100 else C["yellow"] if _p >= 70 else C["red"]
-        _bar = (
-            f'<div class="goal-bar-wrap"><div class="goal-bar-fill" style="width:{_p}%;background:{_bc};"></div></div>'
-            f'<div style="font-size:10px;color:{_bc};font-weight:700;margin-top:2px;">목표 {_p}%</div>'
-        )
-    col.markdown(
-        f'<div class="fn-kpi" style="border-top:3px solid {color};">'
-        f'<div class="fn-kpi-icon">{icon}</div>'
-        f'<div class="fn-kpi-label">{label}</div>'
-        f'<div class="fn-kpi-value" style="color:{color};">{val}'
-        f'<span class="fn-kpi-unit">{unit}</span></div>'
-        f'<div class="fn-kpi-sub">{sub}</div>{_bar}</div>',
-        unsafe_allow_html=True,
-    )
-
-def _sec_hd(title, sub="", color=None):
-    color = color or C["blue"]
-    st.markdown(
-        f'<div class="wd-sec"><span class="wd-sec-bar" style="background:{color};"></span>'
-        f"{title}{'<span class=wd-sec-sub>' + sub + '</span>' if sub else ''}</div>",
-        unsafe_allow_html=True,
-    )
-
-def _fmt_won(n: int) -> str:
-    if n >= 100_000_000: return f"{n / 100_000_000:.1f}억"
-    if n >= 10_000:      return f"{n // 10_000:,}만"
-    return f"{n:,}"
-
-def _gap(px=8):
-    st.markdown(f'<div style="height:{px}px"></div>', unsafe_allow_html=True)
-
-def _plotly_empty():
-    st.markdown(
-        '<div style="padding:32px;text-align:center;color:#94A3B8;font-size:13px;">데이터 없음</div>',
-        unsafe_allow_html=True,
-    )
-
-_PALETTE = [
-    "#1E40AF","#059669","#D97706","#DC2626","#7C3AED",
-    "#0891B2","#DB2777","#0284C7","#65A30D","#9333EA",
-]
-_PLOTLY_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#333333", size=11),
-    xaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
-    yaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10), zeroline=False),
-)
+# ════════════════════════════════════════════════════════════════════
+# [2026-04-22 Phase 1 리팩토링] 하위 호환 별칭
+# ────────────────────────────────────────────────────────────────────
+# 기존 로컬 정의(C 딕셔너리·_CSS·_kpi_card 등)를 모두 제거하고
+# design.py 단일 소스로 통합. 파일 내 100+ 호출부는 아래 별칭을
+# 통해 변경 없이 동작. Phase 2 에서 별칭을 제거하고 직접 호출 예정.
+# ════════════════════════════════════════════════════════════════════
+_kpi_card      = kpi_card        # 24곳 호출 — design.kpi_card 로 위임
+_sec_hd        = section_header  # 26곳 호출 — design.section_header 로 위임
+_gap           = gap             # 42곳 호출 — design.gap 로 위임
+_fmt_won       = fmt_won         # 8곳 호출  — design.fmt_won 로 위임
+_plotly_empty  = empty_state     # 9곳 호출  — design.empty_state 로 위임
+_PALETTE       = PLOTLY_PALETTE  # 7곳 호출  — design.PLOTLY_PALETTE 로 위임
+_PLOTLY_LAYOUT = PLOTLY_CFG      # 17곳 호출 — design.PLOTLY_CFG 로 위임
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -3879,7 +3800,7 @@ def _tab_card_match() -> None:
 # ════════════════════════════════════════════════════════════════════
 def render_finance_dashboard() -> None:
     """원무 현황 대시보드 v2.3 — 4탭 구조."""
-    st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(APP_CSS, unsafe_allow_html=True)  # 2026-04-22: _CSS → APP_CSS (design.py 단일화)
 
     logger.info("render_finance_dashboard 시작")
     oracle_ok = False
@@ -3927,7 +3848,7 @@ def render_finance_dashboard() -> None:
 
     # ── 탑바
     st.markdown('<div class="fn-topbar"></div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([3,4,5], vertical_alignment="center")
+    c1, c2, c3 = st.columns([4, 3, 5], vertical_alignment="center")
     with c1:
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
@@ -3938,15 +3859,11 @@ def render_finance_dashboard() -> None:
             unsafe_allow_html=True,
         )
     with c2:
-        b1, b2, b3 = st.columns(3, gap="small")
+        b1, b2 = st.columns(2, gap="small")
         with b1:
             if st.button("🔄 새로고침", key="fn_refresh", use_container_width=True, type="secondary"):
                 st.cache_data.clear(); st.rerun()
         with b2:
-            _auto = st.session_state.get("fn_auto", False)
-            if st.button("⏸ 자동갱신" if _auto else "▶ 자동갱신", key="fn_auto_toggle", use_container_width=True, type="secondary"):
-                st.session_state["fn_auto"] = not _auto; st.rerun()
-        with b3:
             st.markdown(
                 '<a href="http://192.1.1.231:8501" target="_blank" style="'
                 'display:block;text-align:center;background:#EFF6FF;color:#1E40AF;'
@@ -3955,9 +3872,9 @@ def render_finance_dashboard() -> None:
                 unsafe_allow_html=True,
             )
     with c3:
-        _dc1, _dc2, _dc3 = st.columns([2,3,2], gap="small")
+        _dc1, _dc2 = st.columns([2, 3], gap="small")
         with _dc1:
-            _oc = "#16A34A" if oracle_ok else "#F59E0B"
+            _oc = C["green"] if oracle_ok else C["yellow"]
             st.markdown(
                 f'<div style="display:flex;align-items:center;gap:5px;padding:6px 0;">'
                 f'<span style="width:8px;height:8px;border-radius:50%;background:{_oc};flex-shrink:0;display:inline-block;"></span>'
@@ -3966,14 +3883,13 @@ def render_finance_dashboard() -> None:
             )
         with _dc2:
             _use_custom = st.toggle("📅 날짜 지정", value=st.session_state.get("fn_use_custom_date",False), key="fn_use_custom_date")
-        with _dc3:
             if st.session_state.get("fn_use_custom_date", False):
                 st.date_input("", value=st.session_state.get("fn_sel_date",_dt_main.date.today()),
                               key="fn_sel_date", label_visibility="collapsed", format="YYYY-MM-DD", max_value=_dt_main.date.today())
                 _shown = st.session_state.get("fn_sel_date",_dt_main.date.today())
-                st.markdown(f'<div style="font-size:10px;color:{C["indigo"]};font-weight:700;text-align:center;">📅 {_shown} 기준</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:10px;color:{C["indigo"]};font-weight:700;text-align:right;">📅 {_shown} 기준</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div style="font-size:11px;color:{C["t3"]};font-family:Consolas,monospace;padding:6px 0;text-align:right;">{time.strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:11px;color:{C["t3"]};font-family:Consolas,monospace;padding:2px 0;text-align:right;">{time.strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
 
     st.markdown('<div style="height:1px;background:#F1F5F9;margin:0 0 6px;"></div>', unsafe_allow_html=True)
 

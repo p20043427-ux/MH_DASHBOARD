@@ -1757,53 +1757,27 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             logger.warning(f"병동 목록 선제 로드 실패: {_wl_e}")
             st.session_state["ward_name_list"] = ["전체"]
 
-    _o_color = "#16A34A" if oracle_ok else "#F59E0B"
     _o_label = "Oracle 연결 정상" if oracle_ok else "데모 데이터"
 
-    # ── 탑바: ① 순수 HTML 그라데이션 배너 (제목+상태) ─────────────
-    # 인터랙티브 요소(selectbox/button)는 배너 밖 별도 행으로 분리
-    # → div 래퍼 탈출 문제 완전 해결
-    _glow_c = "rgba(74,222,128,0.6)" if oracle_ok else "rgba(251,191,36,0.6)"
-    _dot_c  = "#4ADE80" if oracle_ok else "#FBBF24"
-    st.markdown(
-        f'<div style="'
-        f'background:linear-gradient(135deg,#0F2A6B 0%,#1E3A8A 30%,#1E40AF 60%,#2563EB 100%);'
-        f'border-radius:14px;padding:12px 22px;margin-bottom:6px;'
-        f'box-shadow:0 4px 20px rgba(30,64,175,0.28);'
-        f'display:flex;align-items:center;justify-content:space-between;">'
-        # 좌: 병원명 + 대시보드명
-        f'<div style="display:flex;align-items:center;gap:12px;">'
-        f'<div style="width:3px;height:28px;background:rgba(255,255,255,0.7);border-radius:2px;"></div>'
-        f'<div>'
-        f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.60);'
-        f'text-transform:uppercase;letter-spacing:.18em;margin-bottom:3px;">좋은문화병원</div>'
-        f'<div style="font-size:20px;font-weight:800;color:#FFFFFF;letter-spacing:-0.03em;'
-        f'line-height:1;">{_tab_name}</div>'
-        f'</div></div>'
-        # 우: Oracle 상태
-        f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">'
-        f'<div style="display:flex;align-items:center;gap:6px;">'
-        f'<span style="width:8px;height:8px;border-radius:50%;background:{_dot_c};'
-        f'display:inline-block;box-shadow:0 0 7px {_glow_c};"></span>'
-        f'<span style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.95);">{_o_label}</span>'
-        f'<span style="color:rgba(255,255,255,0.30);font-size:11px;">|</span>'
-        f'<span style="font-size:11px;color:rgba(255,255,255,0.70);font-family:Consolas,monospace;">'
-        f'갱신 {st.session_state[_ss_key]}</span>'
-        f'</div>'
-        f'<div style="font-size:10px;color:rgba(255,255,255,0.45);">'
-        f'AI 병동 분석 — 하단에서 질문하세요</div>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    # ── 탑바: ① 3px 그라데이션 바
+    st.markdown('<div class="fn-topbar"></div>', unsafe_allow_html=True)
 
-    # ── 탑바: ② 인터랙티브 버튼 행 (배너 바로 아래) ──────────────────
-    # 배너와 버튼 행 사이 여백 + 구분선
-    st.markdown(
-        '<div style="height:6px;border-bottom:1px solid #E2E8F0;margin-bottom:8px;"></div>',
-        unsafe_allow_html=True,
+    # ── 탑바: ② 헤더 행 (제목 | 병동선택 | 버튼들 | 상태)
+    _c_title_h, _c_ward_sel, _c_btns_bar, _c_status_h = st.columns(
+        [4, 3, 3, 2], vertical_alignment="center", gap="small"
     )
-    _c_ward_sel, _c_btns_bar = st.columns([3, 7], vertical_alignment="center", gap="small")
+    with _c_title_h:
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
+            f'<div style="width:3px;height:22px;background:{C["blue"]};border-radius:2px;"></div>'
+            f'<div>'
+            f'<div style="font-size:9px;font-weight:700;color:{C["t4"]};'
+            f'text-transform:uppercase;letter-spacing:.15em;">좋은문화병원</div>'
+            f'<div style="font-size:17px;font-weight:800;color:{C["t1"]};'
+            f'letter-spacing:-0.03em;">{_tab_name}</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
     with _c_ward_sel:
         if tab == "ward":
             _ward_name_list = st.session_state.get("ward_name_list", ["전체"])
@@ -1819,11 +1793,13 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
                 st.session_state["ward_selected"] = _sel
                 st.rerun()
     with _c_btns_bar:
-        _bx1, _bx2, _bx3 = st.columns([2, 2, 6], gap="small")
+        _bx1, _bx2 = st.columns(2, gap="small")
         with _bx1:
             _rm_panel_open = st.session_state.get("show_room_panel", False)
-            if st.button("병실현황" if not _rm_panel_open else "▲ 닫기",
-                         key="btn_room_panel", type="secondary", use_container_width=True):
+            if st.button(
+                "🏠 병실현황" if not _rm_panel_open else "▲ 닫기",
+                key="btn_room_panel", type="secondary", use_container_width=True,
+            ):
                 st.session_state["show_room_panel"] = not _rm_panel_open
                 st.rerun()
         with _bx2:
@@ -1838,7 +1814,19 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
                 st.cache_data.clear()
                 st.session_state[_ss_key] = time.strftime("%Y-%m-%d %H:%M")
                 st.rerun()
-        # _bx3은 빈 공간 (우측 정렬 효과)
+    with _c_status_h:
+        _o_c = C["green"] if oracle_ok else C["yellow"]
+        st.markdown(
+            f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding:6px 0;">'
+            f'<div style="display:flex;align-items:center;gap:5px;">'
+            f'<span style="width:7px;height:7px;border-radius:50%;background:{_o_c};display:inline-block;"></span>'
+            f'<span style="font-size:11px;font-weight:700;color:{_o_c};">{_o_label}</span>'
+            f'</div>'
+            f'<span style="font-size:10px;color:{C["t4"]};font-family:Consolas,monospace;">'
+            f'{st.session_state[_ss_key]}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 

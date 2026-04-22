@@ -162,10 +162,14 @@ def render_nursing_dashboard() -> None:
     st.session_state["ward_name_list"] = _all_wards
 
     # ── 탑바 ─────────────────────────────────────────────────────
-    st.markdown('<div class="nr-topbar-accent"></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="fn-topbar" style="background:linear-gradient('
+        '90deg,#0891B2 0%,#06B6D4 55%,#E2E8F0 100%);"></div>',
+        unsafe_allow_html=True,
+    )
 
     _c_title, _c_ward, _c_btns, _c_info = st.columns(
-        [3, 2, 2, 3], vertical_alignment="center"
+        [4, 2, 3, 3], vertical_alignment="center"
     )
 
     with _c_title:
@@ -220,7 +224,7 @@ def render_nursing_dashboard() -> None:
                 st.rerun()
 
     with _c_info:
-        _o_c = "#16A34A" if oracle_ok else "#F59E0B"
+        _o_c = C["green"] if oracle_ok else C["yellow"]
         _o_l = "Oracle 연결 정상" if oracle_ok else "Oracle 미연결"
         st.markdown(
             f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding:8px 0;">'
