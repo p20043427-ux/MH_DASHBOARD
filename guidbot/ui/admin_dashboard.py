@@ -585,6 +585,75 @@ def _dot_cls(val: Optional[float], warn: float = 70, err: float = 85) -> str:
     return "dot dok"
 
 
+# ── 모니터링 / 챗봇 헬퍼 (2026-04-22 신규) ────────────────────────────
+
+def _events_jsonl_path() -> Path:
+    """대시보드 이벤트 로그 경로."""
+    return _log_dir() / "dashboard_events.jsonl"
+
+
+def _read_monitor_events(n: int = 2000) -> List[Dict[str, Any]]:
+    """dashboard_events.jsonl 의 최근 n 줄을 읽어 파싱."""
+    path = _events_jsonl_path()
+    if not path.exists():
+        return []
+    try:
+        import json as _j
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+        events = []
+        for l in lines[-n:]:
+            l = l.strip()
+            if not l:
+                continue
+            try:
+                events.append(_j.loads(l))
+            except Exception:
+                pass
+        return events
+    except Exception as e:
+        logger.warning(f"[Admin] monitor events 읽기 실패: {e}")
+        return []
+
+
+def _chatbot_cfg_path() -> Path:
+    """챗봇 런타임 설정 파일 경로."""
+    return _ROOT / "config" / "chatbot_runtime.json"
+
+
+def _get_chatbot_cfg() -> Dict[str, Any]:
+    """챗봇 런타임 설정 로드 (없으면 기본값 반환)."""
+    import json as _j
+    defaults: Dict[str, Any] = {
+        "enabled":      True,
+        "model":        getattr(settings, "llm_model", "gemini-2.5-pro"),
+        "temperature":  getattr(settings, "llm_temperature", 0.1),
+        "max_tokens":   getattr(settings, "llm_max_tokens", 8192),
+        "thinking":     not getattr(settings, "llm_thinking_disabled", True),
+        "top_k":        getattr(settings, "retrieve_top_k", 10),
+        "rerank_top_n": getattr(settings, "rerank_top_n", 4),
+    }
+    path = _chatbot_cfg_path()
+    if path.exists():
+        try:
+            with open(path, encoding="utf-8") as f:
+                saved = _j.load(f)
+            defaults.update(saved)
+        except Exception:
+            pass
+    return defaults
+
+
+def _set_chatbot_cfg(cfg: Dict[str, Any]) -> None:
+    """챗봇 런타임 설정 저장."""
+    import json as _j
+    path = _chatbot_cfg_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        _j.dump(cfg, f, ensure_ascii=False, indent=2)
+    logger.info(f"[Admin] 챗봇 설정 저장: {cfg}")
+
+
 def _kpi_card(label: str, val_html: str, foot: str, pct: Optional[float] = None) -> str:
     bar = _pb(pct, _pct_color(pct)) if pct is not None else ""
     return (
@@ -778,14 +847,22 @@ def _tab_logs() -> None:
         _html("</div>")
         return
 
-    c1, c2, c3 = st.columns([2, 2, 3], gap="small")
+    # 2026-04-22: 레벨 필터 + tail 선택기 추가
+    c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 3], gap="small")
     with c1:
         sel_mod  = st.selectbox("모듈", modules, key="adm_log_mod")
     with c2:
         dates    = ["(최신)"] + _available_log_dates(sel_mod)
         sel_date = st.selectbox("날짜", dates, key="adm_log_date")
     with c3:
-        kw = st.text_input("키워드 검색", placeholder="ERROR / WARNING / 텍스트...", key="adm_log_kw")
+        level_opts = ["전체", "ERROR", "WARNING", "INFO", "DEBUG"]
+        sel_level  = st.selectbox("레벨 필터", level_opts, key="adm_log_level")
+    with c4:
+        tail_opts = {"최근 200줄": 200, "최근 500줄": 500, "최근 1000줄": 1000, "전체": 999999}
+        tail_lbl  = st.selectbox("표시 줄 수", list(tail_opts.keys()), key="adm_log_tail")
+        tail_n    = tail_opts[tail_lbl]
+    with c5:
+        kw = st.text_input("키워드 검색", placeholder="ERROR / 함수명 / 텍스트...", key="adm_log_kw")
 
     date_arg = None if sel_date == "(최신)" else sel_date
     raw = _read_log(sel_mod, date_arg)
@@ -797,21 +874,27 @@ def _tab_logs() -> None:
 
     lines  = raw.splitlines()
     total  = len(lines)
+    # 레벨 필터 적용
+    if sel_level != "전체":
+        lines = [l for l in lines if f" {sel_level} " in l.upper() or f"|{sel_level}|" in l.upper()]
+    # 키워드 필터 적용
     if kw.strip():
         lines = [l for l in lines if kw.strip().lower() in l.lower()]
 
     err_n  = sum(1 for l in lines if " ERROR "   in l.upper())
     warn_n = sum(1 for l in lines if " WARNING " in l.upper() or " WARN " in l.upper())
+    info_n = sum(1 for l in lines if " INFO "    in l.upper())
 
-    m1, m2, m3, m4 = st.columns(4, gap="small")
+    m1, m2, m3, m4, m5 = st.columns(5, gap="small")
     m1.metric("전체 라인",  f"{total:,}")
     m2.metric("필터 결과",  f"{len(lines):,}")
     m3.metric("ERROR",      f"{err_n}")
     m4.metric("WARNING",    f"{warn_n}")
+    m5.metric("INFO",       f"{info_n}")
 
-    show = lines[-500:] if len(lines) > 500 else lines
-    if len(lines) > 500:
-        st.caption(f"최근 500줄 표시 (전체 {len(lines):,}줄)")
+    show = lines[-tail_n:] if len(lines) > tail_n else lines
+    if len(lines) > tail_n:
+        st.caption(f"최근 {tail_n:,}줄 표시 (필터 결과 {len(lines):,}줄)")
 
     colored = "\n".join(_colorize(l) for l in show)
     _html(f'<div class="log-wrap adm-root"><pre>{colored}</pre></div>')
@@ -932,29 +1015,58 @@ def _tab_vectordb() -> None:
         '</div>'
     )
 
-    b1, b2, b3 = st.columns(3, gap="small")
+    # ── 재구축 버튼 (2026-04-22: 전체 재구축 버튼 + 개선) ──────────────
+    b1, b2, b3, b4 = st.columns(4, gap="small")
     with b1:
-        if st.button("메인 인덱스 재구축", key="adm_rb_main", use_container_width=True):
-            with st.spinner("재구축 중..."):
-                try:
-                    from db.knowledge_db_builder import rebuild_vector_store
-                    rebuild_vector_store()
-                    st.success("메인 인덱스 재구축 완료")
-                    logger.info("관리자: 메인 벡터 인덱스 재구축")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+        if st.button("📚 메인 인덱스 재구축", key="adm_rb_main", use_container_width=True):
+            prog = st.progress(0, text="메인 인덱스 재구축 시작...")
+            try:
+                from db.knowledge_db_builder import rebuild_vector_store
+                prog.progress(30, text="문서 로딩 중...")
+                rebuild_vector_store()
+                prog.progress(100, text="완료")
+                st.success("메인 인덱스 재구축 완료")
+                logger.info("관리자: 메인 벡터 인덱스 재구축")
+            except Exception as e:
+                prog.empty()
+                st.error(f"오류: {e}")
     with b2:
-        if st.button("스키마 인덱스 재구축", key="adm_rb_schema", use_container_width=True):
-            with st.spinner("재구축 중..."):
-                try:
-                    from db.schema_vector_store import rebuild_schema_index
-                    rebuild_schema_index()
-                    st.success("스키마 인덱스 재구축 완료")
-                    logger.info("관리자: 스키마 인덱스 재구축")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+        if st.button("🗄️ 스키마 인덱스 재구축", key="adm_rb_schema", use_container_width=True):
+            prog = st.progress(0, text="스키마 인덱스 재구축 시작...")
+            try:
+                from db.schema_vector_store import rebuild_schema_index
+                prog.progress(50, text="스키마 분석 중...")
+                rebuild_schema_index()
+                prog.progress(100, text="완료")
+                st.success("스키마 인덱스 재구축 완료")
+                logger.info("관리자: 스키마 인덱스 재구축")
+            except Exception as e:
+                prog.empty()
+                st.error(f"오류: {e}")
     with b3:
-        if st.button("백업 생성", key="adm_backup", use_container_width=True):
+        if st.button("🔄 전체 재구축 (메인+스키마)", key="adm_rb_all", use_container_width=True):
+            prog = st.progress(0, text="전체 재구축 시작...")
+            errs = []
+            try:
+                from db.knowledge_db_builder import rebuild_vector_store
+                prog.progress(20, text="메인 인덱스 재구축 중...")
+                rebuild_vector_store()
+                prog.progress(60, text="스키마 인덱스 재구축 중...")
+            except Exception as e:
+                errs.append(f"메인: {e}")
+            try:
+                from db.schema_vector_store import rebuild_schema_index
+                rebuild_schema_index()
+                prog.progress(100, text="완료")
+            except Exception as e:
+                errs.append(f"스키마: {e}")
+            if errs:
+                st.error(" | ".join(errs))
+            else:
+                st.success("전체 인덱스 재구축 완료")
+                logger.info("관리자: 전체 벡터 인덱스 재구축")
+    with b4:
+        if st.button("💾 백업 생성", key="adm_backup", use_container_width=True):
             with st.spinner("백업 생성 중..."):
                 try:
                     import shutil
@@ -966,24 +1078,44 @@ def _tab_vectordb() -> None:
                 except Exception as e:
                     st.error(f"백업 오류: {e}")
 
+    # ── 백업 목록 + 복구 (2026-04-22: 복구 버튼 추가) ───────────────────
     bk_dir = _ROOT / "vector_store_backup"
     if bk_dir.exists():
         bks = sorted([d for d in bk_dir.iterdir() if d.is_dir()], reverse=True)
         if bks:
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander(f"백업 목록  ({len(bks)}개)", expanded=False):
+            with st.expander(f"💾 백업 목록  ({len(bks)}개)  — 복구하려면 선택 후 버튼 클릭", expanded=False):
+                bk_names = [b.name for b in bks[:10]]
+                sel_bk   = st.selectbox("복구할 백업 선택", bk_names, key="adm_sel_backup")
+                rc1, rc2 = st.columns([2, 6], gap="small")
+                with rc1:
+                    if st.button("♻️ 선택 백업으로 복구", key="adm_restore", use_container_width=True, type="primary"):
+                        try:
+                            import shutil
+                            src_bk  = bk_dir / sel_bk
+                            vs_path = _ROOT / "vector_store"
+                            # 현재 인덱스 백업 후 복구
+                            emergency_ts  = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
+                            shutil.copytree(str(vs_path), str(bk_dir / emergency_ts))
+                            shutil.rmtree(str(vs_path))
+                            shutil.copytree(str(src_bk), str(vs_path))
+                            st.success(f"복구 완료: {sel_bk} → vector_store/")
+                            logger.info(f"관리자: 백업 복구 {sel_bk} (복구 전 백업: {emergency_ts})")
+                        except Exception as e:
+                            st.error(f"복구 오류: {e}")
                 bk_rows = ""
-                for b in bks[:8]:
+                for b in bks[:10]:
                     mtime = datetime.fromtimestamp(b.stat().st_mtime).strftime("%Y-%m-%d  %H:%M")
-                    mb = sum(f.stat().st_size for f in b.rglob("*") if f.is_file()) / 1024**2
+                    mb    = sum(f.stat().st_size for f in b.rglob("*") if f.is_file()) / 1024**2
                     bk_rows += (
                         f'<tr><td>{b.name}</td>'
                         f'<td style="color:{_C["t2"]};">{mtime}</td>'
                         f'<td style="color:{_C["t2"]};">{mb:.1f} MB</td></tr>'
                     )
                 _html(
-                    f'<table class="dt"><thead><tr><th>백업명</th><th>생성일시</th><th>크기</th></tr></thead>'
-                    f'<tbody>{bk_rows}</tbody></table>'
+                    f'<table class="dt"><thead><tr>'
+                    f'<th>백업명</th><th>생성일시</th><th>크기</th>'
+                    f'</tr></thead><tbody>{bk_rows}</tbody></table>'
                 )
 
     _html("</div>")
@@ -1098,17 +1230,335 @@ def _tab_sysinfo() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  탭 6 — 챗봇 관리  (2026-04-22 신규)
+# ══════════════════════════════════════════════════════════════════════
+
+def _tab_chatbot() -> None:
+    """챗봇 서비스 설정 · LLM 파라미터 조정 · 테스트 쿼리."""
+    _html(
+        '<div class="sec-light" style="padding-bottom:0;">'
+        '<div class="t-sec-title">챗봇 관리</div>'
+        '<div class="t-sec-sub">LLM 서비스 ON/OFF · 파라미터 조정 · 실시간 테스트</div>'
+        '</div>'
+    )
+    _html('<div class="sec-white" style="padding-top:24px;">')
+
+    cfg = _get_chatbot_cfg()
+
+    # ── 서비스 ON/OFF ────────────────────────────────────────────────
+    sa1, sa2 = st.columns([2, 6], gap="medium")
+    with sa1:
+        enabled = st.toggle(
+            "챗봇 서비스 활성화",
+            value=cfg.get("enabled", True),
+            key="adm_chatbot_enabled",
+            help="OFF 시 챗봇이 응답하지 않습니다. (재시작 후 반영)",
+        )
+    with sa2:
+        status_color = _C["ok"] if enabled else _C["warn"]
+        status_label = "서비스 중" if enabled else "중지됨"
+        _html(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:10px 0;">'
+            f'<span style="width:10px;height:10px;border-radius:50%;background:{status_color};'
+            f'display:inline-block;"></span>'
+            f'<span style="font-size:14px;font-weight:700;color:{status_color};">'
+            f'{status_label}</span>'
+            f'<span style="font-size:12px;color:{_C["t3"]};margin-left:8px;">'
+            f'포트 8502 · main.py</span>'
+            f'</div>'
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── LLM 파라미터 ─────────────────────────────────────────────────
+    p1, p2, p3 = st.columns(3, gap="medium")
+    with p1:
+        model_opts = [
+            "gemini-2.5-pro", "gemini-2.5-flash",
+            "gemini-2.0-flash", "gemini-1.5-pro",
+        ]
+        cur_model = cfg.get("model", model_opts[0])
+        if cur_model not in model_opts:
+            model_opts.insert(0, cur_model)
+        new_model = st.selectbox(
+            "LLM 모델", model_opts,
+            index=model_opts.index(cur_model),
+            key="adm_chatbot_model",
+        )
+    with p2:
+        new_temp = st.slider(
+            "Temperature", min_value=0.0, max_value=1.0,
+            value=float(cfg.get("temperature", 0.1)), step=0.05,
+            key="adm_chatbot_temp",
+            help="낮을수록 일관된 답변, 높을수록 창의적 답변",
+        )
+    with p3:
+        new_max_tok = st.slider(
+            "Max Tokens", min_value=1024, max_value=65536,
+            value=int(cfg.get("max_tokens", 8192)), step=1024,
+            key="adm_chatbot_maxtok",
+        )
+
+    q1, q2, q3 = st.columns(3, gap="medium")
+    with q1:
+        new_topk = st.slider(
+            "검색 Top-K", min_value=3, max_value=30,
+            value=int(cfg.get("top_k", 10)), step=1,
+            key="adm_chatbot_topk",
+        )
+    with q2:
+        new_rerank = st.slider(
+            "Rerank Top-N", min_value=1, max_value=10,
+            value=int(cfg.get("rerank_top_n", 4)), step=1,
+            key="adm_chatbot_rerank",
+        )
+    with q3:
+        new_thinking = st.toggle(
+            "Extended Thinking",
+            value=bool(cfg.get("thinking", False)),
+            key="adm_chatbot_thinking",
+            help="Gemini 2.5 계열에서만 지원. 응답이 느려집니다.",
+        )
+
+    # ── 설정 저장 ────────────────────────────────────────────────────
+    if st.button("💾 설정 저장", key="adm_chatbot_save", type="primary"):
+        _set_chatbot_cfg({
+            "enabled":      enabled,
+            "model":        new_model,
+            "temperature":  new_temp,
+            "max_tokens":   new_max_tok,
+            "top_k":        new_topk,
+            "rerank_top_n": new_rerank,
+            "thinking":     new_thinking,
+            "saved_at":     datetime.now().isoformat(),
+        })
+        st.success("설정 저장 완료. 챗봇 서비스를 재시작해야 반영됩니다.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 테스트 쿼리 ──────────────────────────────────────────────────
+    _html(
+        f'<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{_C["blue"]};"></span>'
+        f'실시간 테스트 쿼리'
+        f'</div>'
+    )
+    tq_col1, tq_col2 = st.columns([7, 1], gap="small")
+    with tq_col1:
+        tq_input = st.text_input(
+            "테스트 쿼리", placeholder="예: 오늘 외래 환자 몇 명이에요?",
+            key="adm_test_query", label_visibility="collapsed",
+        )
+    with tq_col2:
+        run_btn = st.button("▶ 실행", key="adm_test_run", use_container_width=True, type="primary")
+
+    if run_btn and tq_input.strip():
+        with st.spinner("RAG 파이프라인 실행 중..."):
+            try:
+                import time as _t
+                _start = _t.time()
+                from core.rag_pipeline import RAGPipeline
+                _pipe = RAGPipeline()
+                _ans  = ""
+                for _step in _pipe.iter_steps(tq_input.strip()):
+                    if isinstance(_step, dict) and "answer" in _step:
+                        _ans = _step["answer"]
+                        break
+                _elapsed = round((_t.time() - _start) * 1000)
+                if _ans:
+                    st.markdown(
+                        f'<div class="info-card" style="border-left:3px solid {_C["blue"]};">'
+                        f'<div class="info-card-title">응답 '
+                        f'<span style="font-weight:400;color:{_C["t3"]};font-size:11px;">'
+                        f'({_elapsed:,}ms)</span></div>'
+                        f'<div style="font-size:13px;line-height:1.8;">{_ans}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.warning("응답 없음")
+            except Exception as e:
+                st.error(f"파이프라인 오류: {e}")
+
+    _html("</div>")
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  탭 7 — 모니터링  (2026-04-22 신규)
+# ══════════════════════════════════════════════════════════════════════
+
+def _tab_monitoring() -> None:
+    """대시보드 사용 현황 · 오류율 추이 · LLM 응답 시간 분석."""
+    _html(
+        '<div class="sec-light" style="padding-bottom:0;">'
+        '<div class="t-sec-title">모니터링</div>'
+        '<div class="t-sec-sub">접속 현황 · 오류율 추이 · LLM 응답 지연 · 이벤트 로그</div>'
+        '</div>'
+    )
+    _html('<div class="sec-white" style="padding-top:24px;">')
+
+    # ── 새로고침 버튼 ────────────────────────────────────────────────
+    r1, r2 = st.columns([1, 9], gap="small")
+    with r1:
+        if st.button("🔄 새로고침", key="adm_mon_refresh", use_container_width=True):
+            st.rerun()
+    with r2:
+        ev_range = st.selectbox(
+            "조회 범위", ["최근 500건", "최근 1000건", "최근 3000건", "전체"],
+            key="adm_mon_range", label_visibility="collapsed",
+        )
+    ev_n_map = {"최근 500건": 500, "최근 1000건": 1000, "최근 3000건": 3000, "전체": 99999}
+    events   = _read_monitor_events(ev_n_map[ev_range])
+
+    if not events:
+        st.info("dashboard_events.jsonl 파일이 없거나 비어 있습니다. "
+                "대시보드를 사용하면 자동으로 생성됩니다.")
+        _html("</div>")
+        return
+
+    # ── KPI ──────────────────────────────────────────────────────────
+    from collections import defaultdict as _dd, Counter as _cnt
+
+    total_ev   = len(events)
+    err_ev     = sum(1 for e in events
+                     if e.get("success") is False or e.get("event_type") == "error")
+    llm_events = [e for e in events if e.get("elapsed_ms") is not None]
+    avg_ms     = (int(sum(e["elapsed_ms"] for e in llm_events) / len(llm_events))
+                  if llm_events else 0)
+
+    k1, k2, k3, k4 = st.columns(4, gap="small")
+    k1.metric("총 이벤트",     f"{total_ev:,}")
+    k2.metric("오류 이벤트",   f"{err_ev:,}",
+              delta=f"{err_ev/total_ev*100:.1f}%" if total_ev else None,
+              delta_color="inverse")
+    k3.metric("LLM 쿼리",      f"{len(llm_events):,}")
+    k4.metric("평균 응답(ms)", f"{avg_ms:,}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 차트 (Plotly 있을 때만) ──────────────────────────────────────
+    try:
+        import plotly.graph_objects as _go_m
+        _has_plt = True
+    except ImportError:
+        _has_plt = False
+
+    if _has_plt:
+        ch1, ch2 = st.columns(2, gap="medium")
+
+        with ch1:
+            # 시간대별 이벤트 수
+            hour_cnt: dict = _dd(int)
+            for e in events:
+                ts = e.get("timestamp", "")
+                try:
+                    h = int(ts[11:13]) if len(ts) >= 13 else -1
+                    if 0 <= h < 24:
+                        hour_cnt[h] += 1
+                except Exception:
+                    pass
+            hours  = list(range(24))
+            counts = [hour_cnt.get(h, 0) for h in hours]
+            fig1 = _go_m.Figure(_go_m.Bar(
+                x=[f"{h:02d}시" for h in hours], y=counts,
+                marker_color="#1E40AF",
+            ))
+            fig1.update_layout(
+                title="시간대별 이벤트 수",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                height=260, margin=dict(l=10, r=10, t=40, b=20),
+                font=dict(size=11),
+                xaxis=dict(tickfont=dict(size=9)),
+            )
+            st.plotly_chart(fig1, use_container_width=True, key="adm_mon_hour")
+
+        with ch2:
+            # 이벤트 타입 분포
+            type_cnt = _cnt(e.get("event_type", "unknown") for e in events)
+            labels   = list(type_cnt.keys())[:10]
+            vals     = [type_cnt[lb] for lb in labels]
+            palette  = ["#1E40AF","#059669","#D97706","#DC2626","#7C3AED",
+                        "#0891B2","#DB2777","#0284C7","#65A30D","#9333EA"]
+            fig2 = _go_m.Figure(_go_m.Bar(
+                x=labels, y=vals,
+                marker_color=palette[:len(labels)],
+            ))
+            fig2.update_layout(
+                title="이벤트 타입 분포",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                height=260, margin=dict(l=10, r=10, t=40, b=20),
+                font=dict(size=11),
+            )
+            st.plotly_chart(fig2, use_container_width=True, key="adm_mon_type")
+
+        # LLM 응답 시간 분포
+        if llm_events:
+            ms_vals = [e["elapsed_ms"] for e in llm_events if e.get("elapsed_ms", 0) < 120_000]
+            if ms_vals:
+                fig3 = _go_m.Figure(_go_m.Histogram(
+                    x=ms_vals, nbinsx=30,
+                    marker_color="#7C3AED", opacity=0.8,
+                ))
+                fig3.update_layout(
+                    title=f"LLM 응답 시간 분포  (평균 {avg_ms:,}ms)",
+                    xaxis_title="응답시간 (ms)", yaxis_title="건수",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    height=220, margin=dict(l=10, r=10, t=40, b=30),
+                    font=dict(size=11),
+                )
+                st.plotly_chart(fig3, use_container_width=True, key="adm_mon_llm")
+
+    # ── 최근 이벤트 테이블 ───────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("최근 이벤트 로그 (최대 50건)", expanded=False):
+        recent    = events[-50:][::-1]
+        rows_html = ""
+        for e in recent:
+            ts      = e.get("timestamp", "")[:19]
+            etype   = e.get("event_type", "")
+            act     = e.get("action",     "")
+            lbl     = e.get("label",      "")
+            ms      = e.get("elapsed_ms")
+            ok      = e.get("success")
+            ok_html = ""
+            if ok is not None:
+                ok_html = (f'<span style="color:{_C["ok"]};">OK</span>' if ok
+                           else f'<span style="color:{_C["err"]};">ERR</span>')
+            rows_html += (
+                f'<tr>'
+                f'<td style="font-family:Consolas;font-size:11px;color:{_C["t3"]};">{ts}</td>'
+                f'<td>{etype}</td><td>{act}</td><td>{lbl}</td>'
+                f'<td style="text-align:right;">'
+                f'{f"{ms:,}ms" if ms else "—"}</td>'
+                f'<td style="text-align:center;">{ok_html}</td>'
+                f'</tr>'
+            )
+        _html(
+            f'<table class="dt" style="font-size:12px;">'
+            f'<thead><tr><th>시각</th><th>타입</th><th>액션</th>'
+            f'<th>레이블</th><th>응답(ms)</th><th>결과</th></tr></thead>'
+            f'<tbody>{rows_html}</tbody></table>'
+        )
+
+    _html("</div>")
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  메인 렌더
 # ══════════════════════════════════════════════════════════════════════
 
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5 = st.tabs([
-        "운영 현황", "로그 뷰어", "벡터DB 관리", "문서 관리", "시스템 정보",
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+        "🖥️ 운영 현황", "📋 로그 뷰어", "🗄️ 벡터DB 관리",
+        "📄 문서 관리",  "⚙️ 시스템 정보",
+        "🤖 챗봇 관리",  "📊 모니터링",
     ])
     with t1: _tab_ops()
     with t2: _tab_logs()
     with t3: _tab_vectordb()
     with t4: _tab_docs()
     with t5: _tab_sysinfo()
+    with t6: _tab_chatbot()
+    with t7: _tab_monitoring()

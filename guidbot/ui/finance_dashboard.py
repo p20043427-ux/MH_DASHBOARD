@@ -76,208 +76,16 @@ from ui.design import (          # noqa: E402
 )
 
 # ════════════════════════════════════════════════════════════════════
-# Oracle 쿼리 딕셔너리 — v2.3
-# [보안 원칙]
-#   · VIEW 경유만 허용 (RAG_READONLY 원본 테이블 접근 금지)
-#   · 각 VIEW는 집계/통계 컬럼만 노출 (환자명·주민번호·전화번호 제외)
-#   · LLM 컨텍스트: 집계값만 전달, 카드 매칭 데이터 제외
+# Oracle 쿼리 딕셔너리 / 공유 유틸리티 — panels/_shared.py 에서 임포트
+# (2026-04-22 Phase 2 리팩토링)
+#   · FQ / FQ_HIST / _fq() 를 panels/_shared.py 로 이전
+#   · 이 파일은 역임포트로 하위 호환 유지
+#   · 보안 원칙: VIEW 경유만 허용 / 집계값만 노출 / 카드 매칭 제외
 # ════════════════════════════════════════════════════════════════════
-FQ: Dict[str, str] = {
-    # ── 실시간 현황 ────────────────────────────────────────────────
-    "opd_kpi":            "SELECT * FROM JAIN_WM.V_OPD_KPI WHERE ROWNUM = 1",
-    "opd_dept_status":    "SELECT * FROM JAIN_WM.V_OPD_DEPT_STATUS ORDER BY 대기 DESC",
-    "kiosk_status":       "SELECT * FROM JAIN_WM.V_KIOSK_STATUS ORDER BY 키오스크ID",
-    "kiosk_by_dept":      "SELECT * FROM JAIN_WM.V_KIOSK_BY_DEPT ORDER BY 수납건수 DESC",
-    "kiosk_counter_trend":"SELECT * FROM JAIN_WM.V_KIOSK_COUNTER_TREND ORDER BY 기준일",
-    "ward_room_detail":   "SELECT * FROM JAIN_WM.V_WARD_ROOM_DETAIL ORDER BY 병동명, 병실번호",
-    "daily_dept_stat":    "SELECT * FROM JAIN_WM.V_DAILY_DEPT_STAT ORDER BY 진료과명, 구분",
-    "day_inweon": """
-        SELECT 진료과, 외래계, 입원계, 퇴원계, 재원계,
-               "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
-        FROM (
-            SELECT 일자, 진료과, 외래계, 입원계, 퇴원계, 재원계,
-                   "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
-            FROM JAIN_WM.V_DAY_INWEON_3
-            UNION ALL
-            SELECT 일자, '총합계',SUM(외래계),SUM(입원계),SUM(퇴원계),SUM(재원계),
-                   SUM("예방(독감)"),SUM("예방(AZ,JS,NV)"),SUM("예방(MD)"),SUM("예방(FZ)"),SUM(예방주사계)
-            FROM JAIN_WM.V_DAY_INWEON_3 GROUP BY 일자
-        )
-        WHERE 일자 = TO_CHAR(SYSDATE, 'YYYYMMDD')
-        ORDER BY
-            CASE WHEN 진료과 = '총합계' THEN 19 ELSE 10 END,
-            CASE
-                WHEN TRIM(진료과)='*내분비내과' THEN 1 WHEN TRIM(진료과)='*호흡기내과' THEN 2
-                WHEN TRIM(진료과)='*소화기내과' THEN 3 WHEN TRIM(진료과)='*신장내과' THEN 4
-                WHEN TRIM(진료과)='*순환기내과' THEN 5 WHEN TRIM(진료과)='인공신장실' THEN 6
-                WHEN TRIM(진료과)='신경과' THEN 7   WHEN TRIM(진료과)='가정의학과' THEN 8
-                WHEN TRIM(진료과)='신경외과' THEN 9  WHEN TRIM(진료과)='*유방센터' THEN 10
-                WHEN TRIM(진료과)='*위장관센터' THEN 11 WHEN TRIM(진료과)='*갑상선센터' THEN 12
-                WHEN TRIM(진료과)='성형외과' THEN 13 WHEN TRIM(진료과)='정형외과' THEN 14
-                WHEN TRIM(진료과)='*OBGY' THEN 15  WHEN TRIM(진료과)='*난임센터' THEN 16
-                WHEN TRIM(진료과)='소아청소년과' THEN 17 WHEN TRIM(진료과)='이비인후과' THEN 18
-                WHEN TRIM(진료과)='피부과' THEN 19 WHEN TRIM(진료과)='응급의학과' THEN 20
-                WHEN TRIM(진료과)='외부의뢰' THEN 21 WHEN TRIM(진료과)='진단검사' THEN 22
-                ELSE 23
-            END ASC,
-            REPLACE(진료과,'*'),
-            CASE WHEN SUBSTR(진료과,1,1)='*' THEN 2 ELSE 1 END
-    """,
-    "discharge_pipeline": "SELECT * FROM JAIN_WM.V_DISCHARGE_PIPELINE ORDER BY 단계, 병동명",
-    "ward_bed_detail":    "SELECT * FROM JAIN_WM.V_WARD_BED_DETAIL ORDER BY 병동명",
-
-    # ── 수납·미수금 ────────────────────────────────────────────────
-    "finance_today":   "SELECT * FROM JAIN_WM.V_FINANCE_TODAY ORDER BY 금액 DESC",
-    "finance_trend":   "SELECT * FROM JAIN_WM.V_FINANCE_TREND ORDER BY 기준일",
-    "finance_by_dept": "SELECT * FROM JAIN_WM.V_FINANCE_BY_DEPT ORDER BY 수납금액 DESC",
-    "overdue_stat":    "SELECT * FROM JAIN_WM.V_OVERDUE_STAT ORDER BY 연령구분",
-
-    # ── 주간추이분석 ────────────────────────────────────────────────
-    # V_OPD_DEPT_TREND: 진료과별 7일 외래 인원 (기준일 / 진료과명 / 외래환자수)
-    "opd_dept_trend":  "SELECT * FROM JAIN_WM.V_OPD_DEPT_TREND ORDER BY 기준일, 외래환자수 DESC",
-    # V_IPD_DEPT_TREND: 진료과별 7일 입원 인원 (신규 — DDL: monthly_views_new.sql)
-    "ipd_dept_trend":  "SELECT * FROM JAIN_WM.V_IPD_DEPT_TREND ORDER BY 기준일, 입원환자수 DESC",
-    # V_LOS_DIST_DEPT: 진료과별 재원일수 분포 (신규 — DDL: monthly_views_new.sql)
-    "los_dist_dept":   "SELECT * FROM JAIN_WM.V_LOS_DIST_DEPT ORDER BY 진료과명, 구간순서",
-
-    # ── 월간추이분석 ────────────────────────────────────────────────
-    # V_MONTHLY_OPD_DEPT: 진료과별 월별 외래 인원 현황 (신규 — DDL: monthly_views_new.sql)
-    # 컬럼: 기준년월(YYYYMM) / 진료과명 / 방문자수 / 신환자수 / 구환자수 / 외래전체 / 기타건수
-    "monthly_opd_dept": (
-        "SELECT * FROM JAIN_WM.V_MONTHLY_OPD_DEPT "
-        "ORDER BY 기준년월 DESC, 진료과명"
-    ),
-    # ── 지역별 환자 통계 ────────────────────────────────────────────
-    # V_REGION_DEPT_DAILY   : 일별 트렌드/히트맵용 (30일 고정)
-    # V_REGION_DEPT_MONTHLY : 월별 비교 분석용 (최근 12개월, 컬럼: 기준월 YYYYMM)
-    # [보안] 지역(시구 수준)만 노출 — 상세주소/우편번호 미노출
-    "region_dept_daily": (
-        "SELECT 기준일자, 진료과명, 지역, 환자수 "
-        "FROM JAIN_WM.V_REGION_DEPT_DAILY "
-        "ORDER BY 기준일자 DESC, 진료과명, 환자수 DESC"
-    ),
-    "region_dept_monthly": (
-        "SELECT 기준월, 진료과명, 지역, 환자수 "
-        "FROM JAIN_WM.V_REGION_DEPT_MONTHLY "
-        "ORDER BY 기준월 DESC, 진료과명, 환자수 DESC"
-    ),
-}
-
-# ── 기간 VIEW 쿼리 (과거 날짜 조회) ─────────────────────────────────
-FQ_HIST: Dict[str, str] = {
-    "day_inweon": """
-        SELECT 진료과, 외래계, 입원계, 퇴원계, 재원계,
-               "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
-        FROM (
-            SELECT 일자, 진료과, 외래계, 입원계, 퇴원계, 재원계,
-                   "예방(독감)", "예방(AZ,JS,NV)", "예방(MD)", "예방(FZ)", 예방주사계
-            FROM JAIN_WM.V_DAY_INWEON_3
-            UNION ALL
-            SELECT 일자, '총합계',SUM(외래계),SUM(입원계),SUM(퇴원계),SUM(재원계),
-                   SUM("예방(독감)"),SUM("예방(AZ,JS,NV)"),SUM("예방(MD)"),SUM("예방(FZ)"),SUM(예방주사계)
-            FROM JAIN_WM.V_DAY_INWEON_3 GROUP BY 일자
-        )
-        WHERE 일자 = '{d}'
-        ORDER BY
-            CASE WHEN 진료과 = '총합계' THEN 19 ELSE 10 END,
-            CASE
-                WHEN TRIM(진료과)='*내분비내과' THEN 1 WHEN TRIM(진료과)='*호흡기내과' THEN 2
-                WHEN TRIM(진료과)='*소화기내과' THEN 3 WHEN TRIM(진료과)='*신장내과' THEN 4
-                WHEN TRIM(진료과)='*순환기내과' THEN 5 WHEN TRIM(진료과)='인공신장실' THEN 6
-                WHEN TRIM(진료과)='신경과' THEN 7   WHEN TRIM(진료과)='가정의학과' THEN 8
-                WHEN TRIM(진료과)='신경외과' THEN 9  WHEN TRIM(진료과)='*유방센터' THEN 10
-                WHEN TRIM(진료과)='*위장관센터' THEN 11 WHEN TRIM(진료과)='*갑상선센터' THEN 12
-                WHEN TRIM(진료과)='성형외과' THEN 13 WHEN TRIM(진료과)='정형외과' THEN 14
-                WHEN TRIM(진료과)='*OBGY' THEN 15  WHEN TRIM(진료과)='*난임센터' THEN 16
-                WHEN TRIM(진료과)='소아청소년과' THEN 17 WHEN TRIM(진료과)='이비인후과' THEN 18
-                WHEN TRIM(진료과)='피부과' THEN 19 WHEN TRIM(진료과)='응급의학과' THEN 20
-                WHEN TRIM(진료과)='외부의뢰' THEN 21 WHEN TRIM(진료과)='진단검사' THEN 22
-                ELSE 23
-            END ASC,
-            REPLACE(진료과,'*'),
-            CASE WHEN SUBSTR(진료과,1,1)='*' THEN 2 ELSE 1 END
-    """,
-    "daily_dept_stat": (
-        "SELECT * FROM JAIN_WM.V_DAILY_DEPT_STAT_HIST "
-        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
-        "ORDER BY 진료과명, 구분"
-    ),
-    "ward_bed_detail": (
-        "SELECT * FROM JAIN_WM.V_WARD_BED_HIST "
-        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
-        "ORDER BY 병동명"
-    ),
-    "opd_dept_trend": (
-        "SELECT * FROM JAIN_WM.V_OPD_DEPT_TREND "
-        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
-        "                  AND TO_DATE('{d}','YYYYMMDD') "
-        "ORDER BY 기준일, 외래환자수 DESC"
-    ),
-    "ipd_dept_trend": (
-        "SELECT * FROM JAIN_WM.V_IPD_DEPT_TREND_HIST "
-        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
-        "                  AND TO_DATE('{d}','YYYYMMDD') "
-        "ORDER BY 기준일, 입원환자수 DESC"
-    ),
-    "kiosk_counter_trend": (
-        "SELECT * FROM JAIN_WM.V_KIOSK_COUNTER_TREND "
-        "WHERE 기준일 BETWEEN TO_DATE('{d}','YYYYMMDD') - 6 "
-        "                  AND TO_DATE('{d}','YYYYMMDD') "
-        "ORDER BY 기준일"
-    ),
-    "finance_trend": (
-        "SELECT * FROM JAIN_WM.V_FINANCE_TREND "
-        "WHERE TO_CHAR(기준일,'YYYYMMDD') = '{d}' "
-        "ORDER BY 기준일"
-    ),
-    # V_REGION_DEPT_MONTHLY: 월별 집계 뷰 — DBA가 region_views_monthly.sql 실행 후 활성화
-    # "region_dept_monthly": (
-    #     "SELECT 기준년월, 진료과명, 지역, 환자수 "
-    #     "FROM JAIN_WM.V_REGION_DEPT_MONTHLY "
-    #     "ORDER BY 기준년월 DESC, 진료과명, 환자수 DESC"
-    # ),
-}
-
-import datetime as _dt_import
-_TODAY_STR: str = _dt_import.date.today().strftime("%Y%m%d")
-
-
-def _fq(key: str, date_str: str = "", max_rows: int = 5000) -> List[Dict[str, Any]]:
-    """FQ / FQ_HIST 에서 쿼리 선택 후 Oracle 조회 (v2.1)."""
-    import re as _re2
-    try:
-        from db.oracle_client import execute_query
-        _is_past = bool(date_str and len(date_str) == 8 and date_str != _TODAY_STR)
-        if _is_past:
-            if key in FQ_HIST:
-                _d      = date_str
-                _d_prev = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
-                           - _dt_import.timedelta(days=1)).strftime("%Y%m%d")
-                _d_next = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
-                           + _dt_import.timedelta(days=1)).strftime("%Y%m%d")
-                _sql = FQ_HIST[key].format(d=_d, d_prev=_d_prev, d_next=_d_next)
-            else:
-                logger.warning(f"[Finance] '{key}' FQ_HIST 미등록 → 오늘 데이터로 대체.")
-                _sql = FQ[key]
-        else:
-            _sql = FQ[key]
-            if date_str and len(date_str) == 8:
-                _d      = date_str
-                _d_prev = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
-                           - _dt_import.timedelta(days=1)).strftime("%Y%m%d")
-                _d_next = (_dt_import.datetime.strptime(date_str, "%Y%m%d")
-                           + _dt_import.timedelta(days=1)).strftime("%Y%m%d")
-                _sql = _re2.sub(r"TO_CHAR\(SYSDATE-1,\s*'YYYYMMDD'\)", f"'{_d_prev}'", _sql)
-                _sql = _re2.sub(r"TO_CHAR\(SYSDATE,\s*'YYYYMMDD'\)",   f"'{_d}'",      _sql)
-                _sql = _re2.sub(r"TO_CHAR\(SYSDATE\s*\+\s*1,\s*'YYYYMMDD'\)", f"'{_d_next}'", _sql)
-                _sql = _re2.sub(r"(?<!')SYSDATE(?!\s*[+-]|\s*,)",
-                                f"TO_DATE('{_d}','YYYYMMDD')", _sql)
-        return execute_query(_sql, max_rows=max_rows) or []
-    except Exception as e:
-        logger.warning(f"[Finance] {key}: {e}")
-        return []
-
-
+from ui.panels._shared import (          # noqa: E402
+    FQ, FQ_HIST, _fq,                   # 쿼리 딕셔너리 + Oracle 조회 래퍼
+    _TODAY_STR, _dt_import,             # 날짜 유틸리티
+)
 # ════════════════════════════════════════════════════════════════════
 # [2026-04-22 Phase 1 리팩토링] 하위 호환 별칭
 # ────────────────────────────────────────────────────────────────────
@@ -3546,7 +3354,6 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
     st.markdown("</div>", unsafe_allow_html=True)  # AI 채팅 카드 닫기
  
  
-
 # ════════════════════════════════════════════════════════════════════
 # 카드 매칭 탭  (기존 _tab_card_match 그대로 — 내용 동일)
 # ════════════════════════════════════════════════════════════════════
