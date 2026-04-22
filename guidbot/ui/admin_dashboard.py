@@ -1,16 +1,17 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v3.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-디자인: Deep Blue Hospital System
-  · 폰트 인라인 주입 제거 (CSS 클래스로만 제어 → 이중따옴표 충돌 완전 차단)
-  · 주 색상: Navy #0f172a / Deep Blue #2563eb
-  · 진행률 표시: CPU·메모리·디스크 Progress Bar
-  · 서비스 카드: 포트 배지 + 채워진 CTA 버튼
-  · Glassmorphism: hero/카드 overlay
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v4.0  (2026-04-22 전면 개선)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v4.0 변경]
+  · CSS 전면 정리: wd-sec/wd-sec-bar 등 누락 클래스 추가
+  · _html() open/close 안티패턴 제거 → 완결형 HTML 블록으로 교체
+  · 벡터DB 탭: FAISS 인덱스 문서 목록 브라우저 추가
+  · 벡터DB 탭: 파트별 재구축 (doc_db / query_db / schema_db) 추가
+  · font-family 인라인 style 속성 완전 배제 (CSS 클래스만 사용)
 """
 
 from __future__ import annotations
 
+import json
 import platform
 import sys
 import time
@@ -31,53 +32,46 @@ from ui.design import C
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
-# ── 관리자 전용 토큰 (design.py C 기반 + glassmorphism 전용값) ──────────
-_C = {
-    "navy":   C["navy"],       # #0F172A
-    "blue":   "#2563EB",       # 관리자 강조 (design C["blue"] 보다 밝음)
-    "blue2":  "#1D4ED8",
-    "blue3":  "#60A5FA",
-    "light":  "#F0F6FF",
-    "white":  "#FFFFFF",
-    "ds1":    "#1E293B",
-    "ds2":    C["t2"],         # #334155
-    "ok":     C["ok"],         # #059669
-    "warn":   C["warn"],       # #F59E0B
-    "err":    C["red"],        # #DC2626
-    "t1":     C["t1"],         # #0F172A
-    "t2":     "#475569",
-    "t3":     C["t4"],         # #94A3B8
-    "wt1":    "rgba(255,255,255,0.92)",
-    "wt2":    "rgba(255,255,255,0.60)",
-    "wt3":    "rgba(255,255,255,0.35)",
-    "bdr_d":  "rgba(255,255,255,0.08)",
-    "bdr_l":  "rgba(15,23,42,0.10)",
-    "sh":     "0 4px 24px rgba(15,23,42,0.12),0 1px 6px rgba(15,23,42,0.06)",
-    "sh2":    "0 8px 32px rgba(15,23,42,0.18)",
+# ── 관리자 전용 색상 토큰 ─────────────────────────────────���────────────────
+_C: Dict[str, str] = {
+    "navy":  C["navy"],
+    "blue":  "#2563EB",
+    "blue2": "#1D4ED8",
+    "blue3": "#60A5FA",
+    "light": "#F0F6FF",
+    "white": "#FFFFFF",
+    "ds1":   "#1E293B",
+    "ds2":   C["t2"],
+    "ok":    C["ok"],
+    "warn":  C["warn"],
+    "err":   C["red"],
+    "t1":    C["t1"],
+    "t2":    "#475569",
+    "t3":    C["t4"],
+    "wt1":   "rgba(255,255,255,0.92)",
+    "wt2":   "rgba(255,255,255,0.60)",
+    "wt3":   "rgba(255,255,255,0.35)",
+    "bdr_d": "rgba(255,255,255,0.08)",
+    "bdr_l": "rgba(15,23,42,0.10)",
+    "sh":    "0 4px 24px rgba(15,23,42,0.12),0 1px 6px rgba(15,23,42,0.06)",
+    "sh2":   "0 8px 32px rgba(15,23,42,0.18)",
 }
 
 
-# ══════════════════════════════════════════════════════════════════════
-#  CSS  ─  인라인 style 속성에 font-family를 절대 쓰지 않는다
-#           모든 폰트 제어는 이 <style> 블록의 클래스에서만 수행
-# ══════════════════════════════════════════════════════════════════════
+# ═══════════════���══════════════════════════════���═══════════════════════════
+#  CSS  ─  인라인 style 속성에 font-family 절대 미사용
+#           모든 폰트 제어는 <style> 블록 클래스에서만
+# ═════════════════════════��══════════════════════════════���═════════════════
 def get_admin_css() -> str:
     return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
 
-/* ── 전역 폰트 강제 (클래스 기반) ─── */
-.adm-root,
-.adm-root *,
-.adm-root p,
-.adm-root span,
-.adm-root div,
-.adm-root h1,.adm-root h2,.adm-root h3,
-.adm-root a,
-.adm-root button,
-.adm-root input,
-.adm-root label,
-.adm-root td,.adm-root th {{
+/* ── 전역 폰트 ─── */
+html, body,
+[data-testid], [class*="st-"],
+p, div, span, a, li, ul, ol,
+button, input, label, select, textarea {{
   font-family: "Helvetica Neue","Noto Sans KR",Helvetica,Arial,sans-serif !important;
   -webkit-font-smoothing: antialiased;
 }}
@@ -85,30 +79,30 @@ def get_admin_css() -> str:
 /* ── Streamlit 레이아웃 ─── */
 header[data-testid="stHeader"] {{ display:none !important; }}
 .main .block-container {{
-  padding: 0 !important;
+  padding: 0 2rem 3rem !important;
   max-width: 100% !important;
-  background: transparent !important;
+  background: #F8FAFC !important;
 }}
 
 /* ── 탭 ─── */
 [data-testid="stTabs"] > div:first-child {{
   background: {_C["white"]} !important;
   border-bottom: 1px solid {_C["bdr_l"]} !important;
-  padding: 0 48px !important;
+  padding: 0 32px !important;
   position: sticky !important;
   top: 0 !important;
   z-index: 100 !important;
   box-shadow: 0 1px 0 rgba(15,23,42,0.07) !important;
+  margin: 0 -2rem !important;
 }}
 [data-testid="stTabs"] [data-testid="stTab"] p,
 [data-testid="stTabs"] [data-testid="stTab"] {{
-  font-family: "Helvetica Neue","Noto Sans KR",Helvetica,Arial,sans-serif !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   font-weight: 500 !important;
   letter-spacing: -0.1px !important;
   color: {_C["t2"]} !important;
-  padding: 14px 0 !important;
-  margin-right: 28px !important;
+  padding: 13px 0 !important;
+  margin-right: 24px !important;
   border-bottom: 2px solid transparent !important;
 }}
 [data-testid="stTabs"] [data-testid="stTab"][aria-selected="true"] p,
@@ -121,7 +115,6 @@ header[data-testid="stHeader"] {{ display:none !important; }}
 /* ── Streamlit metric ─── */
 [data-testid="stMetricLabel"] p,
 [data-testid="stMetricLabel"] label {{
-  font-family: "Helvetica Neue","Noto Sans KR",Helvetica,Arial,sans-serif !important;
   font-size: 11px !important;
   letter-spacing: 0.06em !important;
   text-transform: uppercase !important;
@@ -129,11 +122,44 @@ header[data-testid="stHeader"] {{ display:none !important; }}
   color: {_C["t3"]} !important;
 }}
 [data-testid="stMetricValue"] div {{
-  font-family: "Helvetica Neue","Noto Sans KR",Helvetica,Arial,sans-serif !important;
-  font-size: 1.7rem !important;
+  font-size: 1.6rem !important;
   font-weight: 700 !important;
   color: {_C["navy"]} !important;
   letter-spacing: -0.4px !important;
+}}
+
+/* ── Streamlit 버튼 ─── */
+[data-testid="stButton"] > button {{
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.1px !important;
+  transition: all 120ms ease !important;
+}}
+
+/* ── expander ─── */
+[data-testid="stExpander"] summary {{
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: {_C["navy"]} !important;
+}}
+
+/* ── selectbox / text_input label ─── */
+[data-testid="stSelectbox"] label,
+[data-testid="stTextInput"] label,
+[data-testid="stSlider"] label,
+[data-testid="stToggle"] label {{
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: {_C["t2"]} !important;
+  letter-spacing: 0.02em !important;
+}}
+
+/* ── download button ─── */
+[data-testid="stDownloadButton"] > button {{
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
 }}
 
 /* ── 스크롤바 ─── */
@@ -141,287 +167,184 @@ header[data-testid="stHeader"] {{ display:none !important; }}
 ::-webkit-scrollbar-track {{ background:transparent; }}
 ::-webkit-scrollbar-thumb {{ background:rgba(15,23,42,0.18); border-radius:9999px; }}
 
-/* ════════════ 섹션 ════════════ */
+/* ════════ 공통 컴포넌트 ════════ */
+
+/* 히어로 섹션 */
 .sec-hero {{
   background: {_C["navy"]};
-  padding: 56px 48px 52px;
+  padding: 40px 0 36px;
+  margin: 0 -2rem 28px;
   position: relative;
   overflow: hidden;
 }}
-/* 히어로 배경 글로우 */
 .sec-hero::before {{
   content: '';
   position: absolute;
-  top: -60px; right: -60px;
-  width: 360px; height: 360px;
-  background: radial-gradient(circle, rgba(37,99,235,0.25) 0%, transparent 70%);
-  pointer-events: none;
+  top:-60px; right:-60px;
+  width:360px; height:360px;
+  background:radial-gradient(circle, rgba(37,99,235,0.25) 0%, transparent 70%);
+  pointer-events:none;
 }}
-.sec-kpi  {{ background:{_C["navy"]}; padding:0 48px 52px; }}
-.sec-light {{ background:{_C["light"]}; padding:52px 48px 48px; }}
-.sec-white {{ background:{_C["white"]}; padding:48px 48px 44px; }}
-
-/* ── 타이포 ─── */
 .t-hero-title {{
-  font-size: 3rem;
-  font-weight: 700;
-  line-height: 1.10;
-  letter-spacing: -0.5px;
-  color: {_C["white"]};
-  margin: 0 0 10px;
+  font-size:2.5rem; font-weight:700; line-height:1.10;
+  letter-spacing:-0.5px; color:{_C["white"]}; margin:0 0 8px;
+  padding:0 2rem;
 }}
 .t-hero-sub {{
-  font-size: 1rem;
-  font-weight: 400;
-  color: {_C["wt2"]};
-  letter-spacing: -0.2px;
-}}
-.t-sec-title {{
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: {_C["navy"]};
-  letter-spacing: -0.4px;
-  margin: 0 0 6px;
-}}
-.t-sec-sub {{
-  font-size: 0.9375rem;
-  font-weight: 400;
-  color: {_C["t2"]};
-  letter-spacing: -0.1px;
-  margin: 0 0 28px;
+  font-size:0.9375rem; font-weight:400;
+  color:{_C["wt2"]}; letter-spacing:-0.2px;
+  padding:0 2rem;
 }}
 
-/* ── KPI 카드 ─── */
+/* 섹션 제목 */
+.sec-title {{
+  font-size:1.25rem; font-weight:700; color:{_C["navy"]};
+  letter-spacing:-0.3px; margin:0 0 4px;
+}}
+.sec-sub {{
+  font-size:0.875rem; color:{_C["t2"]}; letter-spacing:-0.1px; margin:0 0 20px;
+}}
+
+/* 소제목 (wd-sec) — 2026-04-22 추가: 기존 누락 클래스 */
+.wd-sec {{
+  display:flex; align-items:center; gap:8px;
+  font-size:11px; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; color:{_C["t2"]};
+  margin:24px 0 10px;
+}}
+.wd-sec-bar {{
+  display:inline-block; width:3px; height:13px;
+  border-radius:2px; flex-shrink:0;
+}}
+
+/* KPI 카드 (어두운 배경용) */
 .kpi-card {{
-  background: {_C["ds1"]};
-  border: 1px solid {_C["bdr_d"]};
-  border-radius: 14px;
-  padding: 20px 20px 18px;
-  box-shadow: {_C["sh2"]};
-  /* glass overlay */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background:{_C["ds1"]}; border:1px solid {_C["bdr_d"]};
+  border-radius:14px; padding:20px 20px 18px;
+  box-shadow:{_C["sh2"]};
 }}
 .kpi-label {{
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: rgba(148,163,184,0.80);
-  margin-bottom: 12px;
+  font-size:10px; font-weight:700; letter-spacing:0.10em;
+  text-transform:uppercase; color:rgba(148,163,184,0.80); margin-bottom:12px;
 }}
 .kpi-val {{
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1;
-  color: {_C["white"]};
-  letter-spacing: -0.5px;
-  font-variant-numeric: tabular-nums;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  font-size:1.6rem; font-weight:700; line-height:1;
+  color:{_C["white"]}; letter-spacing:-0.5px;
+  font-variant-numeric:tabular-nums;
+  display:flex; align-items:center; gap:8px; margin-bottom:10px;
 }}
-.kpi-foot {{
-  font-size: 11.5px;
-  color: rgba(148,163,184,0.65);
-  letter-spacing: -0.1px;
-  margin-bottom: 10px;
-}}
+.kpi-foot {{ font-size:11.5px; color:rgba(148,163,184,0.65); letter-spacing:-0.1px; margin-bottom:10px; }}
+
 /* Progress bar */
-.pb-track {{
-  height: 4px;
-  background: rgba(255,255,255,0.10);
-  border-radius: 9999px;
-  overflow: hidden;
-}}
-.pb-fill {{
-  height: 4px;
-  border-radius: 9999px;
-  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
-}}
+.pb-track {{ height:4px; background:rgba(255,255,255,0.10); border-radius:9999px; overflow:hidden; }}
+.pb-fill  {{ height:4px; border-radius:9999px; transition:width 0.6s cubic-bezier(0.4,0,0.2,1); }}
 
 /* 상태 점 */
-.dot {{
-  display: inline-block;
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}}
+.dot  {{ display:inline-block; width:9px; height:9px; border-radius:50%; flex-shrink:0; }}
 .dok  {{ background:{_C["ok"]};   box-shadow:0 0 0 3px rgba(16,185,129,0.20); }}
 .dwrn {{ background:{_C["warn"]}; box-shadow:0 0 0 3px rgba(245,158,11,0.20); }}
 .derr {{ background:{_C["err"]};  box-shadow:0 0 0 3px rgba(239,68,68,0.20); }}
 
-/* ── 서비스 카드 ─── */
+/* 서비스 카드 */
 .svc-card {{
-  background: {_C["white"]};
-  border: 1px solid {_C["bdr_l"]};
-  border-radius: 14px;
-  padding: 22px 20px 20px;
-  box-shadow: {_C["sh"]};
-  position: relative;
-  transition: box-shadow 180ms ease, transform 180ms ease;
+  background:{_C["white"]}; border:1px solid {_C["bdr_l"]};
+  border-radius:14px; padding:22px 20px 20px;
+  box-shadow:{_C["sh"]}; position:relative;
+  transition:box-shadow 180ms ease, transform 180ms ease;
 }}
-.svc-card:hover {{
-  box-shadow: {_C["sh2"]};
-  transform: translateY(-2px);
-}}
+.svc-card:hover {{ box-shadow:{_C["sh2"]}; transform:translateY(-2px); }}
 .svc-badge {{
-  position: absolute;
-  top: 16px; right: 16px;
-  background: rgba(37,99,235,0.10);
-  color: {_C["blue"]};
-  border: 1px solid rgba(37,99,235,0.20);
-  border-radius: 9999px;
-  padding: 2px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  position:absolute; top:16px; right:16px;
+  background:rgba(37,99,235,0.10); color:{_C["blue"]};
+  border:1px solid rgba(37,99,235,0.20); border-radius:9999px;
+  padding:2px 10px; font-size:11px; font-weight:700; letter-spacing:0.06em;
 }}
-.svc-icon {{
-  font-size: 24px;
-  margin-bottom: 10px;
-}}
-.svc-name {{
-  font-size: 1rem;
-  font-weight: 700;
-  color: {_C["navy"]};
-  letter-spacing: -0.3px;
-  margin-bottom: 6px;
-}}
-.svc-desc {{
-  font-size: 13px;
-  color: {_C["t2"]};
-  line-height: 1.55;
-  letter-spacing: -0.1px;
-  margin-bottom: 16px;
-  min-height: 38px;
-}}
-.svc-btn {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: {_C["blue"]};
-  color: {_C["white"]};
-  text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.1px;
-  transition: background 150ms ease;
-}}
+.svc-icon   {{ font-size:24px; margin-bottom:10px; }}
+.svc-name   {{ font-size:1rem; font-weight:700; color:{_C["navy"]}; letter-spacing:-0.3px; margin-bottom:6px; }}
+.svc-desc   {{ font-size:13px; color:{_C["t2"]}; line-height:1.55; letter-spacing:-0.1px; margin-bottom:16px; min-height:38px; }}
+.svc-btn    {{ display:inline-flex; align-items:center; gap:6px; background:{_C["blue"]}; color:{_C["white"]}; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600; letter-spacing:-0.1px; transition:background 150ms ease; }}
 .svc-btn:hover {{ background:{_C["blue2"]}; color:{_C["white"]}; }}
 .svc-btn-arrow {{ font-size:12px; }}
 
-/* ── 정보 카드 ─── */
+/* 정보 카드 */
 .info-card {{
-  background: {_C["white"]};
-  border: 1px solid {_C["bdr_l"]};
-  border-radius: 14px;
-  padding: 22px 22px 18px;
-  box-shadow: {_C["sh"]};
+  background:{_C["white"]}; border:1px solid {_C["bdr_l"]};
+  border-radius:14px; padding:22px 22px 18px; box-shadow:{_C["sh"]};
 }}
 .info-card-title {{
-  font-size: 14px;
-  font-weight: 700;
-  color: {_C["navy"]};
-  letter-spacing: -0.2px;
-  padding-bottom: 12px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(15,23,42,0.07);
+  font-size:14px; font-weight:700; color:{_C["navy"]}; letter-spacing:-0.2px;
+  padding-bottom:12px; margin-bottom:4px; border-bottom:1px solid rgba(15,23,42,0.07);
 }}
 .info-row {{
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 9px 0;
-  border-bottom: 1px solid rgba(15,23,42,0.05);
-  font-size: 13.5px;
-  gap: 12px;
+  display:flex; justify-content:space-between; align-items:flex-start;
+  padding:9px 0; border-bottom:1px solid rgba(15,23,42,0.05);
+  font-size:13.5px; gap:12px;
 }}
 .info-row:last-child {{ border-bottom:none; }}
 .info-lbl {{ color:{_C["t2"]}; font-weight:400; flex-shrink:0; }}
-.info-val {{
-  color:{_C["t1"]}; font-weight:600;
-  text-align:right; word-break:break-all;
-  max-width:62%;
-}}
+.info-val  {{ color:{_C["t1"]}; font-weight:600; text-align:right; word-break:break-all; max-width:62%; }}
 
-/* ── 로그 박스 ─── */
+/* 로그 박스 */
 .log-wrap {{
-  background: {_C["ds1"]};
-  border: 1px solid {_C["bdr_d"]};
-  border-radius: 12px;
-  padding: 16px 18px;
-  font-family: "IBM Plex Mono","Consolas","Courier New",monospace !important;
-  font-size: 12px;
-  line-height: 1.75;
-  max-height: 540px;
-  overflow-y: auto;
-  overflow-x: auto;
+  background:{_C["ds1"]}; border:1px solid {_C["bdr_d"]};
+  border-radius:12px; padding:16px 18px;
+  font-size:12px; line-height:1.75;
+  max-height:540px; overflow-y:auto; overflow-x:auto;
 }}
-.log-wrap pre {{ margin:0; white-space:pre-wrap; word-break:break-all; }}
-.le  {{ color:#fc8181; }}
-.lw  {{ color:#fcd34d; }}
-.li  {{ color:#6ee7b7; }}
-.ld  {{ color:rgba(148,163,184,0.55); }}
+.log-wrap pre {{ margin:0; white-space:pre-wrap; word-break:break-all;
+  font-family:"IBM Plex Mono","Consolas","Courier New",monospace !important; }}
+.le {{ color:#fc8181; }}
+.lw {{ color:#fcd34d; }}
+.li {{ color:#6ee7b7; }}
+.ld {{ color:rgba(148,163,184,0.55); }}
 
-/* ── 데이터 테이블 ─── */
-.dt {{
-  width:100%; border-collapse:collapse; font-size:13.5px;
-}}
-.dt thead tr {{
-  background:rgba(15,23,42,0.04);
-  border-bottom:1px solid rgba(15,23,42,0.10);
-}}
-.dt th {{
-  text-align:left; padding:10px 14px;
-  font-size:10px; font-weight:700;
-  letter-spacing:0.08em; text-transform:uppercase;
-  color:{_C["t3"]};
-}}
-.dt td {{
-  padding:10px 14px;
-  border-bottom:1px solid rgba(15,23,42,0.055);
-  color:{_C["t1"]};
-}}
+/* 데이터 테이블 */
+.dt {{ width:100%; border-collapse:collapse; font-size:13.5px; }}
+.dt thead tr {{ background:rgba(15,23,42,0.04); border-bottom:1px solid rgba(15,23,42,0.10); }}
+.dt th {{ text-align:left; padding:10px 14px; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{_C["t3"]}; }}
+.dt td {{ padding:10px 14px; border-bottom:1px solid rgba(15,23,42,0.055); color:{_C["t1"]}; }}
 .dt tr:last-child td {{ border-bottom:none; }}
+.dt tr:hover td {{ background:rgba(37,99,235,0.03); }}
 
-/* ── 배지 ─── */
-.badge {{
-  display:inline-block; padding:2px 10px;
-  border-radius:9999px; font-size:12px; font-weight:700;
-}}
-.b-ok   {{ background:rgba(16,185,129,0.12);  color:#065f46; }}
+/* 배지 */
+.badge  {{ display:inline-block; padding:2px 10px; border-radius:9999px; font-size:12px; font-weight:700; }}
+.b-ok   {{ background:rgba(16,185,129,0.12); color:#065f46; }}
 .b-warn {{ background:rgba(245,158,11,0.12);  color:#92400e; }}
 .b-err  {{ background:rgba(239,68,68,0.12);   color:#991b1b; }}
 .b-info {{ background:rgba(37,99,235,0.10);   color:{_C["blue"]}; }}
+.b-indexed {{ background:rgba(16,185,129,0.12); color:#065f46; }}
+.b-pending {{ background:rgba(245,158,11,0.12); color:#92400e; }}
 
-/* ── 경고 배너 ─── */
+/* 경고 배너 */
 .warn-banner {{
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.25);
-  border-radius: 10px;
-  padding: 12px 16px;
-  font-size: 13.5px;
-  color: #92400e;
-  margin-bottom: 16px;
+  background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25);
+  border-radius:10px; padding:12px 16px;
+  font-size:13.5px; color:#92400e; margin-bottom:16px;
 }}
 </style>
-<div class="adm-root" style="display:none;"></div>
 """
 
 
-# ── 폰트 클래스를 st.markdown 래퍼에 심는 헬퍼 ──────────────────────
+# ── HTML 헬퍼 (완결형 블록 전용) ─────────────────────────────────────────
 def _html(content: str) -> None:
-    """adm-root 클래스 wrapper 안에 렌더해서 폰트 클래스 상속."""
-    st.markdown(f'<div class="adm-root">{content}</div>', unsafe_allow_html=True)
+    """완결형 HTML 블록 렌더. 열린 div를 _html()로 닫지 말 것."""
+    st.markdown(content, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════════════
+def _sec_header(title: str, sub: str = "") -> None:
+    """탭 섹션 제목 (독립 완결형)."""
+    sub_html = f'<div class="sec-sub">{sub}</div>' if sub else ""
+    _html(
+        f'<div style="padding:28px 0 0;">'
+        f'<div class="sec-title">{title}</div>'
+        f'{sub_html}'
+        f'</div>'
+    )
+
+
+# ══════��══════════════════════════════════��════════════════════════════════
 #  헬퍼 — 시스템 정보
-# ══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════���══════════════════════
 
 def _sys_stats() -> Dict[str, Any]:
     out: Dict[str, Any] = {
@@ -432,7 +355,7 @@ def _sys_stats() -> Dict[str, Any]:
     }
     try:
         import psutil
-        out["psutil"] = True
+        out["psutil"]      = True
         out["cpu_pct"]     = psutil.cpu_percent(interval=None)
         vm = psutil.virtual_memory()
         out["mem_pct"]     = vm.percent
@@ -463,15 +386,15 @@ def _vector_store_stats() -> Dict[str, Any]:
         p = vs / fname
         result[fname] = {
             "exists": p.exists(),
-            "mb":     round(p.stat().st_size / 1024**2, 2) if p.exists() else None,
-            "mtime":  datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-                      if p.exists() else "—",
+            "mb":    round(p.stat().st_size / 1024**2, 2) if p.exists() else None,
+            "mtime": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                     if p.exists() else "—",
         }
     for sub in ["doc_db", "query_db", "schema_db"]:
         fi = vs / sub / "index.faiss"
         result[sub] = {
             "exists": fi.exists(),
-            "mb":     round(fi.stat().st_size / 1024**2, 2) if fi.exists() else None,
+            "mb":    round(fi.stat().st_size / 1024**2, 2) if fi.exists() else None,
         }
     return result
 
@@ -482,7 +405,6 @@ def _doc_registry_stats() -> Dict[str, Any]:
     if not reg.exists():
         return empty
     try:
-        import json
         data = json.loads(reg.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             return empty
@@ -491,13 +413,58 @@ def _doc_registry_stats() -> Dict[str, Any]:
             c = d.get("category", "기타")
             by_cat[c] = by_cat.get(c, 0) + 1
         return {
-            "total":      len(data),
-            "unindexed":  sum(1 for d in data if not d.get("indexed", True)),
+            "total":       len(data),
+            "unindexed":   sum(1 for d in data if not d.get("indexed", True)),
             "by_category": by_cat,
-            "size_kb":    round(reg.stat().st_size / 1024, 1),
+            "size_kb":     round(reg.stat().st_size / 1024, 1),
         }
     except Exception:
         return empty
+
+
+def _load_doc_registry() -> List[Dict[str, Any]]:
+    """doc_registry.json 전체 문서 목록 반환."""
+    reg = _ROOT / "doc_registry.json"
+    if not reg.exists():
+        return []
+    try:
+        data = json.loads(reg.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _load_faiss_docs(max_docs: int = 300) -> List[Dict[str, Any]]:
+    """
+    FAISS index.pkl 에서 문서 청크 메타데이터 로드.
+    LangChain FAISS 포맷: (InMemoryDocstore, index_to_docstore_id)
+    """
+    pkl_path = _ROOT / "vector_store" / "index.pkl"
+    if not pkl_path.exists():
+        return []
+    try:
+        import pickle
+        with open(pkl_path, "rb") as f:
+            data = pickle.load(f)
+        # LangChain FAISS: tuple (docstore, {idx: doc_id})
+        if not (isinstance(data, tuple) and len(data) >= 1):
+            return []
+        docstore = data[0]
+        docs_dict = getattr(docstore, "_dict", {})
+        result = []
+        for doc_id, doc in list(docs_dict.items())[:max_docs]:
+            meta = getattr(doc, "metadata", {}) or {}
+            result.append({
+                "청크ID":    str(doc_id)[:10],
+                "파일명":    meta.get("source", "—"),
+                "페이지":    str(meta.get("page", "—")),
+                "카테고리":  meta.get("category", "—"),
+                "내용(미리보기)": (getattr(doc, "page_content", "") or "")[:80],
+            })
+        return result
+    except Exception as e:
+        logger.warning(f"[Admin] FAISS pkl 로드 실패: {e}")
+        return []
 
 
 def _log_dir() -> Path:
@@ -553,10 +520,9 @@ def _colorize(line: str) -> str:
     return f'<span class="ld">{esc}</span>'
 
 
-# ── KPI 카드 빌더 ──────────────────────────────────────────────────────
+# ── KPI 카드 ───────────────────────────────────���──────────────────────────
 
 def _pb(pct: Optional[float], color: str = "#2563eb") -> str:
-    """진행률 바 HTML."""
     w = f"{min(pct, 100):.1f}" if pct is not None else "0"
     return (
         f'<div class="pb-track">'
@@ -566,92 +532,21 @@ def _pb(pct: Optional[float], color: str = "#2563eb") -> str:
 
 
 def _pct_color(val: Optional[float], warn: float = 70, err: float = 85) -> str:
-    if val is None:
-        return _C["warn"]
-    if val >= err:
-        return _C["err"]
-    if val >= warn:
-        return _C["warn"]
+    if val is None: return _C["warn"]
+    if val >= err:  return _C["err"]
+    if val >= warn: return _C["warn"]
     return _C["ok"]
 
 
 def _dot_cls(val: Optional[float], warn: float = 70, err: float = 85) -> str:
-    if val is None:
-        return "dot dwrn"
-    if val >= err:
-        return "dot derr"
-    if val >= warn:
-        return "dot dwrn"
+    if val is None: return "dot dwrn"
+    if val >= err:  return "dot derr"
+    if val >= warn: return "dot dwrn"
     return "dot dok"
 
 
-# ── 모니터링 / 챗봇 헬퍼 (2026-04-22 신규) ────────────────────────────
-
-def _events_jsonl_path() -> Path:
-    """대시보드 이벤트 로그 경로."""
-    return _log_dir() / "dashboard_events.jsonl"
-
-
-def _read_monitor_events(n: int = 2000) -> List[Dict[str, Any]]:
-    """dashboard_events.jsonl 의 최근 n 줄을 읽어 파싱."""
-    path = _events_jsonl_path()
-    if not path.exists():
-        return []
-    try:
-        import json as _j
-        with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
-        events = []
-        for l in lines[-n:]:
-            l = l.strip()
-            if not l:
-                continue
-            try:
-                events.append(_j.loads(l))
-            except Exception:
-                pass
-        return events
-    except Exception as e:
-        logger.warning(f"[Admin] monitor events 읽기 실패: {e}")
-        return []
-
-
-def _chatbot_cfg_path() -> Path:
-    """챗봇 런타임 설정 파일 경로."""
-    return _ROOT / "config" / "chatbot_runtime.json"
-
-
-def _get_chatbot_cfg() -> Dict[str, Any]:
-    """챗봇 런타임 설정 로드 (없으면 기본값 반환)."""
-    import json as _j
-    defaults: Dict[str, Any] = {
-        "enabled":      True,
-        "model":        getattr(settings, "llm_model", "gemini-2.5-pro"),
-        "temperature":  getattr(settings, "llm_temperature", 0.1),
-        "max_tokens":   getattr(settings, "llm_max_tokens", 8192),
-        "thinking":     not getattr(settings, "llm_thinking_disabled", True),
-        "top_k":        getattr(settings, "retrieve_top_k", 10),
-        "rerank_top_n": getattr(settings, "rerank_top_n", 4),
-    }
-    path = _chatbot_cfg_path()
-    if path.exists():
-        try:
-            with open(path, encoding="utf-8") as f:
-                saved = _j.load(f)
-            defaults.update(saved)
-        except Exception:
-            pass
-    return defaults
-
-
-def _set_chatbot_cfg(cfg: Dict[str, Any]) -> None:
-    """챗봇 런타임 설정 저장."""
-    import json as _j
-    path = _chatbot_cfg_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        _j.dump(cfg, f, ensure_ascii=False, indent=2)
-    logger.info(f"[Admin] 챗봇 설정 저장: {cfg}")
+def _pct_str(v: Optional[float]) -> str:
+    return f"{v:.0f}%" if v is not None else "—"
 
 
 def _kpi_card(label: str, val_html: str, foot: str, pct: Optional[float] = None) -> str:
@@ -666,15 +561,75 @@ def _kpi_card(label: str, val_html: str, foot: str, pct: Optional[float] = None)
     )
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ── 모니터링 / 챗봇 헬퍼 ──────────────────────────────────────────────────
+
+def _events_jsonl_path() -> Path:
+    return _log_dir() / "dashboard_events.jsonl"
+
+
+def _read_monitor_events(n: int = 2000) -> List[Dict[str, Any]]:
+    path = _events_jsonl_path()
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+        events = []
+        for l in lines[-n:]:
+            l = l.strip()
+            if not l:
+                continue
+            try:
+                events.append(json.loads(l))
+            except Exception:
+                pass
+        return events
+    except Exception as e:
+        logger.warning(f"[Admin] monitor events 읽기 실패: {e}")
+        return []
+
+
+def _chatbot_cfg_path() -> Path:
+    return _ROOT / "config" / "chatbot_runtime.json"
+
+
+def _get_chatbot_cfg() -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {
+        "enabled":      True,
+        "model":        getattr(settings, "llm_model", "gemini-2.5-pro"),
+        "temperature":  getattr(settings, "llm_temperature", 0.1),
+        "max_tokens":   getattr(settings, "llm_max_tokens", 8192),
+        "thinking":     not getattr(settings, "llm_thinking_disabled", True),
+        "top_k":        getattr(settings, "retrieve_top_k", 10),
+        "rerank_top_n": getattr(settings, "rerank_top_n", 4),
+    }
+    path = _chatbot_cfg_path()
+    if path.exists():
+        try:
+            with open(path, encoding="utf-8") as f:
+                defaults.update(json.load(f))
+        except Exception:
+            pass
+    return defaults
+
+
+def _set_chatbot_cfg(cfg: Dict[str, Any]) -> None:
+    path = _chatbot_cfg_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    logger.info(f"[Admin] 챗봇 설정 저장: {cfg}")
+
+
+# ══════════════════════��═════════════════════════════��═════════════════════
 #  탭 1 — 운영 현황
-# ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════��═══════════════════════
 
 def _tab_ops() -> None:
     sys_s = _sys_stats()
     oracle_ok, oracle_msg = _oracle_status()
 
-    # ── Hero ───────────────────────────────────────────────────────
+    # Hero
     _html(
         f'<div class="sec-hero">'
         f'<div class="t-hero-title">운영 현황</div>'
@@ -685,83 +640,58 @@ def _tab_ops() -> None:
         f'</div>'
     )
 
-    # ── KPI 카드 행 ────────────────────────────────────────────────
+    # KPI 카드
     cpu  = sys_s["cpu_pct"]
     mem  = sys_s["mem_pct"]
     disk = sys_s["disk_pct"]
     pmb  = sys_s["proc_mb"]
     has_ps = sys_s["psutil"]
 
-    o_dot = "dot dok" if oracle_ok else "dot derr"
-    o_lbl = "정상" if oracle_ok else "오류"
+    def _hint(has: bool, foot: str) -> str:
+        return foot if has else "psutil 미설치"
+
+    o_dot  = "dot dok" if oracle_ok else "dot derr"
+    o_lbl  = "정상" if oracle_ok else "오류"
     o_foot = oracle_msg[:44] if oracle_msg else "연결 정보 없음"
 
-    def _pct_str(v: Optional[float]) -> str:
-        return f"{v:.0f}%" if v is not None else "—"
-
-    def _pct_foot_hint(has: bool, foot: str) -> str:
-        return foot if has else "모니터링 라이브러리 없음"
-
     kpis = [
-        _kpi_card(
-            "Oracle DB",
-            f'<span class="{o_dot}"></span>{o_lbl}',
-            o_foot,
-        ),
-        _kpi_card(
-            "CPU 사용률",
-            f'<span class="{_dot_cls(cpu, 60, 80)}"></span>{_pct_str(cpu)}',
-            _pct_foot_hint(has_ps, "현재 프로세서 부하"),
-            cpu,
-        ),
-        _kpi_card(
-            "메모리",
-            f'<span class="{_dot_cls(mem)}"></span>{_pct_str(mem)}',
-            _pct_foot_hint(
-                has_ps,
-                f'{sys_s["mem_used_gb"]} / {sys_s["mem_total_gb"]} GB'
-                if sys_s["mem_total_gb"] else "",
-            ),
-            mem,
-        ),
-        _kpi_card(
-            "디스크",
-            f'<span class="{_dot_cls(disk, 75, 90)}"></span>{_pct_str(disk)}',
-            _pct_foot_hint(
-                has_ps,
-                f'여유 {sys_s["disk_free_gb"]} GB' if sys_s["disk_free_gb"] else "",
-            ),
-            disk,
-        ),
-        _kpi_card(
-            "앱 메모리",
-            f'{f"{pmb:.0f} MB" if pmb else "—"}',
-            _pct_foot_hint(has_ps, "admin_app 프로세스"),
-        ),
+        _kpi_card("Oracle DB",
+                  f'<span class="{o_dot}"></span>{o_lbl}', o_foot),
+        _kpi_card("CPU 사용률",
+                  f'<span class="{_dot_cls(cpu, 60, 80)}"></span>{_pct_str(cpu)}',
+                  _hint(has_ps, "현재 프로세서 부하"), cpu),
+        _kpi_card("메모리",
+                  f'<span class="{_dot_cls(mem)}"></span>{_pct_str(mem)}',
+                  _hint(has_ps,
+                        f'{sys_s["mem_used_gb"]} / {sys_s["mem_total_gb"]} GB'
+                        if sys_s["mem_total_gb"] else ""), mem),
+        _kpi_card("디스크",
+                  f'<span class="{_dot_cls(disk, 75, 90)}"></span>{_pct_str(disk)}',
+                  _hint(has_ps, f'여유 {sys_s["disk_free_gb"]} GB' if sys_s["disk_free_gb"] else ""),
+                  disk),
+        _kpi_card("앱 메모리",
+                  f'{f"{pmb:.0f} MB" if pmb else "—"}',
+                  _hint(has_ps, "admin_app 프로세스")),
     ]
 
-    cols = st.columns(len(kpis), gap="small")
-    for col, card_html in zip(cols, kpis):
-        with col:
-            _html(f'<div class="sec-kpi" style="padding:0;">{card_html}</div>')
-
-    # 여백
-    st.markdown('<div style="background:#0f172a;height:40px;"></div>', unsafe_allow_html=True)
-
-    # ── 서비스 현황 (라이트) ───────────────────────────────────────
+    # KPI 카드 — 완결형 HTML 블록 (navy 배경, 2026-04-22: open/close 패턴 제거)
+    kpi_flex = "".join(
+        f'<div style="flex:1;min-width:0;">{card}</div>' for card in kpis
+    )
     _html(
-        '<div class="sec-light">'
-        '<div class="t-sec-title">서비스 현황</div>'
-        '<div class="t-sec-sub">실행 중인 애플리케이션 포트 및 접속 주소</div>'
-        '</div>'
+        f'<div style="background:{_C["navy"]};margin:0 -2rem;padding:4px 2rem 32px;">'
+        f'<div style="display:flex;gap:12px;">{kpi_flex}</div>'
+        f'</div>'
     )
 
+    # 서비스 현황
+    _sec_header("서비스 현황", "실행 중인 애플리케이션 포트 및 접속 주소")
     _ip = "192.1.1.231"
     svcs = [
-        ("8501", "🏥", "병동 대시보드",   "입퇴원 현황 · 병동 KPI · 환자 흐름 분석"),
-        ("8502", "💬", "AI 챗봇",          "규정·지침 RAG 검색 · Gemini LLM 연동"),
-        ("8503", "💼", "원무 대시보드",    "수납·미수금 · 외래 통계 · 지역 분석"),
-        ("8504", "⚙️", "관리자 대시보드",  "로그 · 벡터DB · 문서 관리  ★ 현재"),
+        ("8501", "🏥", "병동 대시보드",  "입퇴원 현황 · 병동 KPI · 환자 흐름 분석"),
+        ("8502", "💬", "AI 챗봇",         "규정·지침 RAG 검색 · Gemini LLM 연동"),
+        ("8503", "💼", "원무 대시보드",   "수납·미수금 · 외래 통계 · 지역 분석"),
+        ("8504", "⚙️", "관리자 대시보드", "로그 · 벡터DB · 문서 관리  ★ 현재"),
     ]
     sc = st.columns(4, gap="small")
     for col, (port, icon, name, desc) in zip(sc, svcs):
@@ -778,14 +708,9 @@ def _tab_ops() -> None:
                 f'</div>'
             )
 
-    # ── 시스템 상세 (흰색) ─────────────────────────────────────────
-    _html(
-        '<div class="sec-white">'
-        '<div class="t-sec-title">시스템 상세</div>'
-        '<div class="t-sec-sub">Oracle DB 연결 상태 · 서버 환경 정보</div>'
-        '</div>'
-    )
-
+    # 시스템 상세
+    st.divider()
+    _sec_header("시스템 상세", "Oracle DB 연결 상태 · 서버 환경 정보")
     d1, d2 = st.columns(2, gap="medium")
     oc = _C["ok"] if oracle_ok else _C["err"]
     with d1:
@@ -796,14 +721,10 @@ def _tab_ops() -> None:
             ("접속 모드", "Thin Mode (python-oracledb)"),
         ]
         body = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in rows_v
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in rows_v
         )
         _html(f'<div class="info-card"><div class="info-card-title">Oracle DB 연결</div>{body}</div>')
-
     with d2:
         uptime = "—"
         try:
@@ -813,41 +734,30 @@ def _tab_ops() -> None:
         except ImportError:
             uptime = "psutil 미설치"
         rows_v2 = [
-            ("Python",    platform.python_version()),
-            ("OS",        (platform.system() + " " + platform.release())[:46]),
+            ("Python",     platform.python_version()),
+            ("OS",         (platform.system() + " " + platform.release())[:46]),
             ("서버 업타임", uptime),
-            ("현재 시각",  datetime.now().strftime("%Y-%m-%d  %H:%M:%S")),
+            ("현재 시각",   datetime.now().strftime("%Y-%m-%d  %H:%M:%S")),
         ]
         body2 = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in rows_v2
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in rows_v2
         )
         _html(f'<div class="info-card"><div class="info-card-title">서버 환경</div>{body2}</div>')
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ═════════════════════���════════════════════════════════════════════════════
 #  탭 2 — 로그 뷰어
-# ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
 
 def _tab_logs() -> None:
-    _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">로그 뷰어</div>'
-        '<div class="t-sec-sub">모듈별 로그 파일 탐색 · 키워드 검색 · 다운로드</div>'
-        '</div>'
-    )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+    _sec_header("로그 뷰어", "모듈별 로그 파일 탐색 · 키워드 검색 · 다운로드")
 
     modules = _list_log_modules()
     if not modules:
         st.info("로그 디렉토리에 파일이 없습니다.")
-        _html("</div>")
         return
 
-    # 2026-04-22: 레벨 필터 + tail 선택기 추가
     c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 3], gap="small")
     with c1:
         sel_mod  = st.selectbox("모듈", modules, key="adm_log_mod")
@@ -869,15 +779,13 @@ def _tab_logs() -> None:
 
     if raw is None:
         st.warning(f"파일 없음: {sel_mod}.log{'.' + date_arg if date_arg else ''}")
-        _html("</div>")
         return
 
-    lines  = raw.splitlines()
-    total  = len(lines)
-    # 레벨 필터 적용
+    lines = raw.splitlines()
+    total = len(lines)
+
     if sel_level != "전체":
         lines = [l for l in lines if f" {sel_level} " in l.upper() or f"|{sel_level}|" in l.upper()]
-    # 키워드 필터 적용
     if kw.strip():
         lines = [l for l in lines if kw.strip().lower() in l.lower()]
 
@@ -885,6 +793,7 @@ def _tab_logs() -> None:
     warn_n = sum(1 for l in lines if " WARNING " in l.upper() or " WARN " in l.upper())
     info_n = sum(1 for l in lines if " INFO "    in l.upper())
 
+    st.divider()
     m1, m2, m3, m4, m5 = st.columns(5, gap="small")
     m1.metric("전체 라인",  f"{total:,}")
     m2.metric("필터 결과",  f"{len(lines):,}")
@@ -897,20 +806,20 @@ def _tab_logs() -> None:
         st.caption(f"최근 {tail_n:,}줄 표시 (필터 결과 {len(lines):,}줄)")
 
     colored = "\n".join(_colorize(l) for l in show)
-    _html(f'<div class="log-wrap adm-root"><pre>{colored}</pre></div>')
+    _html(f'<div class="log-wrap"><pre>{colored}</pre></div>')
 
     st.markdown("<br>", unsafe_allow_html=True)
     dl_c, cl_c = st.columns([2, 4], gap="small")
     with dl_c:
         st.download_button(
-            "로그 다운로드",
+            "⬇ 로그 다운로드",
             data=raw.encode("utf-8"),
             file_name=f"{sel_mod}_{date_arg or 'latest'}.log",
             mime="text/plain",
             key="adm_log_dl",
         )
     with cl_c:
-        if st.button("30일 이상 로그 파일 정리", key="adm_log_clean"):
+        if st.button("🗑 30일 이상 로그 파일 정리", key="adm_log_clean"):
             ld, cutoff, removed = _log_dir(), datetime.now() - timedelta(days=30), 0
             for f in ld.iterdir():
                 if ".log." in f.name:
@@ -922,84 +831,70 @@ def _tab_logs() -> None:
             st.success(f"{removed}개 파일 삭제 완료")
             logger.info(f"관리자: 오래된 로그 {removed}개 정리")
 
-    _html("</div>")
 
-
-# ══════════════════════════════════════════════════════════════════════
-#  탭 3 — 벡터DB 관리
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════��════════════════════════��════
+#  탭 3 — 벡터DB 관리  (2026-04-22: 문서 브라우저 + 파트별 재구축 추가)
+# ══════════════════════════════════════���════════════════════════════════��══
 
 def _tab_vectordb() -> None:
-    _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">벡터DB 관리</div>'
-        '<div class="t-sec-sub">FAISS 인덱스 통계 · 문서 레지스트리 · 재구축 · 백업</div>'
-        '</div>'
-    )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+    _sec_header("벡터DB 관리", "FAISS 인덱스 통계 · 문서 목록 조회 · 파트별 재구축 · 백업/복구")
 
     vs  = _vector_store_stats()
     reg = _doc_registry_stats()
     fi  = vs.get("index.faiss", {})
 
+    # ── KPI ──────────────────────────────────────────────────────────────
     k1, k2, k3, k4 = st.columns(4, gap="small")
-    k1.metric("메인 인덱스", "존재" if fi.get("exists") else "없음")
-    k2.metric("인덱스 크기", f'{fi.get("mb", "—")} MB')
-    k3.metric("등록 문서",   f'{reg["total"]}건')
-    k4.metric(
-        "인덱스 대기",
-        f'{reg["unindexed"]}건',
-        delta="재구축 필요" if reg["unindexed"] > 0 else None,
-        delta_color="inverse",
-    )
+    k1.metric("메인 인덱스",  "존재" if fi.get("exists") else "없음")
+    k2.metric("인덱스 크기",  f'{fi.get("mb", "—")} MB')
+    k3.metric("등록 문서",    f'{reg["total"]}건')
+    k4.metric("인덱스 대기",  f'{reg["unindexed"]}건',
+              delta="재구축 필요" if reg["unindexed"] > 0 else None,
+              delta_color="inverse")
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # ── 인덱스 상태 정보 카드 ───────────────────────��────────────────────
+    st.divider()
     ic1, ic2 = st.columns(2, gap="medium")
-
     with ic1:
         pi = vs.get("index.pkl", {})
         rows = [
             ("index.faiss", f'{fi.get("mb","—")} MB' if fi.get("exists") else "없음"),
             ("index.pkl",   f'{pi.get("mb","—")} MB' if pi.get("exists") else "없음"),
-            ("마지막 수정", fi.get("mtime", "—")),
-            ("저장 위치",   str(_ROOT / "vector_store")[:50]),
+            ("마지막 수정",  fi.get("mtime", "—")),
+            ("저장 위치",    str(_ROOT / "vector_store")[:50]),
         ]
         body = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in rows
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in rows
         )
         _html(f'<div class="info-card"><div class="info-card-title">메인 벡터 인덱스</div>{body}</div>')
-
     with ic2:
-        by_cat = reg.get("by_category", {})
+        by_cat  = reg.get("by_category", {})
         cat_str = " · ".join(f"{k} {v}건" for k, v in list(by_cat.items())[:3]) or "—"
         rows2 = [
-            ("총 등록 문서",   f'{reg["total"]}건'),
-            ("인덱스 대기",    f'{reg["unindexed"]}건'),
-            ("카테고리",       cat_str),
+            ("총 등록 문서",    f'{reg["total"]}건'),
+            ("인덱스 대기",     f'{reg["unindexed"]}건'),
+            ("카테고리",        cat_str),
             ("레지스트리 크기", f'{reg.get("size_kb","—")} KB'),
         ]
         body2 = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in rows2
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in rows2
         )
         _html(f'<div class="info-card"><div class="info-card-title">문서 레지스트리</div>{body2}</div>')
 
+    # ── 서브 인덱스 상태 테이블 ────────────────────��────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     sub_rows = ""
-    for key, label in [("doc_db","규정집"), ("query_db","쿼리 예제"), ("schema_db","테이블 명세")]:
+    sub_label_map = {"doc_db": "규정집", "query_db": "쿼리 예제", "schema_db": "테이블 명세"}
+    for key in ["doc_db", "query_db", "schema_db"]:
         s     = vs.get(key, {})
         size  = f'{s.get("mb","—")} MB' if s.get("exists") else "없음"
-        badge = '<span class="badge b-ok">정상</span>' if s.get("exists") else '<span class="badge b-warn">미생성</span>'
+        badge = ('<span class="badge b-ok">정상</span>' if s.get("exists")
+                 else '<span class="badge b-warn">미생성</span>')
         sub_rows += (
             f'<tr><td><b>{key}</b></td>'
-            f'<td style="color:{_C["t2"]};">{label}</td>'
+            f'<td style="color:{_C["t2"]};">{sub_label_map[key]}</td>'
             f'<td>{size}</td><td>{badge}</td></tr>'
         )
     _html(
@@ -1008,17 +903,80 @@ def _tab_vectordb() -> None:
         f'</tr></thead><tbody>{sub_rows}</tbody></table>'
     )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # ── 인덱스 재구축 ────────────────────────────────────────────────────
+    st.divider()
+    _html(
+        '<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{_C["blue"]};"></span>'
+        '인덱스 재구축'
+        '</div>'
+    )
     _html(
         '<div class="warn-banner">'
-        '⚠️ 인덱스 재구축은 수 분이 소요될 수 있습니다. 재구축 중 챗봇 응답이 느려질 수 있습니다.'
+        '⚠️ 재구축은 수 분이 소요될 수 있습니다. 재구축 중 챗봇 응답이 느려질 수 있습니다.'
         '</div>'
     )
 
-    # ── 재구축 버튼 (2026-04-22: 전체 재구축 버튼 + 개선) ──────────────
-    b1, b2, b3, b4 = st.columns(4, gap="small")
-    with b1:
-        if st.button("📚 메인 인덱스 재구축", key="adm_rb_main", use_container_width=True):
+    # 행 1: 파트별 재구축 (2026-04-22 신규)
+    r1c1, r1c2, r1c3 = st.columns(3, gap="small")
+    with r1c1:
+        if st.button("📚 규정집 재구축 (doc_db)", key="adm_rb_doc", use_container_width=True):
+            prog = st.progress(0, text="규정집 인덱스 재구축 시작...")
+            try:
+                from db.knowledge_db_builder import rebuild_doc_index
+                prog.progress(30, text="문서 로딩 중...")
+                rebuild_doc_index()
+                prog.progress(100, text="완료")
+                st.success("규정집 인덱스 재구축 완료")
+                logger.info("관리자: doc_db 재구축")
+            except AttributeError:
+                # rebuild_doc_index 없을 경우 메인 재구축으로 대체
+                try:
+                    from db.knowledge_db_builder import rebuild_vector_store
+                    rebuild_vector_store(part="doc_db")
+                    prog.progress(100, text="완료")
+                    st.success("규정집 인덱스 재구축 완료")
+                except Exception as e2:
+                    prog.empty(); st.error(f"오류: {e2}")
+            except Exception as e:
+                prog.empty(); st.error(f"오류: {e}")
+    with r1c2:
+        if st.button("📝 쿼리예제 재구축 (query_db)", key="adm_rb_query", use_container_width=True):
+            prog = st.progress(0, text="쿼리 예제 인덱스 재구축 시작...")
+            try:
+                from db.knowledge_db_builder import rebuild_query_index
+                prog.progress(30, text="쿼리 예제 로딩 중...")
+                rebuild_query_index()
+                prog.progress(100, text="완료")
+                st.success("쿼리 예제 인덱스 재구축 완료")
+                logger.info("관리자: query_db 재구축")
+            except AttributeError:
+                try:
+                    from db.knowledge_db_builder import rebuild_vector_store
+                    rebuild_vector_store(part="query_db")
+                    prog.progress(100, text="완료")
+                    st.success("쿼리 예제 인덱스 재구축 완료")
+                except Exception as e2:
+                    prog.empty(); st.error(f"오류: {e2}")
+            except Exception as e:
+                prog.empty(); st.error(f"오류: {e}")
+    with r1c3:
+        if st.button("🗄️ 스키마 재구축 (schema_db)", key="adm_rb_schema", use_container_width=True):
+            prog = st.progress(0, text="스키마 인덱스 재구축 시작...")
+            try:
+                from db.schema_vector_store import rebuild_schema_index
+                prog.progress(50, text="스키마 분석 중...")
+                rebuild_schema_index()
+                prog.progress(100, text="완료")
+                st.success("스키마 인덱스 재구축 완료")
+                logger.info("관리자: schema_db 재구축")
+            except Exception as e:
+                prog.empty(); st.error(f"오류: {e}")
+
+    # 행 2: 메인/전체/백업
+    r2c1, r2c2, r2c3 = st.columns(3, gap="small")
+    with r2c1:
+        if st.button("📦 메인 인덱스 전체 재구축", key="adm_rb_main", use_container_width=True):
             prog = st.progress(0, text="메인 인덱스 재구축 시작...")
             try:
                 from db.knowledge_db_builder import rebuild_vector_store
@@ -1028,22 +986,8 @@ def _tab_vectordb() -> None:
                 st.success("메인 인덱스 재구축 완료")
                 logger.info("관리자: 메인 벡터 인덱스 재구축")
             except Exception as e:
-                prog.empty()
-                st.error(f"오류: {e}")
-    with b2:
-        if st.button("🗄️ 스키마 인덱스 재구축", key="adm_rb_schema", use_container_width=True):
-            prog = st.progress(0, text="스키마 인덱스 재구축 시작...")
-            try:
-                from db.schema_vector_store import rebuild_schema_index
-                prog.progress(50, text="스키마 분석 중...")
-                rebuild_schema_index()
-                prog.progress(100, text="완료")
-                st.success("스키마 인덱스 재구축 완료")
-                logger.info("관리자: 스키마 인덱스 재구축")
-            except Exception as e:
-                prog.empty()
-                st.error(f"오류: {e}")
-    with b3:
+                prog.empty(); st.error(f"오류: {e}")
+    with r2c2:
         if st.button("🔄 전체 재구축 (메인+스키마)", key="adm_rb_all", use_container_width=True):
             prog = st.progress(0, text="전체 재구축 시작...")
             errs = []
@@ -1065,7 +1009,7 @@ def _tab_vectordb() -> None:
             else:
                 st.success("전체 인덱스 재구축 완료")
                 logger.info("관리자: 전체 벡터 인덱스 재구축")
-    with b4:
+    with r2c3:
         if st.button("💾 백업 생성", key="adm_backup", use_container_width=True):
             with st.spinner("백업 생성 중..."):
                 try:
@@ -1078,29 +1022,29 @@ def _tab_vectordb() -> None:
                 except Exception as e:
                     st.error(f"백업 오류: {e}")
 
-    # ── 백업 목록 + 복구 (2026-04-22: 복구 버튼 추가) ───────────────────
+    # ── 백업 목록 + 복구 ────────────────────────────��────────────────────
     bk_dir = _ROOT / "vector_store_backup"
     if bk_dir.exists():
         bks = sorted([d for d in bk_dir.iterdir() if d.is_dir()], reverse=True)
         if bks:
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander(f"💾 백업 목록  ({len(bks)}개)  — 복구하려면 선택 후 버튼 클릭", expanded=False):
+            with st.expander(f"💾 백업 목록  ({len(bks)}개)  — 선택 후 복구", expanded=False):
                 bk_names = [b.name for b in bks[:10]]
                 sel_bk   = st.selectbox("복구할 백업 선택", bk_names, key="adm_sel_backup")
-                rc1, rc2 = st.columns([2, 6], gap="small")
+                rc1, _ = st.columns([2, 6], gap="small")
                 with rc1:
-                    if st.button("♻️ 선택 백업으로 복구", key="adm_restore", use_container_width=True, type="primary"):
+                    if st.button("♻️ 선택 백업으로 복구", key="adm_restore",
+                                 use_container_width=True, type="primary"):
                         try:
                             import shutil
-                            src_bk  = bk_dir / sel_bk
+                            src_bk = bk_dir / sel_bk
                             vs_path = _ROOT / "vector_store"
-                            # 현재 인덱스 백업 후 복구
-                            emergency_ts  = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
-                            shutil.copytree(str(vs_path), str(bk_dir / emergency_ts))
+                            ets = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
+                            shutil.copytree(str(vs_path), str(bk_dir / ets))
                             shutil.rmtree(str(vs_path))
                             shutil.copytree(str(src_bk), str(vs_path))
                             st.success(f"복구 완료: {sel_bk} → vector_store/")
-                            logger.info(f"관리자: 백업 복구 {sel_bk} (복구 전 백업: {emergency_ts})")
+                            logger.info(f"관리자: 백업 복구 {sel_bk} (복구 전 백업: {ets})")
                         except Exception as e:
                             st.error(f"복구 오류: {e}")
                 bk_rows = ""
@@ -1118,21 +1062,110 @@ def _tab_vectordb() -> None:
                     f'</tr></thead><tbody>{bk_rows}</tbody></table>'
                 )
 
-    _html("</div>")
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  탭 4 — 문서 관리
-# ══════════════════════════════════════════════════════════════════════
-
-def _tab_docs() -> None:
+    # ══ 인덱스 문서 목록 브라우저 (2026-04-22 신규) ══════════════════════
+    st.divider()
     _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">문서 관리</div>'
-        '<div class="t-sec-sub">규정집 · DB 명세서 · 쿼리 예제 업로드 및 인덱스 연동</div>'
+        '<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{_C["ok"]};"></span>'
+        '인덱스된 문서 목록 (doc_registry)'
         '</div>'
     )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+
+    all_docs = _load_doc_registry()
+    if not all_docs:
+        st.info("doc_registry.json 이 없거나 비어 있습니다.")
+    else:
+        # 필터
+        f1, f2, f3 = st.columns([2, 2, 4], gap="small")
+        cats   = sorted(set(d.get("category", "기타") for d in all_docs))
+        with f1:
+            sel_cat = st.selectbox("카테고리 필터", ["전체"] + cats, key="adm_vdb_cat")
+        with f2:
+            idx_opts = {"전체": None, "인덱스됨": True, "미인덱스": False}
+            sel_idx  = st.selectbox("인덱스 여부", list(idx_opts.keys()), key="adm_vdb_idx")
+        with f3:
+            doc_kw = st.text_input("파일명/내용 검색", placeholder="파일명 일부 입력...",
+                                   key="adm_vdb_kw", label_visibility="collapsed")
+
+        filtered = all_docs
+        if sel_cat != "전체":
+            filtered = [d for d in filtered if d.get("category", "기타") == sel_cat]
+        if idx_opts[sel_idx] is not None:
+            filtered = [d for d in filtered if bool(d.get("indexed", True)) == idx_opts[sel_idx]]
+        if doc_kw.strip():
+            kw_l = doc_kw.strip().lower()
+            filtered = [d for d in filtered
+                        if kw_l in str(d.get("name", d.get("filename", ""))).lower()
+                        or kw_l in str(d.get("file_path", "")).lower()]
+
+        st.caption(f"총 {len(all_docs)}건 중 {len(filtered)}건 표시")
+
+        if filtered:
+            rows_html = ""
+            for d in filtered[:200]:
+                name     = d.get("name") or d.get("filename") or d.get("file_path", "—")
+                name     = Path(str(name)).name if name != "—" else "—"
+                cat      = d.get("category", "기타")
+                indexed  = d.get("indexed", True)
+                added    = str(d.get("added_at", d.get("created_at", "—")))[:16]
+                bclass   = "b-indexed" if indexed else "b-pending"
+                blabel   = "인덱스됨" if indexed else "대기중"
+                rows_html += (
+                    f'<tr>'
+                    f'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{name}</td>'
+                    f'<td><span class="badge {bclass}">{blabel}</span></td>'
+                    f'<td style="color:{_C["t2"]};">{cat}</td>'
+                    f'<td style="color:{_C["t3"]};font-size:12px;">{added}</td>'
+                    f'</tr>'
+                )
+            _html(
+                f'<div style="overflow-x:auto;">'
+                f'<table class="dt"><thead><tr>'
+                f'<th>파일명</th><th>상태</th><th>카테고리</th><th>등록일시</th>'
+                f'</tr></thead><tbody>{rows_html}</tbody></table>'
+                f'</div>'
+            )
+            if len(filtered) >= 200:
+                st.caption("최대 200건까지 표시됩니다.")
+
+    # ── FAISS 청크 브라우저 ────────────────���─────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("🔍 FAISS 인덱스 청크 미리보기 (index.pkl)", expanded=False):
+        with st.spinner("FAISS 인덱스 로딩 중..."):
+            faiss_docs = _load_faiss_docs(max_docs=300)
+        if not faiss_docs:
+            st.info("FAISS index.pkl 파일이 없거나 읽을 수 없습니다.")
+        else:
+            st.caption(f"총 청크 수: {len(faiss_docs)}건 (최대 300건 표시)")
+            try:
+                import pandas as pd
+                df = pd.DataFrame(faiss_docs)
+                st.dataframe(df, use_container_width=True, hide_index=True,
+                             height=min(400, len(faiss_docs) * 35 + 40))
+            except ImportError:
+                rows_html = ""
+                for d in faiss_docs[:50]:
+                    rows_html += (
+                        f'<tr><td style="font-size:11px;color:{_C["t3"]};">{d["청크ID"]}</td>'
+                        f'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;">{d["파일명"]}</td>'
+                        f'<td>{d["페이지"]}</td>'
+                        f'<td style="color:{_C["t2"]};">{d["카테고리"]}</td>'
+                        f'<td style="font-size:11px;color:{_C["t3"]};">{d["내용(미리보기)"]}</td>'
+                        f'</tr>'
+                    )
+                _html(
+                    f'<table class="dt" style="font-size:12px;"><thead><tr>'
+                    f'<th>청크ID</th><th>파일명</th><th>페이지</th><th>카테고리</th><th>내용</th>'
+                    f'</tr></thead><tbody>{rows_html}</tbody></table>'
+                )
+
+
+# ═══════════════════════════════════════════════════════��══════════════════
+#  탭 4 — 문서 관리
+# ═══════════════════════════════════════════════════���══════════════════════
+
+def _tab_docs() -> None:
+    _sec_header("문서 관리", "규정집 · DB 명세서 · 쿼리 예제 업로드 및 인덱스 연동")
     try:
         from ui.doc_manager_ui import render_doc_manager_ui
         render_doc_manager_ui(admin_user="admin")
@@ -1141,21 +1174,14 @@ def _tab_docs() -> None:
     except Exception as e:
         st.error(f"문서 관리 UI 오류: {e}")
         logger.error(f"doc_manager_ui 오류: {e}", exc_info=True)
-    _html("</div>")
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════���════════════════════
 #  탭 5 — 시스템 정보
-# ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
 
 def _tab_sysinfo() -> None:
-    _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">시스템 정보</div>'
-        '<div class="t-sec-sub">Python 환경 · 설치 패키지 · 설정 요약</div>'
-        '</div>'
-    )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+    _sec_header("시스템 정보", "Python 환경 · 설치 패키지 · 설정 요약")
 
     s1, s2 = st.columns(2, gap="medium")
     with s1:
@@ -1167,14 +1193,10 @@ def _tab_sysinfo() -> None:
             ("로그 디렉토리", str(settings.log_dir)[:50]),
         ]
         body = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in env
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in env
         )
         _html(f'<div class="info-card"><div class="info-card-title">환경 정보</div>{body}</div>')
-
     with s2:
         try:
             cfg = [
@@ -1188,33 +1210,29 @@ def _tab_sysinfo() -> None:
         except Exception:
             cfg = [("설정 로드", "settings.py 확인 필요")]
         body2 = "".join(
-            f'<div class="info-row">'
-            f'<span class="info-lbl">{k}</span>'
-            f'<span class="info-val">{v}</span>'
-            f'</div>'
-            for k, v in cfg
+            f'<div class="info-row"><span class="info-lbl">{k}</span>'
+            f'<span class="info-val">{v}</span></div>' for k, v in cfg
         )
         _html(f'<div class="info-card"><div class="info-card-title">설정 요약</div>{body2}</div>')
 
     st.markdown("<br>", unsafe_allow_html=True)
     PKGS = [
-        "streamlit","langchain","langchain-core","langchain-community",
-        "google-genai","faiss-cpu","sentence-transformers","torch",
-        "oracledb","pydantic","pandas","plotly",
+        "streamlit", "langchain", "langchain-core", "langchain-community",
+        "google-genai", "faiss-cpu", "sentence-transformers", "torch",
+        "oracledb", "pydantic", "pandas", "plotly",
     ]
     import importlib.metadata as im
     rows_html = ""
     for i in range(0, len(PKGS), 2):
         row = ""
-        for pkg in PKGS[i:i+2]:
+        for pkg in PKGS[i:i + 2]:
             try:
-                ver   = im.version(pkg)
-                vcol  = _C["blue"]
+                ver = im.version(pkg); vcol = _C["blue"]
             except Exception:
-                ver   = "미설치"
-                vcol  = _C["err"]
+                ver = "미설치"; vcol = _C["err"]
             row += (
-                f'<td style="color:{vcol};font-size:13px;padding:10px 14px;font-variant-numeric:tabular-nums;">{ver}</td>'
+                f'<td style="color:{vcol};font-size:13px;padding:10px 14px;'
+                f'font-variant-numeric:tabular-nums;">{ver}</td>'
                 f'<td style="color:{_C["t1"]};padding:10px 14px;">{pkg}</td>'
             )
         rows_html += f"<tr>{row}</tr>"
@@ -1226,26 +1244,17 @@ def _tab_sysinfo() -> None:
             f'<tbody>{rows_html}</tbody></table>'
         )
 
-    _html("</div>")
 
-
-# ══════════════════════════════════════════════════════════════════════
-#  탭 6 — 챗봇 관리  (2026-04-22 신규)
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════��═════════════════════════
+#  탭 6 — 챗봇 관리
+# ══════════════════════════════════════════════════════════════════════════
 
 def _tab_chatbot() -> None:
-    """챗봇 서비스 설정 · LLM 파라미터 조정 · 테스트 쿼리."""
-    _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">챗봇 관리</div>'
-        '<div class="t-sec-sub">LLM 서비스 ON/OFF · 파라미터 조정 · 실시간 테스트</div>'
-        '</div>'
-    )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+    _sec_header("챗봇 관리", "LLM 서비스 ON/OFF · 파라미터 조정 · 실시간 테스트")
 
     cfg = _get_chatbot_cfg()
 
-    # ── 서비스 ON/OFF ────────────────────────────────────────────────
+    # 서비스 ON/OFF
     sa1, sa2 = st.columns([2, 6], gap="medium")
     with sa1:
         enabled = st.toggle(
@@ -1255,72 +1264,56 @@ def _tab_chatbot() -> None:
             help="OFF 시 챗봇이 응답하지 않습니다. (재시작 후 반영)",
         )
     with sa2:
-        status_color = _C["ok"] if enabled else _C["warn"]
-        status_label = "서비스 중" if enabled else "중지됨"
+        sc = _C["ok"] if enabled else _C["warn"]
+        sl = "서비스 중" if enabled else "중지됨"
         _html(
             f'<div style="display:flex;align-items:center;gap:8px;padding:10px 0;">'
-            f'<span style="width:10px;height:10px;border-radius:50%;background:{status_color};'
-            f'display:inline-block;"></span>'
-            f'<span style="font-size:14px;font-weight:700;color:{status_color};">'
-            f'{status_label}</span>'
-            f'<span style="font-size:12px;color:{_C["t3"]};margin-left:8px;">'
-            f'포트 8502 · main.py</span>'
+            f'<span style="width:10px;height:10px;border-radius:50%;background:{sc};'
+            f'display:inline-block;flex-shrink:0;"></span>'
+            f'<span style="font-size:14px;font-weight:700;color:{sc};">{sl}</span>'
+            f'<span style="font-size:12px;color:{_C["t3"]};margin-left:8px;">포트 8502 · main.py</span>'
             f'</div>'
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.divider()
+    _html(
+        '<div class="wd-sec">'
+        f'<span class="wd-sec-bar" style="background:{_C["blue"]};"></span>'
+        'LLM 파라미터'
+        '</div>'
+    )
 
-    # ── LLM 파라미터 ─────────────────────────────────────────────────
     p1, p2, p3 = st.columns(3, gap="medium")
     with p1:
-        model_opts = [
-            "gemini-2.5-pro", "gemini-2.5-flash",
-            "gemini-2.0-flash", "gemini-1.5-pro",
-        ]
-        cur_model = cfg.get("model", model_opts[0])
+        model_opts = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        cur_model  = cfg.get("model", model_opts[0])
         if cur_model not in model_opts:
             model_opts.insert(0, cur_model)
-        new_model = st.selectbox(
-            "LLM 모델", model_opts,
-            index=model_opts.index(cur_model),
-            key="adm_chatbot_model",
-        )
+        new_model = st.selectbox("LLM 모델", model_opts,
+                                 index=model_opts.index(cur_model), key="adm_chatbot_model")
     with p2:
-        new_temp = st.slider(
-            "Temperature", min_value=0.0, max_value=1.0,
-            value=float(cfg.get("temperature", 0.1)), step=0.05,
-            key="adm_chatbot_temp",
-            help="낮을수록 일관된 답변, 높을수록 창의적 답변",
-        )
+        new_temp = st.slider("Temperature", 0.0, 1.0,
+                             float(cfg.get("temperature", 0.1)), 0.05,
+                             key="adm_chatbot_temp",
+                             help="낮을수록 일관된 답변, 높을수록 창의적 답변")
     with p3:
-        new_max_tok = st.slider(
-            "Max Tokens", min_value=1024, max_value=65536,
-            value=int(cfg.get("max_tokens", 8192)), step=1024,
-            key="adm_chatbot_maxtok",
-        )
+        new_max_tok = st.slider("Max Tokens", 1024, 65536,
+                                int(cfg.get("max_tokens", 8192)), 1024,
+                                key="adm_chatbot_maxtok")
 
     q1, q2, q3 = st.columns(3, gap="medium")
     with q1:
-        new_topk = st.slider(
-            "검색 Top-K", min_value=3, max_value=30,
-            value=int(cfg.get("top_k", 10)), step=1,
-            key="adm_chatbot_topk",
-        )
+        new_topk = st.slider("검색 Top-K", 3, 30, int(cfg.get("top_k", 10)), 1,
+                             key="adm_chatbot_topk")
     with q2:
-        new_rerank = st.slider(
-            "Rerank Top-N", min_value=1, max_value=10,
-            value=int(cfg.get("rerank_top_n", 4)), step=1,
-            key="adm_chatbot_rerank",
-        )
+        new_rerank = st.slider("Rerank Top-N", 1, 10, int(cfg.get("rerank_top_n", 4)), 1,
+                               key="adm_chatbot_rerank")
     with q3:
-        new_thinking = st.toggle(
-            "Extended Thinking",
-            value=bool(cfg.get("thinking", False)),
-            key="adm_chatbot_thinking",
-            help="Gemini 2.5 계열에서만 지원. 응답이 느려집니다.",
-        )
+        new_thinking = st.toggle("Extended Thinking",
+                                 value=bool(cfg.get("thinking", False)),
+                                 key="adm_chatbot_thinking",
+                                 help="Gemini 2.5 계열에서만 지원. 응답이 느려집니다.")
 
-    # ── 설정 저장 ────────────────────────────────────────────────────
     if st.button("💾 설정 저장", key="adm_chatbot_save", type="primary"):
         _set_chatbot_cfg({
             "enabled":      enabled,
@@ -1334,21 +1327,17 @@ def _tab_chatbot() -> None:
         })
         st.success("설정 저장 완료. 챗봇 서비스를 재시작해야 반영됩니다.")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── 테스트 쿼리 ──────────────────────────────────────────────────
+    st.divider()
     _html(
-        f'<div class="wd-sec">'
+        '<div class="wd-sec">'
         f'<span class="wd-sec-bar" style="background:{_C["blue"]};"></span>'
-        f'실시간 테스트 쿼리'
-        f'</div>'
+        '실시간 테스트 쿼리'
+        '</div>'
     )
     tq_col1, tq_col2 = st.columns([7, 1], gap="small")
     with tq_col1:
-        tq_input = st.text_input(
-            "테스트 쿼리", placeholder="예: 오늘 외래 환자 몇 명이에요?",
-            key="adm_test_query", label_visibility="collapsed",
-        )
+        tq_input = st.text_input("테스트 쿼리", placeholder="예: 오늘 외래 환자 몇 명이에요?",
+                                 key="adm_test_query", label_visibility="collapsed")
     with tq_col2:
         run_btn = st.button("▶ 실행", key="adm_test_run", use_container_width=True, type="primary")
 
@@ -1362,42 +1351,29 @@ def _tab_chatbot() -> None:
                 _ans  = ""
                 for _step in _pipe.iter_steps(tq_input.strip()):
                     if isinstance(_step, dict) and "answer" in _step:
-                        _ans = _step["answer"]
-                        break
+                        _ans = _step["answer"]; break
                 _elapsed = round((_t.time() - _start) * 1000)
                 if _ans:
-                    st.markdown(
+                    _html(
                         f'<div class="info-card" style="border-left:3px solid {_C["blue"]};">'
                         f'<div class="info-card-title">응답 '
-                        f'<span style="font-weight:400;color:{_C["t3"]};font-size:11px;">'
-                        f'({_elapsed:,}ms)</span></div>'
+                        f'<span style="font-weight:400;color:{_C["t3"]};font-size:11px;">({_elapsed:,}ms)</span></div>'
                         f'<div style="font-size:13px;line-height:1.8;">{_ans}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
+                        f'</div>'
                     )
                 else:
                     st.warning("응답 없음")
             except Exception as e:
                 st.error(f"파이프라인 오류: {e}")
 
-    _html("</div>")
 
-
-# ══════════════════════════════════════════════════════════════════════
-#  탭 7 — 모니터링  (2026-04-22 신규)
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════���═════════════════════
+#  탭 7 — 모니터링
+# ══════════════════════════════════════════════════════════════════════════
 
 def _tab_monitoring() -> None:
-    """대시보드 사용 현황 · 오류율 추이 · LLM 응답 시간 분석."""
-    _html(
-        '<div class="sec-light" style="padding-bottom:0;">'
-        '<div class="t-sec-title">모니터링</div>'
-        '<div class="t-sec-sub">접속 현황 · 오류율 추이 · LLM 응답 지연 · 이벤트 로그</div>'
-        '</div>'
-    )
-    _html('<div class="sec-white" style="padding-top:24px;">')
+    _sec_header("모니터링", "접속 현황 · 오류율 추이 · LLM 응답 지연 · 이벤트 로그")
 
-    # ── 새로고침 버튼 ────────────────────────────────────────────────
     r1, r2 = st.columns([1, 9], gap="small")
     with r1:
         if st.button("🔄 새로고침", key="adm_mon_refresh", use_container_width=True):
@@ -1413,10 +1389,8 @@ def _tab_monitoring() -> None:
     if not events:
         st.info("dashboard_events.jsonl 파일이 없거나 비어 있습니다. "
                 "대시보드를 사용하면 자동으로 생성됩니다.")
-        _html("</div>")
         return
 
-    # ── KPI ──────────────────────────────────────────────────────────
     from collections import defaultdict as _dd, Counter as _cnt
 
     total_ev   = len(events)
@@ -1426,6 +1400,7 @@ def _tab_monitoring() -> None:
     avg_ms     = (int(sum(e["elapsed_ms"] for e in llm_events) / len(llm_events))
                   if llm_events else 0)
 
+    st.divider()
     k1, k2, k3, k4 = st.columns(4, gap="small")
     k1.metric("총 이벤트",     f"{total_ev:,}")
     k2.metric("오류 이벤트",   f"{err_ev:,}",
@@ -1436,7 +1411,6 @@ def _tab_monitoring() -> None:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── 차트 (Plotly 있을 때만) ──────────────────────────────────────
     try:
         import plotly.graph_objects as _go_m
         _has_plt = True
@@ -1445,9 +1419,7 @@ def _tab_monitoring() -> None:
 
     if _has_plt:
         ch1, ch2 = st.columns(2, gap="medium")
-
         with ch1:
-            # 시간대별 이벤트 수
             hour_cnt: dict = _dd(int)
             for e in events:
                 ts = e.get("timestamp", "")
@@ -1459,77 +1431,63 @@ def _tab_monitoring() -> None:
                     pass
             hours  = list(range(24))
             counts = [hour_cnt.get(h, 0) for h in hours]
-            fig1 = _go_m.Figure(_go_m.Bar(
-                x=[f"{h:02d}시" for h in hours], y=counts,
-                marker_color="#1E40AF",
-            ))
+            fig1 = _go_m.Figure(_go_m.Bar(x=[f"{h:02d}시" for h in hours], y=counts,
+                                          marker_color="#1E40AF"))
             fig1.update_layout(
                 title="시간대별 이벤트 수",
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                height=260, margin=dict(l=10, r=10, t=40, b=20),
-                font=dict(size=11),
+                height=260, margin=dict(l=10, r=10, t=40, b=20), font=dict(size=11),
                 xaxis=dict(tickfont=dict(size=9)),
             )
             st.plotly_chart(fig1, use_container_width=True, key="adm_mon_hour")
-
         with ch2:
-            # 이벤트 타입 분포
             type_cnt = _cnt(e.get("event_type", "unknown") for e in events)
             labels   = list(type_cnt.keys())[:10]
             vals     = [type_cnt[lb] for lb in labels]
             palette  = ["#1E40AF","#059669","#D97706","#DC2626","#7C3AED",
                         "#0891B2","#DB2777","#0284C7","#65A30D","#9333EA"]
-            fig2 = _go_m.Figure(_go_m.Bar(
-                x=labels, y=vals,
-                marker_color=palette[:len(labels)],
-            ))
+            fig2 = _go_m.Figure(_go_m.Bar(x=labels, y=vals,
+                                          marker_color=palette[:len(labels)]))
             fig2.update_layout(
                 title="이벤트 타입 분포",
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                height=260, margin=dict(l=10, r=10, t=40, b=20),
-                font=dict(size=11),
+                height=260, margin=dict(l=10, r=10, t=40, b=20), font=dict(size=11),
             )
             st.plotly_chart(fig2, use_container_width=True, key="adm_mon_type")
 
-        # LLM 응답 시간 분포
         if llm_events:
             ms_vals = [e["elapsed_ms"] for e in llm_events if e.get("elapsed_ms", 0) < 120_000]
             if ms_vals:
-                fig3 = _go_m.Figure(_go_m.Histogram(
-                    x=ms_vals, nbinsx=30,
-                    marker_color="#7C3AED", opacity=0.8,
-                ))
+                fig3 = _go_m.Figure(_go_m.Histogram(x=ms_vals, nbinsx=30,
+                                                     marker_color="#7C3AED", opacity=0.8))
                 fig3.update_layout(
                     title=f"LLM 응답 시간 분포  (평균 {avg_ms:,}ms)",
                     xaxis_title="응답시간 (ms)", yaxis_title="건수",
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    height=220, margin=dict(l=10, r=10, t=40, b=30),
-                    font=dict(size=11),
+                    height=220, margin=dict(l=10, r=10, t=40, b=30), font=dict(size=11),
                 )
                 st.plotly_chart(fig3, use_container_width=True, key="adm_mon_llm")
 
-    # ── 최근 이벤트 테이블 ───────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("최근 이벤트 로그 (최대 50건)", expanded=False):
-        recent    = events[-50:][::-1]
+        recent = events[-50:][::-1]
         rows_html = ""
         for e in recent:
-            ts      = e.get("timestamp", "")[:19]
-            etype   = e.get("event_type", "")
-            act     = e.get("action",     "")
-            lbl     = e.get("label",      "")
-            ms      = e.get("elapsed_ms")
-            ok      = e.get("success")
+            ts     = e.get("timestamp", "")[:19]
+            etype  = e.get("event_type", "")
+            act    = e.get("action", "")
+            lbl    = e.get("label", "")
+            ms     = e.get("elapsed_ms")
+            ok     = e.get("success")
             ok_html = ""
             if ok is not None:
                 ok_html = (f'<span style="color:{_C["ok"]};">OK</span>' if ok
                            else f'<span style="color:{_C["err"]};">ERR</span>')
             rows_html += (
                 f'<tr>'
-                f'<td style="font-family:Consolas;font-size:11px;color:{_C["t3"]};">{ts}</td>'
+                f'<td style="font-size:11px;color:{_C["t3"]};">{ts}</td>'
                 f'<td>{etype}</td><td>{act}</td><td>{lbl}</td>'
-                f'<td style="text-align:right;">'
-                f'{f"{ms:,}ms" if ms else "—"}</td>'
+                f'<td style="text-align:right;">{f"{ms:,}ms" if ms else "—"}</td>'
                 f'<td style="text-align:center;">{ok_html}</td>'
                 f'</tr>'
             )
@@ -1540,20 +1498,18 @@ def _tab_monitoring() -> None:
             f'<tbody>{rows_html}</tbody></table>'
         )
 
-    _html("</div>")
 
-
-# ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
 #  메인 렌더
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════��═════════════════════
 
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7 = st.tabs([
-        "🖥️ 운영 현황", "📋 로그 뷰어", "🗄️ 벡터DB 관리",
-        "📄 문서 관리",  "⚙️ 시스템 정보",
-        "🤖 챗봇 관리",  "📊 모니터링",
+        "🖥️ 운영 현황",   "📋 로그 뷰어",   "🗄️ 벡터DB 관리",
+        "📄 문서 관리",   "⚙️ 시스템 정보",
+        "🤖 챗봇 관리",   "📊 모니터링",
     ])
     with t1: _tab_ops()
     with t2: _tab_logs()
