@@ -85,6 +85,7 @@ header[data-testid="stHeader"] { display: none !important; }
 
 /* ── 사이드바 버튼 ──────────────────────────────────────────── */
 [data-testid="stSidebar"] .stButton > button {
+  width: 100% !important;
   background: rgba(255,255,255,0.08) !important;
   border: 1px solid rgba(255,255,255,0.15) !important;
   color: #fff !important;
@@ -118,28 +119,38 @@ header[data-testid="stHeader"] { display: none !important; }
 }
 
 /* ── 사이드바 앱 링크 카드 ──────────────────────────────────── */
+/* [수정] width/box-sizing/color 추가, 명시도 강화, 올바른 <p> 래퍼 제거 */
+[data-testid="stSidebar"] a.sb-link,
 .sb-link {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.12);
-  border-left: 3px solid rgba(99,179,237,0.55);  /* 기본 액센트(스카이블루) */
+  border-left: 3px solid rgba(99,179,237,0.55);  /* 기본 액센트 — 인라인으로 덮어씀 */
   border-radius: 9px;
   padding: 10px 14px;
   text-decoration: none !important;
+  color: rgba(255,255,255,0.90) !important;  /* 브라우저 기본 파랑 링크색 방지 */
   margin-bottom: 7px;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: background 150ms ease, border-left-color 150ms ease;
 }
+[data-testid="stSidebar"] a.sb-link:hover,
 .sb-link:hover {
   background: rgba(255,255,255,0.12) !important;
   border-left-color: rgba(99,179,237,0.85) !important;
 }
-/* sb-link 내 Streamlit wrapping p 태그 마진 제거 */
-.sb-link p { margin: 0 !important; padding: 0 !important; }
+/* Streamlit이 <a> 를 st.markdown()으로 렌더링할 때 <p>로 래핑 → 마진 제거
+   (.sb-link p 는 잘못된 방향이었음 — p가 sb-link의 부모이므로 역방향) */
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > p {
+  margin: 0 !important;
+  padding: 0 !important;
+}
 
 .sb-link-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
   margin-bottom: 3px;
 }
 /* 개별 색상 — 인라인 border-left-color 로 덮어씀 */
@@ -324,18 +335,24 @@ def _sidebar() -> bool:
             ("8502", "AI 챗봇",       "규정·지침 검색", "#8B5CF6"),  # 보라
             ("8503", "원무 대시보드", "수납·미수금",   "#14B8A6"),   # 청록
         ]
-        for port, name, sub, accent in _LINK_APPS:
-            st.markdown(
-                f'<a href="http://{_ip}:{port}/" target="_blank" class="sb-link"'
-                f' style="border-left-color:{accent};">'
-                '<div class="sb-link-row">'
-                f'<span class="sb-link-name">{name}</span>'
-                f'<span class="sb-link-port">:{port} ↗</span>'
-                '</div>'
-                f'<div class="sb-link-sub">{sub}</div>'
-                '</a>',
-                unsafe_allow_html=True,
-            )
+        # [수정] 3개 별도 st.markdown() → 단일 <div> 래퍼로 통합
+        # 이유: 각 st.markdown()이 Streamlit 컨테이너를 생성 → 카드 사이 불필요한 여백 발생
+        #       <div> 블록 요소로 래핑하면 Streamlit이 <p> 래퍼를 추가하지 않음
+        _links_inner = "".join(
+            f'<a href="http://{_ip}:{port}/" target="_blank" class="sb-link"'
+            f' style="border-left-color:{accent};">'
+            '<div class="sb-link-row">'
+            f'<span class="sb-link-name">{name}</span>'
+            f'<span class="sb-link-port">:{port} ↗</span>'
+            '</div>'
+            f'<div class="sb-link-sub">{sub}</div>'
+            '</a>'
+            for port, name, sub, accent in _LINK_APPS
+        )
+        st.markdown(
+            f'<div style="margin-top:2px;">{_links_inner}</div>',
+            unsafe_allow_html=True,
+        )
 
         st.divider()
 

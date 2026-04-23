@@ -1,6 +1,6 @@
 ﻿# ======================================================================
 # 좋은문화병원 가이드봇 - requirements.txt
-# 마지막 검토: 2025-03
+# 마지막 검토: 2026-04
 # Python: 3.10 ~ 3.12 권장  (3.13 미검증)
 #
 # [설치]
@@ -21,6 +21,14 @@
 streamlit>=1.45.0          # 대시보드 + 챗봇 UI, cache_data/cache_resource 필요
 plotly>=5.24.0             # 병동 KPI 차트, 파이/바/라인 차트
 pandas>=2.2.0              # 데이터프레임 처리, plotly 의존
+psutil>=5.9.0              # CPU/RAM/프로세스 모니터링 (dashboard, admin, finance 앱 공통)
+
+# -- 지도 시각화 (원무 대시보드 — finance_dashboard.py) -------------------
+# ImportError 시 지도 탭이 비활성화되며 앱 자체는 계속 동작함
+folium>=0.18.0             # 인터랙티브 지도 (Leaflet.js 래퍼)
+streamlit-folium>=0.25.0   # Streamlit ↔ Folium 브릿지 (st_folium)
+streamlit-autorefresh>=1.0.1  # 원무 대시보드 자동 새로고침 (st_autorefresh)
+requests>=2.31.0           # 지도 GeoJSON 데이터 HTTP 요청 (대한민국 시군구 경계)
 
 
 # -- LLM - Google Gemini -----------------------------------------------

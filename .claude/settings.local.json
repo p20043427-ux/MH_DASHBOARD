@@ -57,7 +57,14 @@
       "Bash(python \"D:/MH/helper_read_transcript.py\")",
       "Bash(python3 -c ' *)",
       "Bash(powershell -Command ' *)",
-      "PowerShell(Get-ChildItem D:\\\\MH\\\\guidbot -Recurse -File | Where-Object {$_.LastWriteTime -gt \\(Get-Date\\).AddHours\\(-24\\)} | Sort-Object LastWriteTime -Descending | Select-Object FullName, LastWriteTime | Format-Table -AutoSize)"
+      "PowerShell(Get-ChildItem D:\\\\MH\\\\guidbot -Recurse -File | Where-Object {$_.LastWriteTime -gt \\(Get-Date\\).AddHours\\(-24\\)} | Sort-Object LastWriteTime -Descending | Select-Object FullName, LastWriteTime | Format-Table -AutoSize)",
+      "Bash(find \"D:\\\\MH\\\\guidbot\" -name \"*.py\" -type f ! -path \"*/\\\\.venv/*\" ! -path \"*/__pycache__/*\" ! -path \"*/venv/*\" ! -path \"*/docs/*\" -exec grep -h \"^import\\\\|^from\" {} \\\\;)",
+      "Bash(xargs grep *)",
+      "Read(//d D:/MH/**)",
+      "Bash(find . -name \"*.py\" -type f ! -path \"*/.venv/*\" ! -path \"*/__pycache__/*\" ! -path \"*/venv/*\" ! -path \"*/docs/*\" -exec grep -h \"^import\\\\|^from\" {} \\\\;)",
+      "Bash(cd /d)",
+      "Bash(find D:\\\\\\\\MH\\\\\\\\guidbot -name \"*.py\" -type f ! -path \"*\\\\.venv*\" ! -path \"*__pycache__*\" ! -path \"*venv*\" ! -path \"*docs*\")",
+      "Bash(cd /d D:\\\\MH\\\\guidbot)"
     ]
   }
 }
