@@ -183,7 +183,7 @@ class VectorAdminService:
         if settings is not None:
             self._db_path = Path(settings.rag_db_path)
             self._backup_dir = Path(settings.backup_dir)
-            self._docs_dir = Path(settings.docs_dir) if hasattr(settings, 'docs_dir') else self._db_path.parent / "docs"
+            self._docs_dir = Path(settings.docs_dir)
             self._model_name = settings.embedding_model
         else:
             # settings 없을 때 기본 경로 (개발/테스트용)
