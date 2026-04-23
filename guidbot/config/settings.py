@@ -1,20 +1,25 @@
 """
-config/settings.py ─ 중앙 설정 관리 모듈 (v3.0)
+config/settings.py ─ 중앙 설정 관리 모듈 (v4.0)
 
-[v3.0 변경사항]
-- backup_dir cached_property 추가 (vector_store.py 에서 사용)
-- monitoring_enabled 플래그 추가 (메트릭 수집 ON/OFF)
-- 전 필드 설명 주석 전면 보강
-- _BASE_DIR 단일 지점 수정으로 전체 경로 자동 반영 설계
+[v4.0 변경사항]
+- _BASE_DIR 자동 탐지 (settings.py 위치 기준) + GUIDBOT_BASE_DIR 환경변수 오버라이드
+- 모든 경로를 AppSettings Field 로 통합 (한 곳에서 일괄 관리)
+- backup_dir: cached_property → Field 로 전환 (환경변수 설정 가능)
+- docs_dir, markdown_dir, cms_dir 신규 경로 필드 추가
 
 [디렉토리 구조]
-D:\\mh\\guidbot\\                   ← _BASE_DIR (프로젝트 루트)
-├── .env                         ← API 키·비밀번호 (Git 제외!)
-├── data_cache\\                  ← HuggingFace 임베딩 모델 캐시
-├── data_rag_working\\            ← G드라이브 동기화 PDF 작업본
-├── vector_store\\                ← FAISS 벡터 DB (index.faiss, index.pkl)
-├── vector_store_backup\\         ← DB 자동 백업 (최근 5개 보관)
-└── logs\\                        ← 모듈별 일별 로그 파일
+<BASE_DIR>/                        ← _BASE_DIR (프로젝트 루트, 자동 탐지)
+├── .env                           ← API 키·비밀번호 (Git 제외!)
+├── data_cache/                    ← local_cache_path  (임베딩 모델 캐시)
+├── data_rag_source/               ← rag_source_path   (원본 PDF 소스)
+├── data_rag_working/              ← local_work_dir    (PDF 작업본)
+├── vector_store/                  ← rag_db_path       (FAISS 벡터 DB)
+├── vector_store_backup/           ← backup_dir        (자동 백업)
+├── docs/
+│   ├── db_manuals/                ← db_docs_dir       (DB 매뉴얼 PDF)
+│   └── markdown/                  ← markdown_dir      (PDF→MD 변환본)
+├── cms_data/                      ← cms_dir           (CMS 서비스 데이터)
+└── logs/                          ← log_dir           (일별 로그)
 
 [보안 규칙]
 - google_api_key, admin_password: .env 파일 또는 환경변수로만 설정
@@ -37,10 +42,19 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ══════════════════════════════════════════════════════════════════════
-#  ★ 프로젝트 기준 경로 ─ 이 한 줄만 수정하면 모든 하위 경로 자동 반영 ★
-#    예: Path(r"E:\hospital\guidbot") 로 변경하면 전체 경로 변경됨
+#  ★ 프로젝트 기준 경로 ─ 여기서 결정되는 값이 모든 하위 경로의 기준 ★
+#
+#  [자동 탐지 우선순위]
+#  1) OS 환경변수 GUIDBOT_BASE_DIR  → 직접 지정 (예: set GUIDBOT_BASE_DIR=E:\hospital\guidbot)
+#  2) settings.py 위치 기준 자동 탐지  → config/settings.py 의 부모·부모 = guidbot/
+#
+#  [주의] .env 파일의 GUIDBOT_BASE_DIR 는 pydantic-settings 가 인스턴스화 시점에
+#  읽으므로 이 모듈 상수에는 반영되지 않습니다. 변경 시 OS 환경변수로 주입하세요.
 # ══════════════════════════════════════════════════════════════════════
-_BASE_DIR = Path(r"D:\mh\guidbot")
+_BASE_DIR = Path(
+    os.environ.get("GUIDBOT_BASE_DIR")
+    or Path(__file__).resolve().parent.parent   # config/ → guidbot/
+)
 
 
 class AppSettings(BaseSettings):
@@ -349,7 +363,11 @@ class AppSettings(BaseSettings):
     )
 
     # ──────────────────────────────────────────────────────────────────
-    #  경로 설정 (_BASE_DIR 하위 경로가 기본값)
+    #  ★ 경로 설정 ─ _BASE_DIR 기준, 한 곳에서 일괄 관리 ★
+    #
+    #  각 경로는 .env 파일에서 개별 오버라이드 가능합니다.
+    #  예) LOCAL_CACHE_PATH=E:\model_cache
+    #      RAG_SOURCE_PATH=\\fileserver\hospital\규정집
     # ──────────────────────────────────────────────────────────────────
 
     local_cache_path: Path = Field(
@@ -358,8 +376,11 @@ class AppSettings(BaseSettings):
     )
 
     rag_source_path: Path = Field(
-        default=Path(r"G:\공유 드라이브\좋은문화병원_DATA\규정집"),
-        description="원본 규정집 PDF 소스 경로 (G드라이브). 미연결 시 동기화만 건너뜀.",
+        default=_BASE_DIR / "data_rag_source",
+        description=(
+            "원본 규정집 PDF 소스 경로. 미연결 시 동기화만 건너뜀. "
+            "네트워크 드라이브 사용 시 .env: RAG_SOURCE_PATH=G:\\공유 드라이브\\규정집"
+        ),
     )
 
     rag_db_path: Path = Field(
@@ -372,6 +393,11 @@ class AppSettings(BaseSettings):
         description="G드라이브 동기화 및 관리자 업로드 PDF 작업 경로.",
     )
 
+    docs_dir: Path = Field(
+        default=_BASE_DIR / "docs",
+        description="문서 루트 경로 (db_manuals/, markdown/ 등의 상위 폴더).",
+    )
+
     db_docs_dir: Path = Field(
         default=_BASE_DIR / "docs" / "db_manuals",
         description=(
@@ -380,6 +406,21 @@ class AppSettings(BaseSettings):
             "metadata.category = db_manual 로 태깅되어 출처 구분 가능. "
             "폴더가 없거나 비어있으면 자동으로 건너뜀."
         ),
+    )
+
+    markdown_dir: Path = Field(
+        default=_BASE_DIR / "docs" / "markdown",
+        description="PDF→Markdown 변환 결과 저장 경로 (build_db --use-markdown 시 사용).",
+    )
+
+    backup_dir: Path = Field(
+        default=_BASE_DIR / "vector_store_backup",
+        description="벡터 DB 자동 백업 저장 경로. 빌드마다 타임스탬프로 저장, 최근 5개 보관.",
+    )
+
+    cms_dir: Path = Field(
+        default=_BASE_DIR / "cms_data",
+        description="CMS 서비스 데이터 저장 경로 (cms.db, documents/, markdown/ 포함).",
     )
 
     log_dir: Path = Field(
@@ -747,7 +788,11 @@ class AppSettings(BaseSettings):
             self.local_cache_path,
             self.rag_db_path,
             self.local_work_dir,
-            self.db_docs_dir,  # DB 명세서 PDF 폴더 자동 생성
+            self.docs_dir,
+            self.db_docs_dir,
+            self.markdown_dir,
+            self.backup_dir,
+            self.cms_dir,
             self.log_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
@@ -761,17 +806,6 @@ class AppSettings(BaseSettings):
     def faiss_index_path(self) -> Path:
         """FAISS 인덱스 파일 전체 경로 (존재 여부 확인에 사용)."""
         return self.rag_db_path / "index.faiss"
-
-    @cached_property
-    def backup_dir(self) -> Path:
-        """
-        벡터 DB 자동 백업 저장 경로.
-
-        vector_store.py 의 _backup_existing() 에서 빌드마다 호출됩니다.
-        타임스탬프 이름으로 백업하고 최근 5개만 보관합니다.
-        경로: D:\\mh\\guidbot\\vector_store_backup
-        """
-        return _BASE_DIR / "vector_store_backup"
 
     @cached_property
     def db_url(self) -> str:

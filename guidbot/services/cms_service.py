@@ -48,21 +48,17 @@ logger = logging.getLogger(__name__)
 #  경로 설정
 # ══════════════════════════════════════════════════════════════════════
 
-def _get_base_dir() -> Path:
-    """프로젝트 루트 경로 반환."""
-    if _SETTINGS_OK:
-        try:
-            return Path(settings.rag_db_path).parent.parent
-        except Exception:
-            pass
-    return Path(__file__).parent.parent
+if _SETTINGS_OK:
+    try:
+        CMS_DIR = Path(settings.cms_dir)
+    except Exception:
+        CMS_DIR = Path(__file__).parent.parent / "cms_data"
+else:
+    CMS_DIR = Path(__file__).parent.parent / "cms_data"
 
-
-BASE_DIR   = _get_base_dir()
-CMS_DIR    = BASE_DIR / "cms_data"
-DB_PATH    = CMS_DIR / "cms.db"
-DOCS_DIR   = CMS_DIR / "documents"   # 원본 PDF 저장
-MD_DIR     = CMS_DIR / "markdown"    # 변환된 Markdown 저장
+DB_PATH  = CMS_DIR / "cms.db"
+DOCS_DIR = CMS_DIR / "documents"   # 원본 PDF 저장
+MD_DIR   = CMS_DIR / "markdown"    # 변환된 Markdown 저장
 
 for _d in [CMS_DIR, DOCS_DIR, MD_DIR]:
     _d.mkdir(parents=True, exist_ok=True)

@@ -513,7 +513,7 @@ def main(args: argparse.Namespace) -> int:
     logger.info(f"  저장 경로:     {settings.rag_db_path}")
     logger.info(f"  총 소요 시간:  {total_elapsed:.1f}초")
     if args.use_markdown:
-        md_dir = Path(settings.local_work_dir).parent / "docs" / "markdown"
+        md_dir = settings.markdown_dir
         logger.info(f"  Markdown 저장: {md_dir}")
     logger.info("=" * 65)
     return 0
