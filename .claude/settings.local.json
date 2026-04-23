@@ -64,7 +64,9 @@
       "Bash(find . -name \"*.py\" -type f ! -path \"*/.venv/*\" ! -path \"*/__pycache__/*\" ! -path \"*/venv/*\" ! -path \"*/docs/*\" -exec grep -h \"^import\\\\|^from\" {} \\\\;)",
       "Bash(cd /d)",
       "Bash(find D:\\\\\\\\MH\\\\\\\\guidbot -name \"*.py\" -type f ! -path \"*\\\\.venv*\" ! -path \"*__pycache__*\" ! -path \"*venv*\" ! -path \"*docs*\")",
-      "Bash(cd /d D:\\\\MH\\\\guidbot)"
+      "Bash(cd /d D:\\\\MH\\\\guidbot)",
+      "PowerShell(pandoc --version 2>$null)",
+      "PowerShell(if \\($?\\) { \"pandoc OK\" } else { \"pandoc ����\" })"
     ]
   }
 }
