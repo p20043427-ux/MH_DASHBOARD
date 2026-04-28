@@ -72,7 +72,9 @@
       "Bash(find /d/MH/guidbot -name \"*.py\" -type f ! -path \"*/.venv/*\" ! -path \"*/venv/*\" ! -path \"*/site-packages/*\" -exec head -50 {} \\\\;)",
       "Bash(grep -oP \"FROM\\\\s+\\\\K[A-Z_\\\\.]{4,}\")",
       "Bash(grep -oP \"FROM\\\\s+\\\\K[A-Za-z_\\\\.]{4,}\")",
-      "Bash(not exist *)"
+      "Bash(not exist *)",
+      "Bash(dir \"D:\\\\MH\\\\guidbot\\\\docs\" /b)",
+      "Bash(dir \"D:\\\\MH\\\\guidbot\\\\system_guide\" /b)"
     ]
   }
 }

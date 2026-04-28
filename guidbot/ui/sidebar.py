@@ -41,51 +41,57 @@ class DBHealth:
 
 _SIDEBAR_BTN_CSS = """
 <style>
-/* secondary (기본) */
+/* ══════════════════════════════════════════════════════════════
+   사이드바 버튼 통합 디자인 시스템 v2
+   · secondary / primary / a.sb-link-btn 동일 크기·폰트
+   · 선택 상태(primary)만 파란 배경으로 구분
+════════════════════════════════════════════════════════════════ */
+
+/* ── 공통 크기·폰트 (secondary + primary 모두) ─────────────── */
+[data-testid="stSidebar"] div[data-testid="stButton"] > button,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+    width: 100% !important;
+    text-align: left !important;
+    padding: 0.44rem 0.82rem !important;
+    border-radius: 7px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+    box-shadow: none !important;
+    transition: background 130ms ease, border-color 130ms ease, color 130ms ease !important;
+}
+
+/* ── secondary (비선택 기본) ──────────────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
-    width: 100% !important;
-    text-align: left !important;
-    padding: 0.42rem 0.75rem !important;
-    border-radius: 7px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    line-height: 1.35 !important;
-    box-shadow: none !important;
-    transition: background 140ms ease, border-color 140ms ease, color 140ms ease !important;
     background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    color: rgba(255,255,255,0.80) !important;
+    border: 1px solid rgba(255,255,255,0.13) !important;
+    color: rgba(255,255,255,0.78) !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(255,255,255,0.12) !important;
-    border-color: rgba(255,255,255,0.28) !important;
+    background: rgba(255,255,255,0.11) !important;
+    border-color: rgba(255,255,255,0.26) !important;
     color: rgba(255,255,255,0.96) !important;
 }
-/* primary (선택/강조) */
+
+/* ── primary (선택·강조 — 파란 배경) ─────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
-    width: 100% !important;
-    text-align: left !important;
-    padding: 0.42rem 0.75rem !important;
-    border-radius: 7px !important;
-    font-size: 12px !important;
-    font-weight: 700 !important;
-    line-height: 1.35 !important;
-    box-shadow: none !important;
-    transition: background 140ms ease !important;
-    background: rgba(37,99,235,0.28) !important;
-    border: 1.5px solid rgba(37,99,235,0.60) !important;
+    background: rgba(37,99,235,0.24) !important;
+    border: 1px solid rgba(37,99,235,0.52) !important;
     color: rgba(255,255,255,0.97) !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
-    background: rgba(37,99,235,0.40) !important;
+    background: rgba(37,99,235,0.36) !important;
+    border-color: rgba(37,99,235,0.68) !important;
 }
-/* 포커스/활성 */
+
+/* ── focus / active 공통 초기화 ──────────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:focus,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:focus-visible,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:active,
@@ -98,28 +104,48 @@ _SIDEBAR_BTN_CSS = """
     outline: none !important;
     box-shadow: none !important;
 }
-[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"]:active {
-    background: rgba(255,255,255,0.12) !important;
-    color: rgba(255,255,255,0.96) !important;
-}
-[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:active {
-    background: rgba(37,99,235,0.40) !important;
-    color: rgba(255,255,255,0.97) !important;
-}
-/* 버튼 내부 텍스트 */
+
+/* ── 버튼 내부 텍스트 상속 ───────────────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button p,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button span,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button div {
     color: inherit !important;
     background: transparent !important;
     font-size: inherit !important;
+    font-weight: inherit !important;
 }
-/* 버튼 간격 */
+
+/* ── 버튼 컨테이너 간격 ──────────────────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] {
-    margin-bottom: 0.22rem !important;
+    margin-bottom: 0.20rem !important;
 }
 [data-testid="stSidebar"] .sb-btn-wrap {
     margin-top: 0.1rem;
+}
+
+/* ── 링크 버튼 (a.sb-link-btn) — 회람 문서 등 ────────────── */
+[data-testid="stSidebar"] a.sb-link-btn {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.44rem 0.82rem;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-decoration: none !important;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.13);
+    color: rgba(255,255,255,0.78) !important;
+    transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+    margin-bottom: 0.20rem;
+    cursor: pointer;
+}
+[data-testid="stSidebar"] a.sb-link-btn:hover {
+    background: rgba(255,255,255,0.11);
+    border-color: rgba(255,255,255,0.26);
+    color: rgba(255,255,255,0.96) !important;
+    text-decoration: none !important;
 }
 </style>
 """
@@ -251,36 +277,20 @@ def _render_shortcuts() -> None:
         st.session_state["shortcut_note"] = _load_note()
     _note = st.session_state["shortcut_note"]
 
-    # ── 공통 인라인 스타일 상수 ────────────────────────────────────────
-    _S_TITLE = (
-        "font-size:13px;font-weight:700;color:rgba(255,255,255,0.90);letter-spacing:-0.01em;flex:1;"
-    )
-    _S_ARR = "font-size:12px;color:rgba(255,255,255,0.45);font-weight:600;"
-    _S_NOTE = (
-        "font-size:11px;color:rgba(255,255,255,0.52) !important;margin-top:4px;"
-        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-        "font-weight:400;"
-    )
-
-    # ── 회람 문서 버튼 ────────────────────────────────────────────────
+    # ── 회람 문서 버튼 (sb-link-btn — 검색 모드 버튼과 동일 스타일) ──
     _DOCS_URL = (
         "https://docs.google.com/document/d/"
         "1WW05jXoSw65WY2vZYkqTxPSBWrv9anvSknWDGWZlj_k/edit"
     )
     st.markdown(
-        f'<a href="{_DOCS_URL}" target="_blank" rel="noopener"'
-        f' style="display:block;width:100%;box-sizing:border-box;'
-        f'background:rgba(255,255,255,0.06);'
-        f"border:1px solid rgba(255,255,255,0.15);"
-        f'border-left:3px solid rgba(99,179,237,0.60);'
-        f"border-radius:8px;"
-        f'padding:0.48rem 0.7rem;text-decoration:none;margin-bottom:5px;">'
-        f'<div style="display:flex;align-items:center;">'
-        f'<span style="{_S_TITLE}">회람 문서</span>'
-        f'<span style="{_S_ARR}">↗</span>'
-        f"</div>"
-        f'<div style="{_S_NOTE}">🕒 {_note}</div>'
-        f"</a>",
+        f'<a href="{_DOCS_URL}" target="_blank" rel="noopener" class="sb-link-btn">'
+        f'<div style="display:flex;align-items:center;gap:4px;">'
+        f'<span style="flex:1;">회람 문서</span>'
+        f'<span style="font-size:11px;opacity:0.50;">↗</span>'
+        f'</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.42);margin-top:3px;'
+        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🕒 {_note}</div>'
+        f'</a>',
         unsafe_allow_html=True,
     )
 
@@ -342,14 +352,14 @@ def _render_shortcuts() -> None:
             st.rerun()
 
     # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) ──────────────────────
-    # 준비중 항목: 이모지 없이 텍스트만, 밝은 색상으로 가시성 확보
+    # 버튼과 동일 bg·border·폰트 사용
     _CELL_S = (
-        "flex:1;border:1px solid rgba(255,255,255,0.15);"
+        "flex:1;border:1px solid rgba(255,255,255,0.13);"
         "border-radius:7px;padding:7px 4px;text-align:center;"
         "background:rgba(255,255,255,0.05);"
     )
-    _LBL_S = "display:block;font-size:12px;font-weight:700;color:#D1E8F5;"
-    _SUB_S = "display:block;font-size:9px;color:#7BAEC4;margin-top:2px;"
+    _LBL_S = "display:block;font-size:12px;font-weight:600;color:rgba(255,255,255,0.78);"
+    _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.38);margin-top:2px;"
 
     _cells = "".join(
         [

@@ -1944,11 +1944,23 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         _ab = _td2.year * 12 + (_td2.month - 1) - _i
         _ym_opts.append(f"{_ab // 12}{_ab % 12 + 1:02d}")
 
-    # ── 통합 컨트롤 행 (조회월 · 비교월 · 분석기간) ────────────────────
+    # ── 통합 컨트롤 행 (조회월 · 비교월 · 분석기간 · 진료과 선택 · 조회) ──
     _PERIOD_MAP = {"한달": 31, "2주일": 14, "1주일": 7}
     _cmp_opts   = ["없음"] + _ym_opts[1:]
 
-    _rc1, _rc2, _rc3, _rc4, _rc5, _rc_sp = st.columns([2, 2, 2, 1, 0.8, 2], gap="small")
+    # 진료과 옵션 사전 구성 (세션 캐시 데이터 활용 — 첫 로드 전에는 placeholder만)
+    _early_rd = st.session_state.get(_SESS_D, []) or []
+    if _early_rd:
+        _dtot_e: dict = {}
+        for _r in _early_rd:
+            _dp = _r.get("진료과명", "")
+            if _dp:
+                _dtot_e[_dp] = _dtot_e.get(_dp, 0) + int(_r.get("환자수", 0) or 0)
+        _dept_opts_row = ["── 진료과를 선택하세요 ──"] + sorted(_dtot_e, key=lambda d: -_dtot_e[d])
+    else:
+        _dept_opts_row = ["── 진료과를 선택하세요 ──"]
+
+    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns([2, 2, 2, 3, 1, 0.6], gap="small")
     with _rc1:
         st.markdown(
             f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">📅 조회 월</div>',
@@ -1981,14 +1993,26 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             key="reg_period_sel", label_visibility="collapsed",
         )
     with _rc4:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
+            f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
+            unsafe_allow_html=True,
+        )
+        _sel_dept = st.selectbox(
+            "진료과", options=_dept_opts_row, index=0,
+            key="reg_dept_v3", label_visibility="collapsed",
+            help="분석할 진료과를 선택하세요",
+        )
+    with _rc5:
         st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
         _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
     _loaded_ym = st.session_state.get(_SESS_YM)
-    with _rc5:
+    with _rc6:
         st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
         if _loaded_ym and st.button("🔄", key="reg_refresh_btn", help="다시 조회"):
             for _k in (_SESS_D, _SESS_M, _SESS_YM):
                 st.session_state.pop(_k, None)
+            st.session_state.pop("reg_dept_v3", None)
             st.rerun()
 
     # ── 이전 달 계산 (일별 비교용)
@@ -2116,26 +2140,10 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
     # ── 오늘 날짜
     _today = _dt_r.date.today()
  
-    # ──────────────────────────────────────────────
-    # 진료과 선택 (기간·비교월은 상단 통합 컨트롤 사용)
-    # ──────────────────────────────────────────────
+    # ── 기간·날짜 파생값 (진료과 선택은 상단 통합 컨트롤 행)
     _n_days     = _PERIOD_MAP[_period_label]
     _date_start = f"{_sel_ym}01"
     _date_end   = f"{_sel_ym}{min(_n_days, 31):02d}"
-
-    _c1, _c_sp = st.columns([3, 9], gap="small")
-    with _c1:
-        st.markdown(
-            f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};padding-bottom:2px;">'
-            f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
-            unsafe_allow_html=True,
-        )
-        _dept_options = ["── 진료과를 선택하세요 ──"] + _all_depts
-        _sel_dept = st.selectbox(
-            "진료과", options=_dept_options, index=0,
-            key="reg_dept_v3", label_visibility="collapsed",
-            help="분석할 진료과를 선택하세요",
-        )
  
     # ── 미선택 상태 → 진료과 목록 안내
     _is_dept_selected = _sel_dept != "── 진료과를 선택하세요 ──"
