@@ -1034,24 +1034,19 @@ def render_dept_analysis(monthly_opd_dept: List[Dict]) -> None:
         reverse=True,
     )
 
-    st.markdown(
-        f'<div style="background:linear-gradient(90deg,{C["blue"]}11,{C["teal"]}11);'
-        f'border:1px solid {C["blue"]}22;border-radius:10px;'
-        f'padding:12px 16px;margin-bottom:12px;">'
-        f'<div style="font-size:11px;font-weight:700;color:{C["t3"]};'
-        f'text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">'
-        f'진료과 선택</div>',
-        unsafe_allow_html=True,
-    )
-
-    ctrl_r, _ = st.columns([3, 7], gap="small")
-    with ctrl_r:
+    lbl_col, sel_col, _ = st.columns([1, 3, 6], gap="small", vertical_alignment="center")
+    with lbl_col:
+        st.markdown(
+            f'<div style="font-size:12px;font-weight:700;color:{C["t2"]};'
+            f'white-space:nowrap;">🔬 진료과 선택</div>',
+            unsafe_allow_html=True,
+        )
+    with sel_col:
         selected_dept = st.selectbox(
             "진료과", options=dept_list,
             key="da_dept_select",
             label_visibility="collapsed",
         )
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if not selected_dept:
         st.info("분석할 진료과를 선택하세요.")

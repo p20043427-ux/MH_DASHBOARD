@@ -66,7 +66,13 @@
       "Bash(find D:\\\\\\\\MH\\\\\\\\guidbot -name \"*.py\" -type f ! -path \"*\\\\.venv*\" ! -path \"*__pycache__*\" ! -path \"*venv*\" ! -path \"*docs*\")",
       "Bash(cd /d D:\\\\MH\\\\guidbot)",
       "PowerShell(pandoc --version 2>$null)",
-      "PowerShell(if \\($?\\) { \"pandoc OK\" } else { \"pandoc ����\" })"
+      "PowerShell(if \\($?\\) { \"pandoc OK\" } else { \"pandoc ����\" })",
+      "Bash(find /d/MH/guidbot -name \"*.py\" -type f ! -path \"*/.venv/*\" ! -path \"*/venv/*\" ! -path \"*/site-packages/*\" -exec grep -h \"^import\\\\|^from\" {} \\\\;)",
+      "Bash(bash /tmp/analyze_imports.sh)",
+      "Bash(find /d/MH/guidbot -name \"*.py\" -type f ! -path \"*/.venv/*\" ! -path \"*/venv/*\" ! -path \"*/site-packages/*\" -exec head -50 {} \\\\;)",
+      "Bash(grep -oP \"FROM\\\\s+\\\\K[A-Z_\\\\.]{4,}\")",
+      "Bash(grep -oP \"FROM\\\\s+\\\\K[A-Za-z_\\\\.]{4,}\")",
+      "Bash(not exist *)"
     ]
   }
 }

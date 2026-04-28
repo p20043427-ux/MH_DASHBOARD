@@ -61,8 +61,8 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 
 # ── 경로 상수 ─────────────────────────────────────────────────────────────
 _ROOT         = Path(settings.rag_db_path).parent          # D:\MH\guidbot
-_DEPT_WORK    = Path(settings.local_work_dir) / "depts"    # data_rag_working/depts/
-_DEPT_DB      = Path(settings.rag_db_path) / "depts"       # vector_store/depts/
+_DEPT_WORK    = settings.dept_work_dir    # data_rag_working/depts/
+_DEPT_DB      = settings.dept_db_path     # vector_store/depts/
 _MASTER_PATH  = Path(settings.rag_db_path)                 # vector_store/
 _SRC_ROOT     = Path(settings.rag_source_path)             # G:\공유드라이브\규정집\
 

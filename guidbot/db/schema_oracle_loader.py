@@ -53,7 +53,7 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 # ──────────────────────────────────────────────────────────────────────
 
 # [경로 수정] .parent 제거
-SCHEMA_DB_DIR = Path(settings.rag_db_path) / "schema_db"
+SCHEMA_DB_DIR = settings.schema_db_path
 
 
 # ──────────────────────────────────────────────────────────────────────

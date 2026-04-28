@@ -47,7 +47,7 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 # [경로 수정] .parent 제거 — vector_store/ 안에 schema_db/ 생성
 # 잘못된 경로: D:/mh/guidbot/schema_db  (.parent 사용 시)
 # 올바른 경로: D:/mh/guidbot/vector_store/schema_db  (아래)
-_SCHEMA_DB_DIR = Path(settings.rag_db_path) / "schema_db"
+_SCHEMA_DB_DIR = settings.schema_db_path
 
 # ── 모듈 캐시 ────────────────────────────────────────────────────────
 _cached_db: Optional[FAISS] = None

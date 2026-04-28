@@ -92,8 +92,8 @@ _DOCS_ROOT     = _BASE.parent / "docs"                        # guidbot/docs/
 _QUERY_LIB_DIR = _DOCS_ROOT / "query_library"                 # guidbot/docs/query_library/
 _DB_SPEC_DIR   = _DOCS_ROOT / "db_specs"                      # guidbot/docs/db_specs/
 
-_QUERY_DB_DIR  = _BASE / "query_db"                           # vector_store/query_db/
-_DOC_DB_DIR    = _BASE / "doc_db"                             # vector_store/doc_db/
+_QUERY_DB_DIR  = settings.query_db_path    # vector_store/query_db/
+_DOC_DB_DIR    = settings.doc_db_path      # vector_store/doc_db/
 
 # 청크 설정 (쿼리 예제는 SQL 단위로 분리 — 작은 청크)
 _QUERY_CHUNK_SIZE    = 600

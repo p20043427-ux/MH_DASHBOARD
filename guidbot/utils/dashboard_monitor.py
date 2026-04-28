@@ -47,23 +47,20 @@ from typing import Any, Dict, List, Optional
 #  경로 설정
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _get_log_dir() -> Path:
-    """로그 디렉토리 반환. settings 없어도 안전하게 fallback."""
+def _events_path() -> Path:
     try:
         from config.settings import settings
-        base = Path(settings.log_dir)
+        return settings.dashboard_events_path
     except Exception:
-        base = Path("logs")
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
-def _events_path() -> Path:
-    return _get_log_dir() / "dashboard_events.jsonl"
+        return Path("logs") / "dashboard_events.jsonl"
 
 
 def _metrics_path() -> Path:
-    return _get_log_dir() / "dashboard_metrics.json"
+    try:
+        from config.settings import settings
+        return settings.dashboard_metrics_path
+    except Exception:
+        return Path("logs") / "dashboard_metrics.json"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

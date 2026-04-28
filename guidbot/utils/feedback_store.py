@@ -56,12 +56,11 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 def _get_feedback_path() -> Path:
     """피드백 JSONL 파일 경로 반환 (없으면 생성)."""
     try:
-        base_dir = settings.log_dir or Path("logs")
-    except AttributeError:
-        base_dir = Path("logs")
-    base_dir = Path(base_dir)
-    base_dir.mkdir(parents=True, exist_ok=True)
-    return base_dir / "feedback.jsonl"
+        path = settings.feedback_log_path
+    except Exception:
+        path = Path("logs") / "feedback.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 # 동시 쓰기 보호용 lock

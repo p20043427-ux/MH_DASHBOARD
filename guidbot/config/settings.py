@@ -1,20 +1,43 @@
 """
-config/settings.py ─ 중앙 설정 관리 모듈 (v3.0)
+config/settings.py ─ 중앙 설정 관리 모듈 (v4.0)
 
-[v3.0 변경사항]
-- backup_dir cached_property 추가 (vector_store.py 에서 사용)
-- monitoring_enabled 플래그 추가 (메트릭 수집 ON/OFF)
-- 전 필드 설명 주석 전면 보강
-- _BASE_DIR 단일 지점 수정으로 전체 경로 자동 반영 설계
+[v4.0 변경사항]
+- _BASE_DIR: 하드코딩 제거 → __file__ 기준 자동감지 (다병원 배포 대응)
+  → 소스 위치에서 자동 계산되므로 어떤 서버에 설치해도 수정 불필요
+  → 데이터를 코드와 분리하려면 APP_BASE_DIR 환경변수로 지정
+- rag_source_path: 병원별 기본값 제거 → .env 에서 RAG_SOURCE_PATH 설정
+- app_title: 병원명 제거 → .env 에서 APP_TITLE=XX병원 가이드봇 설정
+- cached_property 경로들을 rag_db_path 기반으로 통일 (일관성)
 
-[디렉토리 구조]
-D:\\mh\\guidbot\\                   ← _BASE_DIR (프로젝트 루트)
-├── .env                         ← API 키·비밀번호 (Git 제외!)
-├── data_cache\\                  ← HuggingFace 임베딩 모델 캐시
-├── data_rag_working\\            ← G드라이브 동기화 PDF 작업본
-├── vector_store\\                ← FAISS 벡터 DB (index.faiss, index.pkl)
-├── vector_store_backup\\         ← DB 자동 백업 (최근 5개 보관)
-└── logs\\                        ← 모듈별 일별 로그 파일
+[다병원 배포 가이드]
+  1. 소스코드 복사 후 즉시 실행 — 경로 수정 불필요 (자동 감지)
+  2. .env 파일 생성 (guidbot/.env):
+       GOOGLE_API_KEY=AIza...
+       APP_TITLE=XX병원 가이드봇
+       RAG_SOURCE_PATH=G:\\공유드라이브\\XX병원\\규정집  (선택)
+       ADMIN_PASSWORD=강력한패스워드
+  3. 데이터를 다른 드라이브에 두려면 OS 환경변수로 지정:
+       APP_BASE_DIR=D:\\hospital_data\\guidbot
+     ※ APP_BASE_DIR은 .env 가 아닌 OS 환경변수로만 설정 가능
+       (.env 파일 위치를 찾기 전에 읽어야 하므로)
+
+[디렉토리 구조] — APP_BASE_DIR (또는 소스 루트) 아래
+  {BASE}/
+  ├── .env                      ← API 키·비밀번호 (Git 제외!)
+  ├── data_cache/               ← HuggingFace 임베딩 모델 캐시
+  ├── data_rag_working/         ← PDF 작업본 (G드라이브 동기화 또는 직접 업로드)
+  ├── vector_store/             ← FAISS 벡터 DB
+  │   ├── index.faiss / index.pkl
+  │   ├── depts/                ← 부서별 인덱스
+  │   ├── schema_db/            ← DB 스키마 인덱스
+  │   ├── query_db/             ← 쿼리 예제 인덱스
+  │   └── doc_db/               ← 개발 문서 인덱스
+  ├── vector_store_backup/      ← DB 자동 백업
+  ├── cms_data/                 ← CMS 서비스 데이터
+  ├── docs/db_manuals/          ← DB 명세서 PDF
+  ├── doc_registry.json         ← 문서 등록 메타데이터
+  ├── config/chatbot_runtime.json ← 챗봇 런타임 설정
+  └── logs/                     ← 모듈별 일별 로그
 
 [보안 규칙]
 - google_api_key, admin_password: .env 파일 또는 환경변수로만 설정
@@ -37,10 +60,22 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ══════════════════════════════════════════════════════════════════════
-#  ★ 프로젝트 기준 경로 ─ 이 한 줄만 수정하면 모든 하위 경로 자동 반영 ★
-#    예: Path(r"E:\hospital\guidbot") 로 변경하면 전체 경로 변경됨
+#  ★ 프로젝트 기준 경로 ─ 자동 감지 (수정 불필요)
+#
+#  [우선순위]
+#  1. APP_BASE_DIR 환경변수 (데이터를 코드와 다른 드라이브에 둘 때)
+#  2. 이 파일(settings.py) 위치 기준 자동 계산 ← 일반 배포 시 자동
+#
+#  [예시]
+#  소스: C:\apps\guidbot\config\settings.py
+#  → _BASE_DIR = C:\apps\guidbot  (자동)
+#
+#  데이터 분리:  set APP_BASE_DIR=D:\hospital_data\guidbot  (OS 환경변수)
+#  → _BASE_DIR = D:\hospital_data\guidbot
 # ══════════════════════════════════════════════════════════════════════
-_BASE_DIR = Path(r"D:\mh\guidbot")
+_BASE_DIR: Path = Path(
+    os.environ.get("APP_BASE_DIR") or Path(__file__).resolve().parent.parent
+)
 
 
 class AppSettings(BaseSettings):
@@ -358,8 +393,13 @@ class AppSettings(BaseSettings):
     )
 
     rag_source_path: Path = Field(
-        default=Path(r"G:\공유 드라이브\좋은문화병원_DATA\규정집"),
-        description="원본 규정집 PDF 소스 경로 (G드라이브). 미연결 시 동기화만 건너뜀.",
+        default=Path("rag_source"),
+        description=(
+            "원본 규정집 PDF 소스 경로 (G드라이브 등 공유 드라이브). "
+            "배포 시 .env 에서 RAG_SOURCE_PATH 설정 권장. "
+            "예) RAG_SOURCE_PATH=G:\\공유드라이브\\XX병원\\규정집 "
+            "미설정/미연결 시 동기화를 건너뛰고 local_work_dir 에 있는 PDF 를 직접 사용."
+        ),
     )
 
     rag_db_path: Path = Field(
@@ -612,8 +652,11 @@ class AppSettings(BaseSettings):
     # ──────────────────────────────────────────────────────────────────
 
     app_title: str = Field(
-        default="좋은문화병원 가이드봇",
-        description="브라우저 탭 제목.",
+        default="가이드봇",
+        description=(
+            "브라우저 탭 제목. "
+            "배포 시 .env 에서 APP_TITLE=XX병원 가이드봇 형태로 병원명 지정."
+        ),
     )
 
     server_ip: str = Field(
@@ -764,14 +807,74 @@ class AppSettings(BaseSettings):
 
     @cached_property
     def backup_dir(self) -> Path:
-        """
-        벡터 DB 자동 백업 저장 경로.
+        """벡터 DB 자동 백업 저장 경로. rag_db_path 형제 디렉토리."""
+        return self.rag_db_path.parent / "vector_store_backup"
 
-        vector_store.py 의 _backup_existing() 에서 빌드마다 호출됩니다.
-        타임스탬프 이름으로 백업하고 최근 5개만 보관합니다.
-        경로: D:\\mh\\guidbot\\vector_store_backup
-        """
-        return _BASE_DIR / "vector_store_backup"
+    # ── 벡터 DB 하위 경로 ──────────────────────────────────────────────
+
+    @cached_property
+    def dept_db_path(self) -> Path:
+        """부서별 FAISS 인덱스 저장 경로. rag_db_path/depts/"""
+        return self.rag_db_path / "depts"
+
+    @cached_property
+    def dept_work_dir(self) -> Path:
+        """부서별 PDF 작업 경로. local_work_dir/depts/"""
+        return self.local_work_dir / "depts"
+
+    @cached_property
+    def schema_db_path(self) -> Path:
+        """DB 스키마 FAISS 저장 경로. rag_db_path/schema_db/"""
+        return self.rag_db_path / "schema_db"
+
+    @cached_property
+    def query_db_path(self) -> Path:
+        """쿼리 예제 FAISS 저장 경로. rag_db_path/query_db/"""
+        return self.rag_db_path / "query_db"
+
+    @cached_property
+    def doc_db_path(self) -> Path:
+        """개발 문서 FAISS 저장 경로. rag_db_path/doc_db/"""
+        return self.rag_db_path / "doc_db"
+
+    # ── 앱 데이터 경로 ─────────────────────────────────────────────────
+
+    @cached_property
+    def cms_dir(self) -> Path:
+        """CMS 서비스 데이터 루트 경로. rag_db_path 형제 디렉토리."""
+        return self.rag_db_path.parent / "cms_data"
+
+    @cached_property
+    def doc_registry_path(self) -> Path:
+        """문서 등록 메타데이터 파일. rag_db_path 형제."""
+        return self.rag_db_path.parent / "doc_registry.json"
+
+    @cached_property
+    def chatbot_runtime_path(self) -> Path:
+        """챗봇 런타임 설정 파일. rag_db_path 형제 config/ 아래."""
+        return self.rag_db_path.parent / "config" / "chatbot_runtime.json"
+
+    # ── 로그 파생 경로 ─────────────────────────────────────────────────
+
+    @cached_property
+    def feedback_log_path(self) -> Path:
+        """피드백 로그 파일 경로. log_dir/feedback.jsonl"""
+        return self.log_dir / "feedback.jsonl"
+
+    @cached_property
+    def dashboard_metrics_path(self) -> Path:
+        """대시보드 메트릭 파일 경로. log_dir/dashboard_metrics.json"""
+        return self.log_dir / "dashboard_metrics.json"
+
+    @cached_property
+    def dashboard_events_path(self) -> Path:
+        """대시보드 이벤트 로그 파일 경로. log_dir/dashboard_events.jsonl"""
+        return self.log_dir / "dashboard_events.jsonl"
+
+    @cached_property
+    def eval_log_path(self) -> Path:
+        """검색 평가 로그 파일 경로. log_dir/search_evaluation.json"""
+        return self.log_dir / "search_evaluation.json"
 
     @cached_property
     def db_url(self) -> str:

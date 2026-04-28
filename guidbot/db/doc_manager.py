@@ -157,9 +157,8 @@ class DocManager:
 
     def __init__(self) -> None:
         # 기본 경로 설정
-        _base = Path(settings.rag_db_path).parent  # guidbot/vector_store 의 부모
-        self._docs_root = _base / "docs"
-        self._registry_file = _base / "doc_registry.json"
+        self._docs_root = Path(settings.rag_db_path).parent / "docs"
+        self._registry_file = settings.doc_registry_path
         self._registry: Dict[str, DocMeta] = {}
         self._loaded_at: float = 0.0
 

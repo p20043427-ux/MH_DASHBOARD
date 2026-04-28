@@ -283,7 +283,7 @@ def _vector_store_stats() -> Dict[str, Any]:
 
 
 def _doc_registry_stats() -> Dict[str, Any]:
-    reg = _ROOT / "doc_registry.json"
+    reg = settings.doc_registry_path
     empty: Dict[str, Any] = {"total": 0, "unindexed": 0, "by_category": {}, "size_kb": 0}
     if not reg.exists():
         return empty
@@ -306,7 +306,7 @@ def _doc_registry_stats() -> Dict[str, Any]:
 
 
 def _load_doc_registry() -> List[Dict[str, Any]]:
-    reg = _ROOT / "doc_registry.json"
+    reg = settings.doc_registry_path
     if not reg.exists():
         return []
     try:
@@ -317,7 +317,7 @@ def _load_doc_registry() -> List[Dict[str, Any]]:
 
 
 def _load_faiss_docs(max_docs: int = 300) -> List[Dict[str, Any]]:
-    pkl_path = _ROOT / "vector_store" / "index.pkl"
+    pkl_path = settings.rag_db_path / "index.pkl"
     if not pkl_path.exists():
         return []
     try:
@@ -437,7 +437,7 @@ def _read_monitor_events(n: int = 2000) -> List[Dict[str, Any]]:
 
 
 def _chatbot_cfg_path() -> Path:
-    return _ROOT / "config" / "chatbot_runtime.json"
+    return settings.chatbot_runtime_path
 
 
 def _get_chatbot_cfg() -> Dict[str, Any]:
@@ -845,8 +845,8 @@ def _tab_vectordb() -> None:
                 try:
                     import shutil as _sh
                     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    dst = _ROOT / "vector_store_backup" / ts
-                    _sh.copytree(str(_ROOT / "vector_store"), str(dst),
+                    dst = settings.backup_dir / ts
+                    _sh.copytree(str(settings.rag_db_path), str(dst),
                                  ignore=_sh.ignore_patterns("depts"))
                     st.success(f"백업 완료 → vector_store_backup/{ts}")
                 except Exception as e:
@@ -855,7 +855,7 @@ def _tab_vectordb() -> None:
         st.caption("※ 전체 통합 재구축은 규정집+DB명세서+스키마 모두 포함. 부서별 재구축은 규정집만.")
 
     # 백업 목록
-    bk_dir = _ROOT / "vector_store_backup"
+    bk_dir = settings.backup_dir
     if bk_dir.exists():
         bks = sorted([d for d in bk_dir.iterdir() if d.is_dir()], reverse=True)
         if bks:

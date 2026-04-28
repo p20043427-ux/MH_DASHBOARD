@@ -1,21 +1,27 @@
 """
-ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.3
+ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.4
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[4탭 구조]
+[6탭 구조]
   탭1 실시간 현황   — KPI / 일일현황 / 진료과 대기 / 키오스크 / 세부과집계표
   탭2 주간추이분석  — 7일간 추이 라인 / 외래 히트맵 / 입원 히트맵 / 진료과별 재원일수
   탭3 월간추이분석  — 2개월 비교 (방문자/신환/구환/신환비율/신환증감)
-  탭4 카드 매칭     — 카드사 xlsx ↔ 병원 Oracle 이중 매칭
+  탭4 지역별 통계   — 구군별 유입 현황 / 월별 추이 지도
+  탭5 진료과 분석   — 진료과 선택 → 단일월 스냅샷 / 비교월 분석
+  탭6 카드 매칭     — 카드사 xlsx ↔ 병원 Oracle 이중 매칭
 
-[사용 Oracle VIEW — v2.3 최종]
+[사용 Oracle VIEW — v2.4 최종]
   실시간: V_OPD_KPI / V_OPD_DEPT_STATUS / V_KIOSK_STATUS
           V_DISCHARGE_PIPELINE / V_WARD_BED_DETAIL / V_WARD_ROOM_DETAIL
           V_KIOSK_BY_DEPT / V_KIOSK_COUNTER_TREND
           V_DAILY_DEPT_STAT / V_DAY_INWEON_3
   수납:   V_FINANCE_TODAY / V_FINANCE_TREND / V_FINANCE_BY_DEPT / V_OVERDUE_STAT
   주간:   V_OPD_DEPT_TREND / V_IPD_DEPT_TREND(신규) / V_LOS_DIST_DEPT(신규)
-  월간:   V_MONTHLY_OPD_DEPT(신규)
+  월간:   V_MONTHLY_OPD_DEPT
+  지역:   V_REGION_DEPT_MONTHLY / V_REGION_DEPT_DAILY
+  진료과: V_REGION_DEPT_MONTHLY / V_MONTHLY_OPD_DEPT
+          V_DEPT_GENDER_MONTHLY(신규) / V_DEPT_AGE_MONTHLY(신규)
+          V_DEPT_CATEGORY_AGE(신규)
   카드:   V_KIOSK_CARD_APPROVAL
 
 [삭제된 VIEW]
@@ -86,6 +92,12 @@ from ui.panels._shared import (          # noqa: E402
     FQ, FQ_HIST, _fq,                   # 쿼리 딕셔너리 + Oracle 조회 래퍼
     _TODAY_STR, _dt_import,             # 날짜 유틸리티
 )
+try:
+    from ui.panels.dept_analysis import render_dept_analysis as _render_dept_analysis
+    _HAS_DEPT_ANALYSIS = True
+except Exception as _e:
+    _HAS_DEPT_ANALYSIS = False
+    logger.warning(f"dept_analysis 로드 실패 (탭 비활성화): {_e}")
 # ════════════════════════════════════════════════════════════════════
 # [2026-04-22 Phase 1 리팩토링] 하위 호환 별칭
 # ────────────────────────────────────────────────────────────────────
@@ -2015,12 +2027,45 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                 st.error(f"조회 오류: {_e}")
         return
 
-    # 로드 안된 상태 → 안내 후 종료
+    # 로드 안된 상태 → 안내 화면 표시 후 종료
     if not _loaded_ym or _loaded_ym != _sel_ym:
+        _gap()
         if _loaded_ym and _loaded_ym != _sel_ym:
-            st.caption(
-                f"⚠️ 월이 변경됐습니다 — 🔍 조회를 눌러 "
-                f"{_sel_ym[:4]}-{_sel_ym[4:]} 데이터를 불러오세요."
+            # 월이 바뀐 경우 — 재조회 안내
+            st.markdown(
+                f'<div style="background:#FFFBEB;border-left:4px solid #F59E0B;'
+                f'border-radius:0 10px 10px 0;padding:14px 20px;margin:8px 0;">'
+                f'<span style="font-size:14px;">⚠️</span>'
+                f'<span style="font-weight:700;color:#92400E;margin-left:8px;">'
+                f'조회 월이 변경됐습니다</span>'
+                f'<div style="font-size:12px;color:#B45309;margin-top:4px;">'
+                f'<b>{_sel_ym[:4]}-{_sel_ym[4:]}</b> 데이터를 보려면 위의 '
+                f'🔍 조회 버튼을 클릭하세요. (현재 로드: {_loaded_ym[:4]}-{_loaded_ym[4:]})</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # 최초 진입 — 빈 상태 안내
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,{C["teal"]}08,{C["green"]}05);'
+                f'border:2px dashed {C["teal"]}40;border-radius:16px;'
+                f'padding:52px 24px;text-align:center;margin:16px 0;">'
+                f'<div style="font-size:44px;margin-bottom:14px;">📍</div>'
+                f'<div style="font-size:17px;font-weight:700;color:{C["teal"]};'
+                f'margin-bottom:8px;">지역별 환자 통계</div>'
+                f'<div style="font-size:13px;color:{C["t2"]};line-height:1.9;'
+                f'margin-bottom:20px;">'
+                f'진료과별 환자 주소지 분포 · 일별 유입 추이 · 지역 비교 분석<br>'
+                f'위에서 <b style="color:{C["t1"]};">{_sel_ym[:4]}-{_sel_ym[4:]}</b> 월을 '
+                f'선택한 뒤 &nbsp;<b>🔍 조회</b>&nbsp; 버튼을 클릭하세요.</div>'
+                f'<div style="display:inline-flex;align-items:center;gap:8px;'
+                f'background:{C["teal"]}12;border-radius:8px;padding:10px 18px;">'
+                f'<span style="font-size:12px;color:{C["t3"]};">데이터 소스 ·</span>'
+                f'<code style="font-size:11px;color:{C["teal"]};">V_REGION_DEPT_DAILY</code>'
+                f'<span style="font-size:12px;color:{C["t3"]};">·</span>'
+                f'<code style="font-size:11px;color:{C["teal"]};">V_REGION_DEPT_MONTHLY</code>'
+                f'</div></div>',
+                unsafe_allow_html=True,
             )
         return
 
@@ -3136,222 +3181,6 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             st.markdown("</div>", unsafe_allow_html=True)
         _gap()
 
-    # ══════════════════════════════════════
-    # [AI] 경영 컨설팅 채팅
-    # ══════════════════════════════════════
-    # [LLM 컨텍스트 설계]
-    #   · 집계값(지역명·환자수)만 전달 — 환자명/주민번호/카드번호 미포함
-    #   · 시스템 프롬프트: 병원 경영 분석 전문 컨설턴트 역할
-    #   · 10가지 필수 분석 항목 명시 (요구사항 반영)
-    # ──────────────────────────────────────────────────────────────
-    _gap()
-    st.markdown(
-        f'<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;'
-        f'padding:14px 16px;border-top:3px solid {C["violet"]};">',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
-        f'<span style="font-size:16px;">🤖</span>'
-        f'<span style="font-size:13px;font-weight:700;color:{C["t1"]};">'
-        f'AI 경영 컨설팅 분석</span>'
-        f'<span style="background:{C["violet_l"]};color:{C["violet"]};border-radius:5px;'
-        f'padding:2px 8px;font-size:10.5px;font-weight:700;">병원 경영 분석 전문</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
- 
-    
-    # 월별 TOP3 지역 추이 (LLM 입력용)
-    _trend_ctx: dict = _ddr(lambda: _ddr(int))
-    for _r in _filtered_data:
-        # 기준일자(YYYYMMDD)를 기준년월(YYYYMM)로 변환
-        _dj = str(_r.get("기준일자", ""))
-        _ym8 = _dj[:6] if len(_dj) >= 6 else ""
-        _rg8 = _r.get("지역", "")
-        if _ym8 and _rg8 and _rg8 != "지역미상":
-            _trend_ctx[_ym8][_rg8] += int(_r.get("환자수", 0) or 0)
- 
-    _trend_summary = {
-        _ym8: [{"지역": r, "환자수": c}
-               for r, c in sorted(_rgs.items(), key=lambda x: -x[1])[:3]]
-        for _ym8, _rgs in sorted(_trend_ctx.items())
-    }
-    
-    # 월별 분석 메타데이터
-    _target_months = list(sorted(_trend_ctx.keys()))
-    _n_months = len(_target_months)
-    _unique_depts = 1  # 현재는 선택된 단일 진료과만 분석
-
-    # 이상징후 탐지 (MoM 증감)
-    _anomalies: list = []
-    _sorted_months_ctx = sorted(_trend_ctx.keys())
-    if len(_sorted_months_ctx) >= 2:
-        _prev_ym = _sorted_months_ctx[-2]
-        _curr_ym = _sorted_months_ctx[-1]
-        _prev_rgs = _trend_ctx.get(_prev_ym, {})
-        _curr_rgs = _trend_ctx.get(_curr_ym, {})
-        _all_rgs_ctx = set(list(_prev_rgs.keys()) + list(_curr_rgs.keys()))
-        for _rg_an in _all_rgs_ctx:
-            _pv_an = _prev_rgs.get(_rg_an, 0)
-            _cv_an = _curr_rgs.get(_rg_an, 0)
-            if _pv_an > 10:  # 소수 샘플 필터
-                _chg = round((_cv_an - _pv_an) / _pv_an * 100, 1)
-                if abs(_chg) >= 30:  # 30% 이상 변동만 포함
-                    _anomalies.append({
-                        "지역": _rg_an,
-                        "전월": _pv_an,
-                        "당월": _cv_an,
-                        "변동률": f"{_chg:+.1f}%",
-                    })
-        _anomalies = sorted(_anomalies, key=lambda x: abs(float(x["변동률"].replace("%",""))), reverse=True)[:5]
-    
-    # 진료과별 TOP5지역 컨텍스트 (현재는 단일 진료과)
-    _dept_region_ctx = {
-        _sel_dept: [{"지역": r, "환자수": c} for r, c in _sorted_regions[:5]]
-    } if _sorted_regions else {}
- 
-    _ai_ctx = {
-        "분석_진료과": _sel_dept,
-        "분석_기간": f"최근 {_n_months}개월 ({', '.join(sorted(_target_months))})" if _target_months else "데이터 없음",
-        "총_환자수": _total_patients,
-        "유입_지역수": _unique_regions,
-        "집계_진료과수": _unique_depts,
-        "1위_지역": {"지역": _top1_region, "환자수": _top1_cnt},
-        "진료과별_TOP5지역": _dept_region_ctx,
-        "월별_상위3지역_추이": _trend_summary,
-        "이상징후_탐지(MoM±30%이상)": _anomalies,
-    }
- 
-    # ── 시스템 프롬프트 (병원 경영 분석 전문)
-    _sys_consulting = (
-        "당신은 대학병원 경영 전략 컨설턴트입니다.\n"
-        "아래 [지역별 환자 통계 데이터]를 분석하여 "
-        "병원 경영 의사결정에 활용 가능한 컨설팅 보고서를 작성하세요.\n\n"
-        "## 필수 분석 항목 (모두 포함)\n"
-        "1. **지역 유입 패턴** — 증가/감소 지역 식별 및 원인 추론\n"
-        "2. **지역 의존도 분석** — 특정 지역 편중 리스크 평가 (지역 집중도 HHI 개념 활용)\n"
-        "3. **병원 영향권 변화** — 진료권 확대/축소 및 상권 변화 해석\n"
-        "4. **이상징후 탐지** — 급증·급감(±30% 이상) 지역 경고 및 대응 방안\n"
-        "5. **신규 환자 유입 지역** — 신규 유입 강화 가능 지역 탐지\n"
-        "6. **진료과별 지역 비교** — 진료과별 환자 유입 패턴 차이 해석\n"
-        "7. **지역 점유율 변화** — 월별 지역 점유율 추이 분석\n"
-        "8. **경쟁 환경 추론** — 타 의료기관 영향 가능성\n"
-        "9. **마케팅 전략** — 지역별 홍보·마케팅 투자 우선순위 제안\n"
-        "10. **경영 개선 전략** — 진료권 확대를 위한 구체적 실행 계획\n\n"
-        "## 출력 형식\n"
-        "- 컨설팅 보고서 수준 (실제 병원 운영 관점)\n"
-        "- 단순 데이터 나열 금지 — 해석·전략 중심\n"
-        "- ⚠️ 위험/주의, ✅ 기회/강점, 📋 조치사항, 🔴 이상징후 이모지 활용\n"
-        "- 핵심 수치는 **굵게** 표시\n"
-        "- 개인 환자 정보(환자명, 주민번호, 연락처 등) 언급 절대 금지\n\n"
-        f"## [지역별 환자 통계 데이터]\n"
-        f"```json\n{_json_r.dumps(_ai_ctx, ensure_ascii=False, indent=2)[:6000]}\n```"
-    )
- 
-    # ── 빠른 분석 버튼 4개
-    _quick_r = [
-        (
-            "🔍 종합 분석",
-            "위 데이터를 기반으로 지역 유입 패턴, 의존도 리스크, 영향권 변화, "
-            "이상징후, 마케팅 전략을 포함한 종합 경영 컨설팅 보고서를 작성해주세요.",
-        ),
-        (
-            "📍 지역 의존도",
-            f"{'전체' if _sel_dept == '전체' else _sel_dept} 데이터에서 특정 지역 의존도(편중도)를 "
-            "분석하고, 의존도 리스크와 지역 다변화 전략을 제시해주세요.",
-        ),
-        (
-            "🚨 이상징후 탐지",
-            "월별 데이터에서 환자수 급증·급감(30% 이상) 이상징후를 탐지하고, "
-            "원인 가설 3가지와 각 대응 방안을 제시해주세요.",
-        ),
-        (
-            "🎯 진료권 확대 전략",
-            "환자 유입 데이터를 기반으로 진료권 확대 가능 지역을 선정하고, "
-            "지역별 마케팅 전략과 구체적 실행 계획을 컨설팅 보고서로 작성해주세요.",
-        ),
-    ]
-    _qr_cols = st.columns(len(_quick_r), gap="small")
-    for _qi2, (_ql2, _qv2) in enumerate(_quick_r):
-        with _qr_cols[_qi2]:
-            if st.button(_ql2, key=f"reg_qs_{_qi2}", use_container_width=True, type="secondary"):
-                st.session_state["reg_chat_prefill"] = _qv2
-                st.rerun()
- 
-    # ── 채팅 히스토리 초기화 버튼
-    if st.session_state.get("reg_chat_history"):
-        if st.button("🗑️ 대화 초기화", key="reg_chat_clear", type="secondary"):
-            st.session_state["reg_chat_history"] = []
-            st.rerun()
- 
-    # ── 채팅 히스토리 렌더링
-    if "reg_chat_history" not in st.session_state:
-        st.session_state["reg_chat_history"] = []
-    _reg_history = st.session_state["reg_chat_history"]
- 
-    for _msg in _reg_history:
-        with st.chat_message(_msg["role"]):
-            st.markdown(_msg["content"])
- 
-    # ── 입력 처리 (prefill 또는 직접 입력)
-    _reg_prefill = st.session_state.pop("reg_chat_prefill", None)
-    _reg_input   = (
-        st.chat_input("지역별 경영 분석을 질문하세요", key="reg_chat_input")
-        or _reg_prefill
-    )
- 
-    if _reg_input:
-        with st.chat_message("user"):
-            st.markdown(_reg_input)
-        _reg_history.append({"role": "user", "content": _reg_input})
- 
-        with st.chat_message("assistant"):
-            _ph2 = st.empty()
-            _toks2: list = []
-            _full2 = ""
-            try:
-                from core.llm import get_llm_client
-                _llm2 = get_llm_client()
-                # 시스템 프롬프트 6000자 초과 시 안전 절단
-                _safe_sys = (
-                    _sys_consulting[:5500] + "\n...(생략)"
-                    if len(_sys_consulting) > 5500
-                    else _sys_consulting
-                )
-                for _tok2 in _llm2.generate_stream(
-                    _reg_input,
-                    _safe_sys,
-                    request_id=_uuid_r.uuid4().hex[:8],
-                ):
-                    _toks2.append(_tok2)
-                    if len(_toks2) % 4 == 0:
-                        _ph2.markdown("".join(_toks2) + "▌")
-                _full2 = "".join(_toks2)
-            except Exception as _e2:
-                # LLM 실패 시 데이터 요약만 제공 (폴백)
-                _top3_str = " / ".join(
-                    f"{r['지역']} {r['환자수']:,}명"
-                    for r in list(_dept_region_ctx.values())[0][:3]
-                    if _dept_region_ctx
-                ) or "데이터 없음"
-                _full2 = (
-                    f"**⚠️ LLM 연결 실패** `{_e2}`\n\n"
-                    f"**현재 데이터 요약** (AI 분석 불가 시 참고)\n"
-                    f"- 분석 과: **{_sel_dept}**\n"
-                    f"- 총 환자: **{_total_patients:,}명** (최근 {_n_months}개월)\n"
-                    f"- 1위 지역: **{_top1_region}** ({_top1_cnt:,}명)\n"
-                    f"- 유입 지역수: **{_unique_regions}개** 시구\n"
-                    f"- 상위 지역: {_top3_str}\n\n"
-                    f"*LLM 서버 연결 후 재질문하시면 컨설팅 보고서를 제공합니다.*"
-                )
-            _ph2.markdown(_full2)
- 
-        _reg_history.append({"role": "assistant", "content": _full2})
-        st.session_state["reg_chat_history"] = _reg_history
-        st.rerun()
- 
-    st.markdown("</div>", unsafe_allow_html=True)  # AI 채팅 카드 닫기
  
  
 # ════════════════════════════════════════════════════════════════════
@@ -3606,7 +3435,7 @@ def _tab_card_match() -> None:
 # 메인 진입점 — render_finance_dashboard  v2.3
 # ════════════════════════════════════════════════════════════════════
 def render_finance_dashboard() -> None:
-    """원무 현황 대시보드 v2.3 — 4탭 구조."""
+    """원무 현황 대시보드 v2.4 — 6탭 구조."""
     st.markdown(APP_CSS, unsafe_allow_html=True)  # 2026-04-22: _CSS → APP_CSS (design.py 단일화)
 
     logger.info("render_finance_dashboard 시작")
@@ -3704,8 +3533,10 @@ def render_finance_dashboard() -> None:
         _ms = [
             "V_OPD_DEPT_STATUS","V_KIOSK_STATUS","V_DISCHARGE_PIPELINE",
             "V_FINANCE_TODAY","V_FINANCE_TREND","V_FINANCE_BY_DEPT","V_OVERDUE_STAT",
-            "V_IPD_DEPT_TREND(신규)","V_LOS_DIST_DEPT(신규)","V_MONTHLY_OPD_DEPT(신규)",
-             "V_region_dept_daily(지역분석·신규)"
+            "V_IPD_DEPT_TREND","V_LOS_DIST_DEPT","V_MONTHLY_OPD_DEPT",
+            "V_REGION_DEPT_DAILY","V_REGION_DEPT_MONTHLY",
+            "V_DEPT_GENDER_MONTHLY(신규)","V_DEPT_AGE_MONTHLY(신규)",
+            "V_DEPT_CATEGORY_AGE(신규)",
         ]
         st.markdown(
             f'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 14px;margin-bottom:8px;">'
@@ -3715,13 +3546,14 @@ def render_finance_dashboard() -> None:
         )
 
     # ════════════════════════════════════════════════════════════════
-    # 5탭 구조
+    # 6탭 구조
     # ════════════════════════════════════════════════════════════════
-    t1, t_weekly, t_monthly, t_region, t_card = st.tabs([
+    t1, t_weekly, t_monthly, t_region, t_dept, t_card = st.tabs([
         "🏥 실시간 현황",
         "📈 주간추이분석",
         "📅 월간추이분석",
-        "📍 지역별 통계",    # ← 신규
+        "📍 지역별 통계",
+        "🔬 진료과 분석",
         "💳 카드 매칭",
     ])
 
@@ -3751,19 +3583,23 @@ def render_finance_dashboard() -> None:
     with t_region:
         _tab_region(region_dept_data, region_monthly_data)
 
+    with t_dept:
+        if _HAS_DEPT_ANALYSIS:
+            _render_dept_analysis(monthly_opd_dept)
+        else:
+            from ui.design import gap as _g
+            _g(16)
+            st.markdown(
+                f'<div style="background:#FFF7ED;border:1px solid #FED7AA;'
+                f'border-radius:10px;padding:16px 20px;text-align:center;">'
+                f'<div style="font-size:15px;font-weight:700;color:#C2410C;">🛠 진료과 분석 모듈 로드 실패</div>'
+                f'<div style="font-size:12px;color:#9A3412;margin-top:6px;">'
+                f'ui/panels/dept_analysis.py 를 확인하세요.</div></div>',
+                unsafe_allow_html=True,
+            )
+
     with t_card:
         _tab_card_match()
-
-    # ── AI 채팅 (하단 공통 — 카드 매칭 데이터 제외)
-    _gap()
-    _render_finance_llm_chat(
-        bed_detail=bed_detail,
-        dept_status=dept_status,
-        kiosk_by_dept=kiosk_by_dept,
-        daily_dept_stat=daily_dept_stat,
-        kiosk_counter_trend=kiosk_counter_trend,
-        discharge_pipe=discharge_pipe,
-    )
 
     # ── 자동 갱신
     if st.session_state.get("fn_auto", False):
