@@ -54,16 +54,20 @@ if _PROJECT_ROOT not in sys.path:
 try:
     from utils.logger import get_logger as _get_logger
     from config.settings import settings as _settings
+
     logger = _get_logger(__name__, log_dir=_settings.log_dir)
 except Exception:
     import logging as _logging
+
     logger = _logging.getLogger(__name__)
     if not logger.handlers:
         _fh = _logging.StreamHandler()
-        _fh.setFormatter(_logging.Formatter(
-            "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
-            "%Y-%m-%d %H:%M:%S",
-        ))
+        _fh.setFormatter(
+            _logging.Formatter(
+                "[%(asctime)s] %(levelname)-8s | %(name)s | %(message)s",
+                "%Y-%m-%d %H:%M:%S",
+            )
+        )
         logger.addHandler(_fh)
         logger.setLevel(_logging.DEBUG)
 
@@ -110,18 +114,31 @@ def _nq(key: str) -> List[Dict[str, Any]]:
         return []
 
 
-from ui.design import C, APP_CSS as _NURSING_CSS, kpi_card as _kpi_card, section_header as _sec_hd, gap as _gap
+from ui.design import (
+    C,
+    APP_CSS as _NURSING_CSS,
+    kpi_card as _kpi_card,
+    section_header as _sec_hd,
+    gap as _gap,
+)
 
 # 간호 전용 의미 색상 (design.C 토큰 재사용)
 NC = {
-    "teal":       C["teal"],
-    "teal_dark":  "#0E7490",
+    "teal": C["teal"],
+    "teal_dark": "#0E7490",
     "teal_light": C["teal_l"],
-    "fall":       C["red"],    "fall_bg":  C["red_l"],
-    "sore":       C["yellow"], "sore_bg":  C["yellow_l"],
-    "dm":         C["violet"], "dm_bg":    C["violet_l"],
-    "ok":         C["ok"],     "ok_bg":    C["ok_l"],
-    "text1": C["t1"], "text2": C["t2"], "text3": C["t3"], "text4": C["t4"],
+    "fall": C["red"],
+    "fall_bg": C["red_l"],
+    "sore": C["yellow"],
+    "sore_bg": C["yellow_l"],
+    "dm": C["violet"],
+    "dm_bg": C["violet_l"],
+    "ok": C["ok"],
+    "ok_bg": C["ok_l"],
+    "text1": C["t1"],
+    "text2": C["t2"],
+    "text3": C["t3"],
+    "text4": C["t4"],
 }
 
 
@@ -288,16 +305,52 @@ def render_nursing_dashboard() -> None:
     # 퇴원예정
     _dc_planned = sum(int(r.get("익일퇴원예고", 0) or 0) for r in bed_f)
 
-    _occ_color  = C["red"] if _occ_rate >= 90 else C["yellow"] if _occ_rate >= 80 else C["green"]
-    _risk_color = C["red"] if _risk_total > 10 else C["yellow"] if _risk_total > 5 else C["green"]
-    _inc_color  = C["red"] if _incident_cnt > 0 else C["green"]
+    _occ_color = (
+        C["red"] if _occ_rate >= 90 else C["yellow"] if _occ_rate >= 80 else C["green"]
+    )
+    _risk_color = (
+        C["red"] if _risk_total > 10 else C["yellow"] if _risk_total > 5 else C["green"]
+    )
+    _inc_color = C["red"] if _incident_cnt > 0 else C["green"]
 
     kc1, kc2, kc3, kc4 = st.columns(4, gap="small")
 
-    _kpi_card(kc1, "🏥", "재원 환자",   str(_total_stay),   "명", f"총병상 {_total_beds}개 · 가동률 {_occ_rate}%",   _occ_color)
-    _kpi_card(kc2, "🚨", "고위험 합계", str(_risk_total),   "명", f"낙상 {_fall_total} · 욕창 {_sore_total} · 당뇨 {_dm_total}", _risk_color)
-    _kpi_card(kc3, "⚠️", "금일 낙상",   str(_incident_cnt), "건", "금일 발생 낙상 사고 보고 기준",                   _inc_color)
-    _kpi_card(kc4, "📤", "퇴원 예정",   str(_dc_planned),   "명", "퇴원예고(DC) 처리 대상",                          C["teal"])
+    _kpi_card(
+        kc1,
+        "🏥",
+        "재원 환자",
+        str(_total_stay),
+        "명",
+        f"총병상 {_total_beds}개 · 가동률 {_occ_rate}%",
+        _occ_color,
+    )
+    _kpi_card(
+        kc2,
+        "🚨",
+        "고위험 합계",
+        str(_risk_total),
+        "명",
+        f"낙상 {_fall_total} · 욕창 {_sore_total} · 당뇨 {_dm_total}",
+        _risk_color,
+    )
+    _kpi_card(
+        kc3,
+        "⚠️",
+        "금일 낙상",
+        str(_incident_cnt),
+        "건",
+        "금일 발생 낙상 사고 보고 기준",
+        _inc_color,
+    )
+    _kpi_card(
+        kc4,
+        "📤",
+        "퇴원 예정",
+        str(_dc_planned),
+        "명",
+        "퇴원예고(DC) 처리 대상",
+        C["teal"],
+    )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -492,13 +545,17 @@ def render_nursing_dashboard() -> None:
                 _type = _inc.get("사고유형", "낙상")
                 _sev = _inc.get("중증도", "경증")
                 _sev_c = (
-                    C["red"]    if _sev in ("중증", "심각")
-                    else C["yellow"] if _sev == "중등도"
+                    C["red"]
+                    if _sev in ("중증", "심각")
+                    else C["yellow"]
+                    if _sev == "중등도"
                     else C["green"]
                 )
                 _sev_bg = (
-                    C["red_l"]    if _sev in ("중증", "심각")
-                    else C["yellow_l"] if _sev == "중등도"
+                    C["red_l"]
+                    if _sev in ("중증", "심각")
+                    else C["yellow_l"]
+                    if _sev == "중등도"
                     else C["green_l"]
                 )
                 _tbl += (
@@ -634,10 +691,24 @@ def render_nursing_dashboard() -> None:
             _sore = int(_rsk.get("욕창고위험", 0) or 0)
             _dm = int(_rsk.get("당뇨고위험", 0) or 0)
 
-            _rate_c = C["red"] if _rate >= 90 else C["yellow"] if _rate >= 80 else C["green"]
-            _fall_c = f"color:{C['red']};font-weight:800;"    if _fall > 0 else f"color:{C['t5']};"
-            _sore_c = f"color:{C['yellow']};font-weight:800;" if _sore > 0 else f"color:{C['t5']};"
-            _dm_c   = f"color:{C['violet']};font-weight:800;" if _dm   > 0 else f"color:{C['t5']};"
+            _rate_c = (
+                C["red"] if _rate >= 90 else C["yellow"] if _rate >= 80 else C["green"]
+            )
+            _fall_c = (
+                f"color:{C['red']};font-weight:800;"
+                if _fall > 0
+                else f"color:{C['t5']};"
+            )
+            _sore_c = (
+                f"color:{C['yellow']};font-weight:800;"
+                if _sore > 0
+                else f"color:{C['t5']};"
+            )
+            _dm_c = (
+                f"color:{C['violet']};font-weight:800;"
+                if _dm > 0
+                else f"color:{C['t5']};"
+            )
             _bg = "#F8FAFC" if i % 2 == 0 else "#FFFFFF"
             _td = f"padding:8px 12px;background:{_bg};border-bottom:1px solid #F8FAFC;"
 
