@@ -353,7 +353,7 @@ def render_dashboard_monitor() -> None:
 
         # 메트릭 JSON 다운로드
         try:
-            _metrics_file = Path("logs") / "dashboard_metrics.json"
+            _metrics_file = settings.dashboard_metrics_path
             if _metrics_file.exists():
                 st.download_button(
                     "📊 메트릭 JSON",

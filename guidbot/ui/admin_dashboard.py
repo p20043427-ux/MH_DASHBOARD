@@ -518,22 +518,20 @@ def _tab_ops() -> None:
 
     # 서비스 현황
     section_header("서비스 현황", "실행 중인 앱 포트 및 접속 주소", C["blue"])
-    _ip  = "192.1.1.231"
     svcs = [
-        ("8501", "🏥", "병동 대시보드",  "입퇴원 현황 · 병동 KPI · 환자 흐름 분석"),
-        ("8502", "💬", "AI 챗봇",         "규정·지침 RAG 검색 · Gemini LLM 연동"),
-        ("8503", "💼", "원무 대시보드",   "수납·미수금 · 외래 통계 · 지역 분석"),
-        ("8504", "⚙️", "관리자 대시보드", "로그 · 벡터DB · 문서 관리  ★ 현재"),
+        (settings.dashboard_url, "🏥", "병동 대시보드",  "입퇴원 현황 · 병동 KPI · 환자 흐름 분석"),
+        (settings.chatbot_url,   "💬", "AI 챗봇",         "규정·지침 RAG 검색 · Gemini LLM 연동"),
+        (settings.finance_url,   "💼", "원무 대시보드",   "수납·미수금 · 외래 통계 · 지역 분석"),
+        (settings.admin_url,     "⚙️", "관리자 대시보드", "로그 · 벡터DB · 문서 관리  ★ 현재"),
     ]
     sc = st.columns(4, gap="small")
-    for col, (port, icon, name, desc) in zip(sc, svcs):
+    for col, (url, icon, name, desc) in zip(sc, svcs):
         col.markdown(
             f'<div class="adm-svc-card">'
-            f'<div class="adm-svc-badge">:{port}</div>'
             f'<div class="adm-svc-icon">{icon}</div>'
             f'<div class="adm-svc-name">{name}</div>'
             f'<div class="adm-svc-desc">{desc}</div>'
-            f'<a class="adm-svc-btn" href="http://{_ip}:{port}/" target="_blank">접속 →</a>'
+            f'<a class="adm-svc-btn" href="{url}" target="_blank">접속 →</a>'
             f'</div>',
             unsafe_allow_html=True,
         )

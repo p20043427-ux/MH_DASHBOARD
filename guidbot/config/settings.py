@@ -664,6 +664,89 @@ class AppSettings(BaseSettings):
         description="Streamlit 바인딩 IP. 0.0.0.0=LAN 허용, 127.0.0.1=로컬 전용.",
     )
 
+    # ── 앱 간 연결 URL ─────────────────────────────────────────────────
+    #
+    #  [포트 기본값]  8501=병동 대시보드  8502=AI 챗봇  8503=원무 대시보드  8504=관리자
+    #  .env 에서 서버 IP/포트에 맞게 지정하세요.
+    #  예) DASHBOARD_URL=http://192.1.1.231:8501/
+    #      CHATBOT_URL=http://192.1.1.231:8502/
+    #      FINANCE_URL=http://192.1.1.231:8503/
+    #      ADMIN_URL=http://192.1.1.231:8504/
+
+    dashboard_url: str = Field(
+        default="http://localhost:8501/",
+        description=(
+            "병동 현황 대시보드(dashboard_app.py) 접속 URL. "
+            "원무·관리자 사이드바의 '병동 대시보드' 링크에 사용됩니다. "
+            ".env: DASHBOARD_URL=http://192.1.1.231:8501/"
+        ),
+    )
+
+    chatbot_url: str = Field(
+        default="http://localhost:8502/",
+        description=(
+            "AI 챗봇 앱(main.py) 접속 URL. "
+            "대시보드·원무 사이드바의 '챗봇 이동' 링크에 사용됩니다. "
+            ".env: CHATBOT_URL=http://192.1.1.231:8502/"
+        ),
+    )
+
+    finance_url: str = Field(
+        default="http://localhost:8503/",
+        description=(
+            "원무 대시보드(finance_app.py) 접속 URL. "
+            "관리자 사이드바의 '원무 대시보드' 링크에 사용됩니다. "
+            ".env: FINANCE_URL=http://192.1.1.231:8503/"
+        ),
+    )
+
+    admin_url: str = Field(
+        default="http://localhost:8504/",
+        description=(
+            "관리자 앱(admin_app.py) 접속 URL. "
+            "필요 시 다른 앱에서 관리자 화면으로 이동하는 링크에 사용됩니다. "
+            ".env: ADMIN_URL=http://192.1.1.231:8504/"
+        ),
+    )
+
+    docs_url: str = Field(
+        default="",
+        description=(
+            "회람 문서 Google Docs URL. 챗봇 사이드바 바로가기에 표시됩니다. "
+            "비어있으면 링크 숨김. "
+            ".env: DOCS_URL=https://docs.google.com/document/d/..."
+        ),
+    )
+
+    gdrive_vdb_folder_url: str = Field(
+        default="",
+        description=(
+            "Google Drive 벡터DB 공유 폴더 URL. "
+            "대시보드 관리자 패널 'PDF 업로드' 섹션의 Drive 바로가기 링크. "
+            "비어있으면 링크 숨김. "
+            ".env: GDRIVE_VDB_FOLDER_URL=https://drive.google.com/drive/folders/..."
+        ),
+    )
+
+    # ── 부서별 문서 링크 (Google Drive) ───────────────────────────────
+    #  비어있는 부서는 사이드바에서 자동으로 숨김 처리됩니다.
+    #  .env 예시: DEPT_DOC_WARD=https://drive.google.com/drive/folders/...
+
+    dept_doc_ward: str = Field(default="", description="병동 문서 링크. .env: DEPT_DOC_WARD")
+    dept_doc_er: str = Field(default="", description="응급실 문서 링크. .env: DEPT_DOC_ER")
+    dept_doc_icu: str = Field(default="", description="중환자실 문서 링크. .env: DEPT_DOC_ICU")
+    dept_doc_delivery: str = Field(default="", description="분만실 문서 링크. .env: DEPT_DOC_DELIVERY")
+    dept_doc_nicu: str = Field(default="", description="NICU 문서 링크. .env: DEPT_DOC_NICU")
+    dept_doc_or: str = Field(default="", description="수술실 문서 링크. .env: DEPT_DOC_OR")
+    dept_doc_nursing: str = Field(default="", description="간호부 문서 링크. .env: DEPT_DOC_NURSING")
+    dept_doc_admin: str = Field(default="", description="원무과 문서 링크. .env: DEPT_DOC_ADMIN")
+    dept_doc_medical: str = Field(default="", description="진료부 문서 링크. .env: DEPT_DOC_MEDICAL")
+    dept_doc_lab: str = Field(default="", description="검사실 문서 링크. .env: DEPT_DOC_LAB")
+    dept_doc_radiology: str = Field(default="", description="영상의학과 문서 링크. .env: DEPT_DOC_RADIOLOGY")
+    dept_doc_pharmacy: str = Field(default="", description="약제부 문서 링크. .env: DEPT_DOC_PHARMACY")
+    dept_doc_rehab: str = Field(default="", description="재활치료실 문서 링크. .env: DEPT_DOC_REHAB")
+    dept_doc_social: str = Field(default="", description="사회사업팀 문서 링크. .env: DEPT_DOC_SOCIAL")
+
     # ──────────────────────────────────────────────────────────────────
     #  모니터링 설정 (v3.0 신규)
     # ──────────────────────────────────────────────────────────────────

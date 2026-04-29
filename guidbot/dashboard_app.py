@@ -446,16 +446,17 @@ def _render_mini_sidebar() -> str:
         )
 
         # ── AI 챗봇 이동 링크 ─────────────────────────────────────────
+        _chatbot_url = settings.chatbot_url
         st.markdown(
             '<div style="margin-bottom:16px;">'
-            '<a href="http://192.1.1.231:8502/" target="_blank" style="'
+            f'<a href="{_chatbot_url}" target="_blank" style="'
             "display:flex;align-items:center;gap:6px;"
             "background:rgba(30,64,175,0.20);border:1px solid rgba(30,64,175,0.35);"
             'border-radius:7px;padding:8px 12px;text-decoration:none;">'
             '<span style="font-size:14px;">💬</span>'
             "<div>"
             '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);">AI 챗봇</div>'
-            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">규정·지침 검색 (8502)</div>'
+            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">규정·지침 검색</div>'
             "</div>"
             '<span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,0.35);">↗</span>'
             "</a></div>",
@@ -464,28 +465,37 @@ def _render_mini_sidebar() -> str:
 
         st.divider()
 
-        # ── 부서별 Google Docs 문서 링크 ────────────────────────────
+        # ── 부서별 문서 링크 (settings → .env 에서 관리) ──────────────
         st.markdown(
             '<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.50);'
             "text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;"
             '">📄 부서 문서</div>',
             unsafe_allow_html=True,
         )
-        _DEPT_DOCS = [
-            ("🏥", "병동", "https://docs.google.com/document/d/병동문서ID"),
-            ("🚨", "응급실", "https://docs.google.com/document/d/응급실문서ID"),
-            (
-                "💊",
-                "중환자실",
-                "https://drive.google.com/file/d/1f0R6rpr5Te45W8wlIuGZAcx2m-nT7FGV/view?usp=sharing",
-            ),
-            ("👶", "분만실", "https://docs.google.com/document/d/분만실문서ID"),
-            ("🍼", "NICU", "https://docs.google.com/document/d/NICU문서ID"),
-            ("🔪", "수술실", "https://docs.google.com/document/d/수술실문서ID"),
-            ("👩‍⚕️", "간호부", "https://docs.google.com/document/d/간호부문서ID"),
+        _dept_docs = [
+            {"icon": "🏥", "name": "병동",       "url": settings.dept_doc_ward},
+            {"icon": "🚨", "name": "응급실",      "url": settings.dept_doc_er},
+            {"icon": "💊", "name": "중환자실",    "url": settings.dept_doc_icu},
+            {"icon": "👶", "name": "분만실",      "url": settings.dept_doc_delivery},
+            {"icon": "🍼", "name": "NICU",         "url": settings.dept_doc_nicu},
+            {"icon": "🔪", "name": "수술실",      "url": settings.dept_doc_or},
+            {"icon": "👩‍⚕️", "name": "간호부",   "url": settings.dept_doc_nursing},
+            {"icon": "💰", "name": "원무과",      "url": settings.dept_doc_admin},
+            {"icon": "🩺", "name": "진료부",      "url": settings.dept_doc_medical},
+            {"icon": "🔬", "name": "검사실",      "url": settings.dept_doc_lab},
+            {"icon": "🩻", "name": "영상의학과",  "url": settings.dept_doc_radiology},
+            {"icon": "💉", "name": "약제부",      "url": settings.dept_doc_pharmacy},
+            {"icon": "🦽", "name": "재활치료실",  "url": settings.dept_doc_rehab},
+            {"icon": "🤝", "name": "사회사업팀",  "url": settings.dept_doc_social},
         ]
+        # URL 미설정 부서는 숨김
+        _dept_docs = [d for d in _dept_docs if d["url"]]
+
         _doc_rows = ""
-        for _ico, _nm, _url in _DEPT_DOCS:
+        for _entry in _dept_docs:
+            _ico = _entry.get("icon", "📄")
+            _nm  = _entry.get("name", "")
+            _url = _entry.get("url", "#")
             _doc_rows += (
                 f'<a href="{_url}" target="_blank" style="'
                 "display:flex;align-items:center;gap:8px;"
@@ -502,11 +512,12 @@ def _render_mini_sidebar() -> str:
                 'color:rgba(255,255,255,0.30);">↗</span>'
                 "</a>"
             )
-        st.markdown(
-            f'<div style="display:flex;flex-direction:column;'
-            f'gap:0;margin-bottom:14px;">{_doc_rows}</div>',
-            unsafe_allow_html=True,
-        )
+        if _doc_rows:
+            st.markdown(
+                f'<div style="display:flex;flex-direction:column;'
+                f'gap:0;margin-bottom:14px;">{_doc_rows}</div>',
+                unsafe_allow_html=True,
+            )
 
         # ── 시스템 모니터링 (psutil) ──────────────────────────────────
         try:
@@ -622,20 +633,22 @@ def _render_mini_sidebar() -> str:
                     unsafe_allow_html=True,
                 )
 
-                # Google Drive 공유 폴더 바로가기
-                st.markdown(
-                    '<a href="https://drive.google.com/drive/folders/13hG8qM8iQsovKBI4a_3X6SjkO0UUU8sL"'
-                    ' target="_blank" style="'
-                    "display:flex;align-items:center;gap:6px;"
-                    "background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.35);"
-                    'border-radius:7px;padding:6px 10px;text-decoration:none;margin-bottom:6px;">'
-                    '<span style="font-size:14px;">📁</span>'
-                    "<div>"
-                    '<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.88);">벡터DB 공유 폴더</div>'
-                    '<div style="font-size:10px;color:rgba(255,255,255,0.45);">Google Drive ↗</div>'
-                    "</div></a>",
-                    unsafe_allow_html=True,
-                )
+                # Google Drive 공유 폴더 바로가기 (settings.gdrive_vdb_folder_url)
+                _gdrive_url = settings.gdrive_vdb_folder_url
+                if _gdrive_url:
+                    st.markdown(
+                        f'<a href="{_gdrive_url}"'
+                        ' target="_blank" style="'
+                        "display:flex;align-items:center;gap:6px;"
+                        "background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.35);"
+                        'border-radius:7px;padding:6px 10px;text-decoration:none;margin-bottom:6px;">'
+                        '<span style="font-size:14px;">📁</span>'
+                        "<div>"
+                        '<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.88);">벡터DB 공유 폴더</div>'
+                        '<div style="font-size:10px;color:rgba(255,255,255,0.45);">Google Drive ↗</div>'
+                        "</div></a>",
+                        unsafe_allow_html=True,
+                    )
                 st.caption("PDF → Markdown 변환 후 벡터DB에 추가합니다.")
                 _up_files = st.file_uploader(
                     "📂 PDF 파일 선택 (복수 가능)",

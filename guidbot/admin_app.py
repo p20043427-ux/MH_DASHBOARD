@@ -328,26 +328,25 @@ def _sidebar() -> bool:
             'text-transform:uppercase;margin-bottom:8px;">다른 앱</div>',
             unsafe_allow_html=True,
         )
-        _ip = "192.1.1.231"
-        # 포트별 액센트 색상 (border-left)
+        # settings.py 에서 URL 로드 (DASHBOARD_URL / CHATBOT_URL / FINANCE_URL)
         _LINK_APPS = [
-            ("8501", "병동 대시보드", "입퇴원 현황",   "#3B82F6"),   # 파랑
-            ("8502", "AI 챗봇",       "규정·지침 검색", "#8B5CF6"),  # 보라
-            ("8503", "원무 대시보드", "수납·미수금",   "#14B8A6"),   # 청록
+            (settings.dashboard_url, "병동 대시보드", "입퇴원 현황",   "#3B82F6"),
+            (settings.chatbot_url,   "AI 챗봇",       "규정·지침 검색", "#8B5CF6"),
+            (settings.finance_url,   "원무 대시보드", "수납·미수금",   "#14B8A6"),
         ]
         # [수정] 3개 별도 st.markdown() → 단일 <div> 래퍼로 통합
         # 이유: 각 st.markdown()이 Streamlit 컨테이너를 생성 → 카드 사이 불필요한 여백 발생
         #       <div> 블록 요소로 래핑하면 Streamlit이 <p> 래퍼를 추가하지 않음
         _links_inner = "".join(
-            f'<a href="http://{_ip}:{port}/" target="_blank" class="sb-link"'
+            f'<a href="{url}" target="_blank" class="sb-link"'
             f' style="border-left-color:{accent};">'
             '<div class="sb-link-row">'
             f'<span class="sb-link-name">{name}</span>'
-            f'<span class="sb-link-port">:{port} ↗</span>'
+            f'<span class="sb-link-port">↗</span>'
             '</div>'
             f'<div class="sb-link-sub">{sub}</div>'
             '</a>'
-            for port, name, sub, accent in _LINK_APPS
+            for url, name, sub, accent in _LINK_APPS
         )
         st.markdown(
             f'<div style="margin-top:2px;">{_links_inner}</div>',

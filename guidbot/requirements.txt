@@ -1,6 +1,6 @@
 # ======================================================================
 # 가이드봇 (병원 규정 RAG 챗봇) — requirements.txt
-# 마지막 검토: 2026-04
+# 마지막 검토: 2026-04-28
 # Python: 3.10 ~ 3.12 권장  (3.13 미검증)
 #
 # [설치]
@@ -55,6 +55,9 @@ rank-bm25>=0.2.2              # BM25 키워드 검색 (하이브리드 RAG)
 # -- 임베딩 + Cross-Encoder --------------------------------------------
 sentence-transformers>=3.0.0  # jhgan/ko-sroberta 임베딩 + CE 리랭킹
                               # bongsoo/kpf-cross-encoder-v1 등
+transformers>=4.40.0          # HuggingFace 모델 로더 (sentence-transformers 핵심 의존)
+                              # tokenizers / safetensors 는 이 패키지가 자동 설치
+scikit-learn>=1.4.0           # 코사인 유사도·정규화 (sentence-transformers 의존)
 
 
 # -- 딥러닝 런타임 -----------------------------------------------------
@@ -87,6 +90,12 @@ PyMySQL>=1.1.0                # MySQL/MariaDB SQLAlchemy 드라이버
 # -- PostgreSQL 드라이버 (db_type=postgresql 시 필요) ------------------
 # psycopg2-binary>=2.9.9      # PostgreSQL SQLAlchemy 드라이버
                               # (소스 빌드 없이 바로 설치되는 binary 배포판)
+
+
+# -- Excel 파일 처리 ---------------------------------------------------
+openpyxl>=3.1.0               # pandas read_excel() / to_excel() 엔진
+                              # 카드 매칭 탭: 카드사 xlsx 파일 읽기 (finance_dashboard.py)
+                              # 문서 관리: .xlsx 명세서 업로드 지원 (doc_manager_ui.py)
 
 
 # -- 환경 설정 ---------------------------------------------------------

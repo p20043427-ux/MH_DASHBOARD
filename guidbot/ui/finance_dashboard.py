@@ -3509,7 +3509,7 @@ def render_finance_dashboard() -> None:
                 st.cache_data.clear(); st.rerun()
         with b2:
             st.markdown(
-                '<a href="http://192.1.1.231:8501" target="_blank" style="'
+                f'<a href="{_s.dashboard_url}" target="_blank" style="'
                 'display:block;text-align:center;background:#EFF6FF;color:#1E40AF;'
                 'border:1.5px solid #BFDBFE;border-radius:20px;padding:5px 0;'
                 'font-size:11.5px;font-weight:600;text-decoration:none;">🔗 병동 대시보드</a>',

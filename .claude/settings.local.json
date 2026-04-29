@@ -74,7 +74,12 @@
       "Bash(grep -oP \"FROM\\\\s+\\\\K[A-Za-z_\\\\.]{4,}\")",
       "Bash(not exist *)",
       "Bash(dir \"D:\\\\MH\\\\guidbot\\\\docs\" /b)",
-      "Bash(dir \"D:\\\\MH\\\\guidbot\\\\system_guide\" /b)"
+      "Bash(dir \"D:\\\\MH\\\\guidbot\\\\system_guide\" /b)",
+      "Bash(.venv/Scripts/pip.exe list *)",
+      "Bash(python -m pip list --format=columns)",
+      "Bash(.venv/Scripts/python.exe -c \"import google.genai; print\\('google.genai OK, version:', google.genai.__version__\\)\")",
+      "Bash(D:/MH/guidbot/venv/Scripts/pip.exe list *)",
+      "Bash(D:/MH/guidbot/venv/Scripts/pip.exe show *)"
     ]
   }
 }

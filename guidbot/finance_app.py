@@ -157,25 +157,25 @@ def _render_sidebar() -> str:
         # 다른 앱 이동 링크
         st.markdown(
             '<div style="margin-bottom:8px;">'
-            '<a href="http://192.1.1.231:8501/" target="_blank" style="'
+            f'<a href="{settings.dashboard_url}" target="_blank" style="'
             "display:flex;align-items:center;gap:6px;"
             "background:rgba(30,64,175,0.20);border:1px solid rgba(30,64,175,0.35);"
             'border-radius:7px;padding:8px 12px;text-decoration:none;margin-bottom:6px;">'
             '<span style="font-size:14px;">🏥</span>'
             "<div>"
             '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);">병동 대시보드</div>'
-            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">입퇴원 현황 (8501)</div>'
+            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">입퇴원 현황</div>'
             "</div>"
             '<span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,0.35);">↗</span>'
             "</a>"
-            '<a href="http://192.1.1.231:8502/" target="_blank" style="'
+            f'<a href="{settings.chatbot_url}" target="_blank" style="'
             "display:flex;align-items:center;gap:6px;"
             "background:rgba(30,64,175,0.20);border:1px solid rgba(30,64,175,0.35);"
             'border-radius:7px;padding:8px 12px;text-decoration:none;">'
             '<span style="font-size:14px;">💬</span>'
             "<div>"
             '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);">AI 챗봇</div>'
-            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">규정·지침 검색 (8502)</div>'
+            '<div style="font-size:10px;color:rgba(255,255,255,0.40);">규정·지침 검색</div>'
             "</div>"
             '<span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,0.35);">↗</span>'
             "</a></div>",

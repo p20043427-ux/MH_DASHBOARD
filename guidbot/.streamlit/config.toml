@@ -1,0 +1,61 @@
+# ══════════════════════════════════════════════════════════════
+# .streamlit/config.toml
+# 좋은문화병원 Guidbot — Streamlit 공통 설정 (i5-10500 / 16GB)
+#
+# [중요] 이 파일은 모든 앱(8501~8505)에 공통 적용됨.
+# 앱별 포트는 start.bat 의 --server.port 인자로 덮어씁니다.
+# ══════════════════════════════════════════════════════════════
+
+[server]
+# ── 포트 (start.bat에서 --server.port로 오버라이드) ──────────
+port = 8501  # 대시보드 기본값
+
+# ── 바인딩: 내부망 전체 허용 ─────────────────────────────────
+address = "0.0.0.0"
+
+# ── 서버 모드 (브라우저 자동 실행 안 함) ─────────────────────
+headless = true
+
+# ── 파일 변경 감지 비활성화 (운영 환경 — CPU 절약) ───────────
+runOnSave = false
+
+# ── 업로드/메시지 크기 제한 ──────────────────────────────────
+maxUploadSize = 200
+maxMessageSize = 100
+
+# ── XSRF 보호 활성화 (보안) ──────────────────────────────────
+# enableCORS 는 명시하지 않음 — enableXsrfProtection=true 와 충돌하여 경고 발생
+enableXsrfProtection = true
+
+# ── 정적 파일 서빙 활성화 ────────────────────────────────────
+# ./static/ 폴더의 파일을 /app/static/ 경로로 서빙
+# 예) static/dept_guides/병동.html → /app/static/dept_guides/병동.html
+# Streamlit 1.18+ 필요 (현재: 1.56.0)
+enableStaticServing = false
+
+[browser]
+# ── 사용 통계 수집 비활성화 (보안·개인정보) ──────────────────
+gatherUsageStats = false
+
+# ── 서버 주소 (클라이언트에 노출되는 주소) ───────────────────
+serverAddress = "localhost"
+
+[runner]
+# ── 빠른 리런 활성화 (위젯 인터랙션 응답성 향상) ─────────────
+fastReruns = true
+
+# ── 매직 커맨드 비활성화 (파싱 오버헤드 제거) ────────────────
+magicEnabled = false
+
+[theme]
+# ── 병원 내부 시스템 테마 ────────────────────────────────────
+base = "light"
+primaryColor = "#1E40AF"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+font = "sans serif"
+
+[logger]
+level = "warning"
+messageFormat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

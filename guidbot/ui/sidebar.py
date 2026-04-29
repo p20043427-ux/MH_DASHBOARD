@@ -278,10 +278,9 @@ def _render_shortcuts() -> None:
     _note = st.session_state["shortcut_note"]
 
     # ── 회람 문서 버튼 (sb-link-btn — 검색 모드 버튼과 동일 스타일) ──
-    _DOCS_URL = (
-        "https://docs.google.com/document/d/"
-        "1WW05jXoSw65WY2vZYkqTxPSBWrv9anvSknWDGWZlj_k/edit"
-    )
+    _DOCS_URL = settings.docs_url
+    if not _DOCS_URL:
+        _DOCS_URL = "https://docs.google.com/document/d/1WW05jXoSw65WY2vZYkqTxPSBWrv9anvSknWDGWZlj_k/edit"
     st.markdown(
         f'<a href="{_DOCS_URL}" target="_blank" rel="noopener" class="sb-link-btn">'
         f'<div style="display:flex;align-items:center;gap:4px;">'
