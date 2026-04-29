@@ -473,20 +473,20 @@ def _render_mini_sidebar() -> str:
             unsafe_allow_html=True,
         )
         _dept_docs = [
-            {"icon": "🏥", "name": "병동",       "url": settings.dept_doc_ward},
-            {"icon": "🚨", "name": "응급실",      "url": settings.dept_doc_er},
-            {"icon": "💊", "name": "중환자실",    "url": settings.dept_doc_icu},
-            {"icon": "👶", "name": "분만실",      "url": settings.dept_doc_delivery},
-            {"icon": "🍼", "name": "NICU",         "url": settings.dept_doc_nicu},
-            {"icon": "🔪", "name": "수술실",      "url": settings.dept_doc_or},
-            {"icon": "👩‍⚕️", "name": "간호부",   "url": settings.dept_doc_nursing},
-            {"icon": "💰", "name": "원무과",      "url": settings.dept_doc_admin},
-            {"icon": "🩺", "name": "진료부",      "url": settings.dept_doc_medical},
-            {"icon": "🔬", "name": "검사실",      "url": settings.dept_doc_lab},
-            {"icon": "🩻", "name": "영상의학과",  "url": settings.dept_doc_radiology},
-            {"icon": "💉", "name": "약제부",      "url": settings.dept_doc_pharmacy},
-            {"icon": "🦽", "name": "재활치료실",  "url": settings.dept_doc_rehab},
-            {"icon": "🤝", "name": "사회사업팀",  "url": settings.dept_doc_social},
+            {"icon": "🏥", "name": "병동", "url": settings.dept_doc_ward},
+            {"icon": "🚨", "name": "응급실", "url": settings.dept_doc_er},
+            {"icon": "💊", "name": "중환자실", "url": settings.dept_doc_icu},
+            {"icon": "👶", "name": "분만실", "url": settings.dept_doc_delivery},
+            {"icon": "🍼", "name": "NICU", "url": settings.dept_doc_nicu},
+            {"icon": "🔪", "name": "수술실", "url": settings.dept_doc_or},
+            {"icon": "👩‍⚕️", "name": "간호부", "url": settings.dept_doc_nursing},
+            {"icon": "💰", "name": "원무과", "url": settings.dept_doc_admin},
+            {"icon": "🩺", "name": "진료부", "url": settings.dept_doc_medical},
+            {"icon": "🔬", "name": "검사실", "url": settings.dept_doc_lab},
+            {"icon": "🩻", "name": "영상의학과", "url": settings.dept_doc_radiology},
+            {"icon": "💉", "name": "약제부", "url": settings.dept_doc_pharmacy},
+            {"icon": "🦽", "name": "재활치료실", "url": settings.dept_doc_rehab},
+            {"icon": "🤝", "name": "사회사업팀", "url": settings.dept_doc_social},
         ]
         # URL 미설정 부서는 숨김
         _dept_docs = [d for d in _dept_docs if d["url"]]
@@ -494,7 +494,7 @@ def _render_mini_sidebar() -> str:
         _doc_rows = ""
         for _entry in _dept_docs:
             _ico = _entry.get("icon", "📄")
-            _nm  = _entry.get("name", "")
+            _nm = _entry.get("name", "")
             _url = _entry.get("url", "#")
             _doc_rows += (
                 f'<a href="{_url}" target="_blank" style="'
