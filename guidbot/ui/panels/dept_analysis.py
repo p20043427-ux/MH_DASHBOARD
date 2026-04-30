@@ -51,6 +51,8 @@ from collections import defaultdict
 
 import streamlit as st
 
+from utils.type_helpers import safe_int as _safe_int
+
 from ui.panels._shared import (
     C, HAS_PLOTLY, go, logger,
     _kpi_card, _sec_hd, _gap, _PALETTE, _PLOTLY_LAYOUT,
@@ -80,11 +82,7 @@ def _fmt_ym(ym: str) -> str:
     return f"{ym[:4]}년 {ym[4:6]}월" if len(ym) >= 6 else ym
 
 
-def _safe_int(v) -> int:
-    try:
-        return int(v or 0)
-    except Exception:
-        return 0
+# _safe_int: utils.type_helpers 에서 import (위에서 import)
 
 
 def _strip_region(r: str) -> str:

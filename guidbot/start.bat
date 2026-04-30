@@ -209,10 +209,10 @@ echo  ✅ 벡터DB 관리자 시작: http://localhost:8505  (이 PC에서만 접
 
 REM ---------------------------------------------------------
 REM  관리자 대시보드 (포트 8504) -- 별도 창 백그라운드 실행
-REM  로그: logsdmin_YYYYMMDD.log
+REM  로그: logs\admin_YYYYMMDD.log
 REM  보안: 127.0.0.1 전용 (이 PC에서만 접근 가능)
 REM ---------------------------------------------------------
-set ADMIN_LOG=logsdmin_%date:~0,4%%date:~5,2%%date:~8,2%.log
+set ADMIN_LOG=logs\admin_%date:~0,4%%date:~5,2%%date:~8,2%.log
 
 start "관리자 대시보드 (8504)" /min cmd /c ^
     "streamlit run admin_app.py ^

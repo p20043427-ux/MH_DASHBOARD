@@ -33,6 +33,7 @@ from sqlalchemy import text
 from config.settings import settings
 from db.connector import get_db_connector
 from utils.logger import get_logger
+from utils.type_helpers import safe_int as _safe_int
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
@@ -117,35 +118,7 @@ ORDER BY t.name, c.column_id
 #  유틸리티 함수
 # ──────────────────────────────────────────────────────────────────────
 
-def _safe_int(value: Any, default: int = 0) -> int:
-    """
-    DB 쿼리 결과의 숫자 값을 안전하게 int 로 변환합니다.
-
-    [BUG#5 수정]
-    MySQL TABLE_ROWS 컬럼은 InnoDB 엔진에서 None 또는 str 로 반환될 수 있습니다.
-    이를 직접 f"{value:,}건" 포맷에 적용하면 TypeError 가 발생합니다.
-    이 함수로 안전하게 변환 후 포맷팅합니다.
-
-    Args:
-        value:   변환할 값 (None, str, int, float 등 DB 반환값 모두 처리)
-        default: 변환 불가 시 반환할 기본값
-
-    Returns:
-        정수값 또는 default
-
-    Example::
-
-        _safe_int(None)       → 0
-        _safe_int("1234")     → 1234
-        _safe_int(1234.5)     → 1234
-        _safe_int("invalid")  → 0
-    """
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
+# _safe_int: utils.type_helpers 로 이동 (위에서 import)
 
 
 # ──────────────────────────────────────────────────────────────────────

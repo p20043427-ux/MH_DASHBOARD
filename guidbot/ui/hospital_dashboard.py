@@ -1,49 +1,13 @@
 """
-ui/hospital_dashboard.py  ─  병원 현황판 대시보드 v3.0 Production
+ui/hospital_dashboard.py  ─  병동 대시보드 렌더러 (UI 전담)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[v3.0 상용 품질 개선 — 2026-03-27]
-
-  ① Circuit Breaker 패턴
-     · DB 3회 연속 실패 시 30초 차단 → 연쇄 대기 방지
-     · 30초 후 자동 Half-Open → 재시도
-
-  ② Thundering Herd 방지 (Staggered TTL)
-     · 세션별 jitter(0~TTL×10%) 추가 → 만료 시점 분산
-     · 20명 동시 접속 시 캐시 만료 폭발 방지
-
-  ③ Thread-safe 쿼리 카운터
-     · _QUERY_FAIL_COUNT Lock 보호 → Race Condition 제거
-
-  ④ Oracle 연결 체크 개선
-     · 성공: 5분 캐시 / 실패: 1분 후 자동 재체크
-     · 이전: 세션 동안 False 고정 문제 해결
-
-  ⑤ 안전한 타입 변환
-     · _safe_int / _safe_float 헬퍼 — None/빈값/오류 방어
-     · 38개 int(r.get(...) or 0) 패턴 → _safe_int() 교체
-
-  ⑥ 성별 필터 완전 수정
-     · _norm_sex() 모듈 레벨 이동 (이전: 루프 내 재정의)
-     · V_WARD_ROOM_DETAIL 단일 소스로 통일
-     · 폴백 버그 완전 제거
-
-  ⑦ LLM 스트리밍 최적화
-     · str 연결 O(n²) → list+join O(n)
-     · 시스템 프롬프트 4000자 제한
-
-  ⑧ 새로고침 개선
-     · jitter 리셋 + Oracle 만료 처리
-     · 30초 쿨다운 유지
-
-[v2.5 → v3.0 마이그레이션 노트]
-  - _QUERY_FAIL_LOCK 신규 전역 변수
-  - _QUERY_CIRCUIT_OFF 신규 전역 변수
-  - oracle_ok_expire 신규 session_state 키
-  - _ttl_jitter_{key} 신규 session_state 키 (자동 생성/삭제)
-  - _safe_int / _safe_float 신규 헬퍼 함수
-  - _norm_sex 위치: 루프 내 → 모듈 레벨
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[계층 구조 — v4.0 리팩토링 이후]
+  · DB 접근 / Circuit Breaker / TTL 캐시 → db/ward_repository.py
+  · 비즈니스 로직 / 필터 헬퍼            → services/ward_service.py
+  · UI 컴포넌트 / 스타일 / 색상          → ui/design.py
+  · 차트 렌더러                           → ui/chart_renderers.py
+  · 이 파일 (hospital_dashboard.py)       → 화면 렌더링만 담당
 
 [v2.2 차트 선택기 통합]
   ① 진료과별 재원 구성   : 도넛(기본) / 가로막대 / 트리맵
@@ -65,7 +29,6 @@ ui/hospital_dashboard.py  ─  병원 현황판 대시보드 v3.0 Production
 from __future__ import annotations
 
 import json
-import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -119,14 +82,18 @@ except Exception:
         logger.addHandler(_fh)
         logger.setLevel(_logging.DEBUG)
 
-from ui.dashboard_data import safe_int as _safe_int, safe_float as _safe_float, norm_sex as _norm_sex
-from ui.dashboard_ui import (
-    C_WARD as C,
-    WARD_CSS as _WARD_CSS,
+from db.ward_repository import _qc
+from services.ward_service import (
+    _norm_sex, _safe_int, _safe_float,
+    _filter_by_ward, _filter_dx_ward, _trend_dedup,
+)
+from ui.design import (
+    C,
+    APP_CSS as _WARD_CSS,
     ward_kpi_card as _kpi_card,
     ward_section_title as _section_title,
-    WARD_PLOTLY_BASE as _PLOTLY_BASE,
-    WARD_PALETTE as _PALETTE,
+    PLOTLY_CFG as _PLOTLY_BASE,
+    PLOTLY_PALETTE as _PALETTE,
     WARD_AX as _AX,
     ward_layout as _layout,
 )
@@ -141,160 +108,6 @@ from ui.chart_renderers import (
     _render_dx7_chart,
     _render_dx_compare_chart,
 )
-
-
-
-# ── Oracle VIEW 쿼리 딕셔너리 ────────────────────────────────────────
-QUERIES: Dict[str, str] = {
-    "ward_dept_stay":      "SELECT * FROM JAIN_WM.V_WARD_DEPT_STAY ORDER BY 재원수 DESC",
-    "ward_bed_detail":     "SELECT * FROM JAIN_WM.V_WARD_BED_DETAIL ORDER BY 병동명",
-    "ward_op_stat":        "SELECT * FROM JAIN_WM.V_WARD_OP_STAT ORDER BY 수술건수 DESC",
-    "ward_kpi_trend":      "SELECT * FROM JAIN_WM.V_WARD_KPI_TREND ORDER BY 기준일",
-    "ward_yesterday":      "SELECT * FROM JAIN_WM.V_WARD_YESTERDAY ORDER BY 병동명",
-    "ward_dx_today":       "SELECT * FROM JAIN_WM.V_WARD_DX_TODAY ORDER BY 기준일 DESC, 환자수 DESC",
-    "ward_dx_trend":       "SELECT * FROM JAIN_WM.V_WARD_DX_TREND ORDER BY 기준일, 환자수 DESC",
-    "admit_candidates":    "SELECT * FROM JAIN_WM.V_ADMIT_CANDIDATES ORDER BY 진료과명, 성별",
-    "ward_room_detail":    "SELECT * FROM JAIN_WM.V_WARD_ROOM_DETAIL ORDER BY 병동명, 병실번호",
-    "finance_kpi":         "SELECT * FROM JAIN_WM.V_FINANCE_TODAY WHERE ROWNUM = 1",
-    "finance_overdue":     "SELECT * FROM JAIN_WM.V_OVERDUE_STAT",
-    "finance_by_insurance":"SELECT * FROM JAIN_WM.V_FINANCE_BY_INS",
-    "opd_kpi":             "SELECT * FROM JAIN_WM.V_OPD_KPI WHERE ROWNUM = 1",
-    "opd_by_dept":         "SELECT * FROM JAIN_WM.V_OPD_BY_DEPT ORDER BY 환자수 DESC",
-    "opd_hourly":          "SELECT * FROM JAIN_WM.V_OPD_HOURLY_STAT ORDER BY 시간대",
-    "opd_noshow":          "SELECT * FROM JAIN_WM.V_NOSHOW_STAT WHERE ROWNUM = 1",
-}
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 쿼리 실행 + 2분 TTL 캐시
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# ── 쿼리 실패 카운터 — Thread-safe ─────────────────────────────────
-# Streamlit은 다중 스레드 → 동시 접속 시 Race Condition 방지를 위해 Lock 사용
-_QUERY_FAIL_COUNT: Dict[str, int] = {}  # 연속 실패 카운터 (Circuit Breaker용)
-_QUERY_FAIL_LOCK   = threading.Lock()
-_QUERY_CIRCUIT_OFF: Dict[str, float] = {}  # Circuit Breaker: 키 → 복구 시각
-_CIRCUIT_TIMEOUT   = 30.0  # 30초 후 자동 복구 시도
-
-
-def _query(key: str) -> List[Dict[str, Any]]:
-    """
-    Oracle 쿼리 실행 (Thread-safe + Circuit Breaker)
-
-    [Circuit Breaker 패턴]
-    · 3회 연속 실패 시 30초 동안 DB 조회 차단 → 빈 리스트 즉시 반환
-    · 30초 후 자동으로 Half-Open 상태 → 다시 시도
-    · 성공 시 카운터 초기화
-    → 효과: DB 장애 시 20명 사용자에게 연쇄 대기 없이 빈 카드만 표시
-
-    [Thread Safety]
-    · _QUERY_FAIL_COUNT 는 Lock 으로 보호
-    · Streamlit @cache_data 는 자체 Lock 보유 (이중 보호)
-    """
-    # ── Circuit Breaker: 차단 중인지 확인 ──────────────────────
-    _now = time.time()
-    _off_until = _QUERY_CIRCUIT_OFF.get(key, 0)
-    if _now < _off_until:
-        # 차단 중 — 남은 시간 로그 (1분에 1회만)
-        _rem = int(_off_until - _now)
-        if _rem % 10 == 0:
-            logger.debug(f"[Circuit OPEN] {key} — {_rem}초 후 재시도")
-        return []
-
-    _t0 = time.perf_counter()
-    try:
-        from db.oracle_client import execute_query
-        rows = execute_query(QUERIES[key])
-        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
-
-        # ── 성공: 카운터 초기화 ──────────────────────────────
-        with _QUERY_FAIL_LOCK:
-            _QUERY_FAIL_COUNT.pop(key, None)
-            _QUERY_CIRCUIT_OFF.pop(key, None)
-
-        if _elapsed_ms > 500:
-            logger.warning(f"[SLOW] {key}: {_elapsed_ms}ms")
-        return rows if rows else []
-
-    except Exception as e:
-        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
-        with _QUERY_FAIL_LOCK:
-            _QUERY_FAIL_COUNT[key] = _QUERY_FAIL_COUNT.get(key, 0) + 1
-            fail_cnt = _QUERY_FAIL_COUNT[key]
-            if fail_cnt >= 3:
-                # Circuit Breaker OPEN: 30초 차단
-                _QUERY_CIRCUIT_OFF[key] = time.time() + _CIRCUIT_TIMEOUT
-                logger.error(
-                    f"[Circuit OPEN] {key}: {fail_cnt}회 실패 → {_CIRCUIT_TIMEOUT:.0f}초 차단. "
-                    f"{type(e).__name__}: {e}"
-                )
-            else:
-                logger.warning(f"[Query FAIL] {key} ({fail_cnt}/3): {type(e).__name__}: {e}")
-        # 모니터링 로그
-        _DASH_MON.log_query_fail(key, error=f"{type(e).__name__}: {e}")
-        return []
-
-
-
-
-
-
-# 쿼리별 TTL 정책
-# 변동 빠름(KPI/입퇴원): 30초 — 실시간성 중요
-# 변동 중간(병실/예약):   60초 — 1분 이내 반영
-# 변동 느림(추이/주상병): 300초 — 5분 집계 데이터
-_TTL_MAP: Dict[str, int] = {
-    "ward_bed_detail":      30,   # KPI 핵심 — 가동률/재원수
-    "ward_op_stat":         30,   # 수술 현황
-    "ward_yesterday":       30,   # 전일 비교
-    "ward_dept_stay":       60,   # 진료과별 재원
-    "admit_candidates":     60,   # 익일 예약
-    "ward_room_detail":     60,   # 병실 상태
-    "ward_kpi_trend":      300,   # 7일 추이
-    "ward_dx_today":       300,   # 주상병
-    "ward_dx_trend":       300,   # 주상병 추이
-    "finance_kpi":         120,
-    "finance_overdue":     120,
-    "finance_by_insurance":120,
-    "opd_kpi":             120,
-    "opd_by_dept":         120,
-    "opd_hourly":          120,
-    "opd_noshow":          120,
-}
-_DEFAULT_TTL = 120
-
-@st.cache_data(show_spinner=False)
-def _query_cached_ttl(key: str, _cache_ts: int) -> List[Dict[str, Any]]:
-    """키별 TTL 캐시. _cache_ts = int(time.time() / ttl) 로 버킷 분할."""
-    return _query(key)
-
-
-def _qc(key: str) -> List[Dict[str, Any]]:
-    """
-    키별 TTL 캐시 래퍼 — Thundering Herd 방지 포함
-
-    [Thundering Herd 문제]
-    bucket = int(time.time() / ttl) 방식은 TTL 경계에서
-    모든 세션이 동시에 캐시 만료 → 20명이 동시에 DB 조회
-
-    [해결: Staggered TTL]
-    세션별 고유 jitter(0 ~ ttl*0.1)를 현재 시각에 빼서
-    버킷 경계를 세션마다 다르게 만듦 → 만료 시점 분산
-    jitter는 session_state에 저장 → 세션 내 일관성 유지
-    """
-    ttl = _TTL_MAP.get(key, _DEFAULT_TTL)
-    # 세션별 jitter: 0 ~ ttl*10% 범위, 세션당 1회 생성하여 고정
-    _jitter_key = f"_ttl_jitter_{key}"
-    if _jitter_key not in st.session_state:
-        import random as _r
-        st.session_state[_jitter_key] = _r.uniform(0, ttl * 0.10)
-    jitter = st.session_state[_jitter_key]
-    # jitter 만큼 시각을 뒤로 밀어 버킷 경계 분산
-    bucket = int((time.time() - jitter) / ttl)
-    return _query_cached_ttl(key, bucket)
-
-
-# ── UI 공용 컴포넌트 ─────────────────────────────────────────────────
-
 
 
 
@@ -357,40 +170,6 @@ def _render_ward() -> None:
     })
     st.session_state["ward_name_list"] = _all_wards
     _g_ward = st.session_state.get("ward_selected", "전체")
-
-    # ── 필터 헬퍼 ────────────────────────────────────────────────────
-    def _trend_dedup(data):
-        seen = {}
-        if not data:
-            return []
-        for r in data:
-            dt = r.get("기준일", "")
-            if dt not in seen:
-                seen[dt] = r
-            elif r.get("병동명", "") == "전체":
-                seen[dt] = r
-        return [seen[k] for k in sorted(seen)]
-
-    def _filter_by_ward(data: List[Dict], ward: str, ward_col: str = "병동명") -> List[Dict]:
-        if ward == "전체":
-            return data
-        return [r for r in data if r.get(ward_col, "") == ward]
-
-    def _filter_dx_ward(data: List[Dict], ward: str) -> List[Dict]:
-        if ward == "전체":
-            total_rows = [r for r in data if r.get("병동명", "") == "전체"]
-            if total_rows:
-                return total_rows
-            from collections import defaultdict
-            agg: dict = defaultdict(lambda: defaultdict(int))
-            for r in data:
-                k = (r.get("기준일", ""), r.get("주상병코드", ""), r.get("주상병명", ""))
-                agg[k]["환자수"] += _safe_int(r.get("환자수"))
-            return [
-                {"기준일": k[0], "병동명": "전체", "주상병코드": k[1], "주상병명": k[2], "환자수": v["환자수"]}
-                for k, v in agg.items()
-            ]
-        return [r for r in data if r.get("병동명", "") == ward]
 
     # ── 필터 적용 ─────────────────────────────────────────────────────
     if _g_ward != "전체":

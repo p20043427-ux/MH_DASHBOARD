@@ -1,17 +1,25 @@
 """
-ui/design.py — 좋은문화병원 대시보드 디자인 시스템 (v1.0)
+ui/design.py — 좋은문화병원 대시보드 디자인 시스템 (v2.0)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Single source of truth.
-모든 대시보드 UI는 이 파일에서 색상·CSS·컴포넌트를 임포트한다.
+Single source of truth for dashboard UI.
+
+[v2.0 변경]
+  · theme.py(UITheme) 를 re-export → 챗봇/대시보드 모두 이 파일 하나로 임포트 가능
+  · 기존 'from ui.theme import UITheme' 를 쓰던 곳은 'from ui.design import UITheme' 로
+    교체할 수 있음 (하위 호환 별칭 제공)
 
 [임포트 방법]
     from ui.design import C, APP_CSS, PLOTLY_CFG
     from ui.design import kpi_card, section_header, gap, badge_html
+    from ui.design import UITheme   # theme.py 하위 호환 별칭
 """
 
 from __future__ import annotations
 from typing import Optional
 import streamlit as st
+
+# theme.py 하위 호환 re-export (단일 임포트 포인트)
+from ui.theme import UITheme
 
 # ════════════════════════════════════════════════════════════════════
 # 1. 색상 팔레트 — 단일 C 딕셔너리
@@ -389,3 +397,73 @@ def fmt_won(n: int) -> str:
     if n >= 10_000:
         return f"{n // 10_000:,}만"
     return f"{n:,}"
+
+
+# ════════════════════════════════════════════════════════════════════
+# 병동 대시보드 전용 — chart_renderers / hospital_dashboard 공용
+# ════════════════════════════════════════════════════════════════════
+
+WARD_AX: dict = dict(gridcolor="#F1F5F9", linecolor="#E2E8F0", zeroline=False)
+
+
+def ward_layout(fig, **kwargs):
+    """병동 Plotly Figure 레이아웃 적용."""
+    fig.update_layout(**{**PLOTLY_CFG, **kwargs})
+    return fig
+
+
+def ward_kpi_card(
+    label: str,
+    value: str,
+    unit: str,
+    sub: str,
+    color: str,
+    col_obj=None,
+    delta: str = "",
+    bar_pct: float = 0,
+) -> None:
+    """병동 KPI 카드 (fn-kpi 스타일)."""
+    tgt = col_obj if col_obj else st
+    _delta_html = ""
+    if delta:
+        _dc = C["green"] if "▲" in delta else C["red"] if "▼" in delta else C["t4"]
+        _delta_html = (
+            f'<span style="font-size:13px;font-weight:700;color:{_dc};">{delta}</span>'
+        )
+    _bar_html = (
+        f'<div class="goal-bar-wrap">'
+        f'<div class="goal-bar-fill" style="width:{min(100, bar_pct):.1f}%;background:{color};"></div>'
+        f'</div>'
+        if bar_pct > 0
+        else '<div style="height:3px;margin:4px 0 3px;"></div>'
+    )
+    tgt.markdown(
+        f'<div class="fn-kpi" style="border-top:3px solid {color};">'
+        f'<div class="fn-kpi-label">{label}</div>'
+        f'<div style="display:flex;align-items:baseline;gap:3px;margin-bottom:2px;">'
+        f'<span class="fn-kpi-value" style="color:{color};">{value}</span>'
+        f'<span class="fn-kpi-unit">{unit}</span>'
+        f'</div>'
+        f'{_bar_html}'
+        f'<div style="display:flex;justify-content:space-between;">'
+        f'<span class="fn-kpi-sub">{sub}</span>'
+        f'{_delta_html}'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def ward_section_title(title: str, badge: str = "") -> None:
+    """병동 섹션 제목."""
+    badge_str = (
+        f'<span style="font-size:10px;background:{C["sky_l"]};color:{C["sky"]};'
+        f'border:1px solid rgba(56,189,248,0.3);border-radius:3px;'
+        f'padding:1px 7px;font-weight:600;margin-left:8px;">{badge}</span>'
+        if badge else ""
+    )
+    st.markdown(
+        f'<div style="font-size:11px;font-weight:700;color:{C["t2"]};'
+        f'text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px;">'
+        f'{title}{badge_str}</div>',
+        unsafe_allow_html=True,
+    )

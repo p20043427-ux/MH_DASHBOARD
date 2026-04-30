@@ -26,6 +26,10 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
+from utils.type_helpers import safe_int as _th_safe_int
+from utils.type_helpers import safe_float as _th_safe_float
+from utils.type_helpers import norm_sex as _th_norm_sex
+
 
 class WardService:
     """
@@ -41,42 +45,18 @@ class WardService:
 
     @staticmethod
     def norm_sex(val: Any) -> str:
-        """
-        DB 성별 값을 정규화한다.
-
-        기존 hospital_dashboard.py 의 _norm_sex() 를 이동.
-
-        DB 값: '여'/'남' (한글) 또는 'F'/'M' (영문)
-        반환: 'F' (여성) / 'M' (남성) / '' (미상)
-        """
-        v = str(val).strip()
-        if v in ("F", "f", "여"):
-            return "F"
-        if v in ("M", "m", "남"):
-            return "M"
-        return ""
+        """DB 성별 값을 'F'/'M' 으로 정규화. → utils.type_helpers 위임."""
+        return _th_norm_sex(val)
 
     @staticmethod
     def safe_int(val: Any, default: int = 0) -> int:
-        """
-        None/빈문자열/오류에 안전한 int 변환.
-        기존 _safe_int() 를 이동.
-        """
-        try:
-            return int(val or default)
-        except (ValueError, TypeError):
-            return default
+        """None/빈값 안전한 int 변환. → utils.type_helpers 위임."""
+        return _th_safe_int(val, default)
 
     @staticmethod
     def safe_float(val: Any, default: float = 0.0) -> float:
-        """
-        None/빈문자열/오류에 안전한 float 변환.
-        기존 _safe_float() 를 이동.
-        """
-        try:
-            return float(val or default)
-        except (ValueError, TypeError):
-            return default
+        """None/빈값 안전한 float 변환. → utils.type_helpers 위임."""
+        return _th_safe_float(val, default)
 
     @staticmethod
     def safe_str(val: Any, default: str = "─") -> str:
