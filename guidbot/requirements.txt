@@ -64,6 +64,11 @@ scikit-learn>=1.4.0           # 코사인 유사도·정규화 (sentence-transfo
 # torch: sentence-transformers 의존. CPU 버전 기본 설치.
 # CUDA 환경은 상단 주석 참고.
 torch>=2.3.0                  # 임베딩 모델 실행 (CPU/GPU)
+# torchvision: transformers 5.x 이미지 프로세서 모듈이 torchvision을
+#   lazy import하여 미설치 시 Streamlit watcher가 WARNING을 수십 개 출력.
+#   이 프로젝트는 비전 모델을 사용하지 않지만 의존성 충족을 위해 설치.
+#   CPU 전용 설치: pip install torchvision --index-url https://download.pytorch.org/whl/cpu
+torchvision                   # transformers 5.x 이미지 프로세서 lazy import 의존성
 numpy>=1.26.0                 # 벡터 연산, FAISS 인터페이스
 
 

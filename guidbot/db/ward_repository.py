@@ -23,6 +23,7 @@ db/ward_repository.py  ─  병동 대시보드 Oracle 데이터 접근 계층
 
 from __future__ import annotations
 
+import random
 import threading
 import time
 from typing import Any, Dict, List
@@ -200,16 +201,54 @@ class WardRepository:
 ward_repo = WardRepository()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 하위 호환 래퍼 함수
-# hospital_dashboard.py 에서 _query(), _qc() 를 그대로 호출하는
-# 코드가 있으면 아래 함수로 한 줄씩 교체할 수 있음.
+# 쿼리별 TTL 정책 (hospital_dashboard.py 에서 이동)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_TTL_MAP: Dict[str, int] = {
+    "ward_bed_detail":       30,   # KPI 핵심 — 가동률/재원수
+    "ward_op_stat":          30,   # 수술 현황
+    "ward_yesterday":        30,   # 전일 비교
+    "ward_dept_stay":        60,   # 진료과별 재원
+    "admit_candidates":      60,   # 익일 예약
+    "ward_room_detail":      60,   # 병실 상태
+    "ward_kpi_trend":       300,   # 7일 추이
+    "ward_dx_today":        300,   # 주상병
+    "ward_dx_trend":        300,   # 주상병 추이
+    "finance_kpi":          120,
+    "finance_overdue":      120,
+    "finance_by_insurance": 120,
+    "opd_kpi":              120,
+    "opd_by_dept":          120,
+    "opd_hourly":           120,
+    "opd_noshow":           120,
+}
+_DEFAULT_TTL = 120
 
-def _query(key: str) -> List[Dict[str, Any]]:
-    """hospital_dashboard.py 하위 호환용 래퍼."""
+
+@st.cache_data(show_spinner=False)
+def _query_cached_ttl(key: str, _bucket: int) -> List[Dict[str, Any]]:
+    """키별 TTL 버킷 캐시. _bucket = int((time - jitter) / ttl) 로 분산."""
     return ward_repo.query(key)
 
 
-def _qc(key: str, ttl: int = 120) -> List[Dict[str, Any]]:
-    """hospital_dashboard.py 하위 호환용 캐시 래퍼."""
-    return ward_repo.get(key, ttl)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 하위 호환 래퍼 함수 — hospital_dashboard.py 에서 import 사용
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _query(key: str) -> List[Dict[str, Any]]:
+    """Circuit Breaker 보호 쿼리 실행."""
+    return ward_repo.query(key)
+
+
+def _qc(key: str) -> List[Dict[str, Any]]:
+    """
+    키별 TTL 캐시 래퍼 — Thundering Herd 방지 포함.
+
+    세션별 jitter(0 ~ ttl×10%)를 session_state에 저장하여
+    캐시 만료 시점을 분산시킨다 (20명 동시 접속 대응).
+    """
+    ttl = _TTL_MAP.get(key, _DEFAULT_TTL)
+    _jitter_key = f"_ttl_jitter_{key}"
+    if _jitter_key not in st.session_state:
+        st.session_state[_jitter_key] = random.uniform(0, ttl * 0.10)
+    bucket = int((time.time() - st.session_state[_jitter_key]) / ttl)
+    return _query_cached_ttl(key, bucket)

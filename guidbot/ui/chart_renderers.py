@@ -17,9 +17,9 @@ except ImportError:
     HAS_PLOTLY = False
 
 from ui.dashboard_data import safe_int as _safe_int, safe_float as _safe_float
-from ui.dashboard_ui import (
-    C_WARD as C,
-    WARD_PALETTE as _PALETTE,
+from ui.design import (
+    C,
+    PLOTLY_PALETTE as _PALETTE,
     WARD_AX as _AX,
     ward_layout as _layout,
 )

@@ -79,7 +79,8 @@
       "Bash(python -m pip list --format=columns)",
       "Bash(.venv/Scripts/python.exe -c \"import google.genai; print\\('google.genai OK, version:', google.genai.__version__\\)\")",
       "Bash(D:/MH/guidbot/venv/Scripts/pip.exe list *)",
-      "Bash(D:/MH/guidbot/venv/Scripts/pip.exe show *)"
+      "Bash(D:/MH/guidbot/venv/Scripts/pip.exe show *)",
+      "Bash(xargs wc *)"
     ]
   }
 }

@@ -16,8 +16,13 @@ address = "0.0.0.0"
 # ── 서버 모드 (브라우저 자동 실행 안 함) ─────────────────────
 headless = true
 
-# ── 파일 변경 감지 비활성화 (운영 환경 — CPU 절약) ───────────
+# ── 파일 변경 감지 완전 비활성화 ─────────────────────────────
+# 운영 환경: hot-reload 불필요 + CPU 절약
+# fileWatcherType = "none" 으로 설정해야 Streamlit watcher가
+# sys.modules를 스캔하지 않음 → transformers 이미지 모듈 lazy
+# import 유발 차단 (torchvision 미설치 환경의 WARNING 폭발 방지)
 runOnSave = false
+fileWatcherType = "none"
 
 # ── 업로드/메시지 크기 제한 ──────────────────────────────────
 maxUploadSize = 200
