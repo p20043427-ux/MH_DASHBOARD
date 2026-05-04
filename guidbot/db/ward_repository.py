@@ -35,11 +35,13 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
+_SC: str = (settings.oracle_schema or "JAIN_WM").upper()
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Oracle VIEW 쿼리 딕셔너리
 # 기존 hospital_dashboard.py 의 QUERIES 딕셔너리를 그대로 이동
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-QUERIES: Dict[str, str] = {
+_QUERIES_TPL: Dict[str, str] = {
     # ── 병동 현황 ──────────────────────────────────────────────────
     "ward_dept_stay":       "SELECT * FROM JAIN_WM.V_WARD_DEPT_STAY ORDER BY 재원수 DESC",
     "ward_bed_detail":      "SELECT * FROM JAIN_WM.V_WARD_BED_DETAIL ORDER BY 병동명",
@@ -63,6 +65,7 @@ QUERIES: Dict[str, str] = {
     "nursing_high_risk":    "SELECT * FROM JAIN_WM.V_WARD_HIGH_RISK ORDER BY 합계 DESC",
     "nursing_incident":     "SELECT * FROM JAIN_WM.V_WARD_INCIDENT ORDER BY 발생일시 DESC",
 }
+QUERIES: Dict[str, str] = {k: v.replace("JAIN_WM", _SC) for k, v in _QUERIES_TPL.items()}
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Circuit Breaker 상태 (Thread-safe)

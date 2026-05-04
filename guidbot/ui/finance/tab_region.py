@@ -20,7 +20,9 @@ try:
     from utils.logger import get_logger as _gl
     from config.settings import settings as _s
     logger = _gl(__name__, log_dir=_s.log_dir)
+    _SC = (_s.oracle_schema or "JAIN_WM").upper()
 except Exception:
+    _SC = "JAIN_WM"
     import logging as _l
     logger = _l.getLogger(__name__)
     if not logger.handlers:
@@ -421,17 +423,17 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             try:
                 from db.oracle_client import execute_query as _eq
                 _rd = _eq(
-                    "SELECT 기준일자, 진료과명, 지역, 환자수 "
-                    "FROM JAIN_WM.V_REGION_DEPT_DAILY "
+                    f"SELECT 기준일자, 진료과명, 지역, 환자수 "
+                    f"FROM {_SC}.V_REGION_DEPT_DAILY "
                     f"WHERE 기준일자 LIKE '{_sel_ym}%' "
                     f"   OR 기준일자 LIKE '{_prev_ym}%' "
-                    "ORDER BY 기준일자 DESC, 진료과명, 환자수 DESC",
+                    f"ORDER BY 기준일자 DESC, 진료과명, 환자수 DESC",
                     max_rows=100000,
                 ) or []
                 _rm = _eq(
-                    "SELECT 기준월, 진료과명, 지역, 환자수 "
-                    "FROM JAIN_WM.V_REGION_DEPT_MONTHLY "
-                    "ORDER BY 기준월 DESC, 진료과명, 환자수 DESC",
+                    f"SELECT 기준월, 진료과명, 지역, 환자수 "
+                    f"FROM {_SC}.V_REGION_DEPT_MONTHLY "
+                    f"ORDER BY 기준월 DESC, 진료과명, 환자수 DESC",
                     max_rows=100000,
                 ) or []
                 st.session_state[_SESS_D]  = _rd

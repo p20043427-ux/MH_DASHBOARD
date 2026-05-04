@@ -340,10 +340,11 @@ def add_example_query(
         True = 성공
 
     Example::
+        _sc = (settings.oracle_schema or "JAIN_WM").upper()
         add_example_query(
             intent="현재 입원 환자 수",
-            sql="SELECT COUNT(*) FROM (SELECT * FROM JAIN_WM.OMTIDN02 "
-                "WHERE OMT02USEFLAG='Y') WHERE ROWNUM <= 1",
+            sql=f"SELECT COUNT(*) FROM (SELECT * FROM {_sc}.OMTIDN02 "
+                f"WHERE OMT02USEFLAG='Y') WHERE ROWNUM <= 1",
             table="OMTIDN02",
         )
     """

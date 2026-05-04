@@ -1371,13 +1371,25 @@ def _sidebar(cms: "CMSService", vec) -> None:
 - 청크 수정 후 재인덱싱 필요
             """)
         st.divider()
-        st.markdown(
-            "**🔗 바로가기**\n\n"
-            "[💬 챗봇 (8502)](http://localhost:8502)  \n"
-            "[🏥 대시보드 (8501)](http://localhost:8501)  \n"
-            "[💰 재무 (8503)](http://localhost:8503)  \n"
-            "[📁 구글 드라이브](https://drive.google.com/drive/folders/13hG8qM8iQsovKBI4a_3X6SjkO0UUU8sL)"
+        try:
+            from config.settings import settings as _cfg
+            _chat_url  = _cfg.chatbot_url.rstrip("/")
+            _dash_url  = _cfg.dashboard_url.rstrip("/")
+            _fin_url   = _cfg.finance_url.rstrip("/")
+            _drive_url = _cfg.gdrive_vdb_folder_url
+        except Exception:
+            _chat_url  = "http://localhost:8502"
+            _dash_url  = "http://localhost:8501"
+            _fin_url   = "http://localhost:8503"
+            _drive_url = ""
+        _links = (
+            f"**🔗 바로가기**\n\n"
+            f"[💬 챗봇]({_chat_url})  \n"
+            f"[🏥 대시보드]({_dash_url})  \n"
+            f"[💰 재무]({_fin_url})"
+            + (f"  \n[📁 구글 드라이브]({_drive_url})" if _drive_url else "")
         )
+        st.markdown(_links)
         st.divider()
         if st.button("🔄 새로고침", use_container_width=True):
             _cc(); st.rerun()

@@ -747,7 +747,8 @@ def get_oracle_client():
         def is_connected(self):
             return get_oracle_pool() is not None
 
-        def table_exists(self, table_name: str, schema: str = "JAIN_WM") -> bool:
+        def table_exists(self, table_name: str, schema: str = "") -> bool:
+            schema = (schema or settings.oracle_schema or "JAIN_WM").upper()
             try:
                 rows = execute_query(
                     "SELECT COUNT(*) AS CNT FROM ALL_TABLES "

@@ -46,11 +46,13 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
+_SC: str = (settings.oracle_schema or "JAIN_WM").upper()
+
 # ──────────────────────────────────────────────────────────────────────
 #  SELECT SQL (v1.1 — TABLE_DESC, COLUMN_DESCS 컬럼 추가)
 # ──────────────────────────────────────────────────────────────────────
 
-_SQL_LOAD_CONFIG = """
+_SQL_LOAD_CONFIG = f"""
 SELECT
     TABLE_NAME,
     SCHEMA_NAME,
@@ -60,13 +62,13 @@ SELECT
     DESCRIPTION,
     TABLE_DESC,
     COLUMN_DESCS
-FROM JAIN_WM.RAG_ACCESS_CONFIG
+FROM {_SC}.RAG_ACCESS_CONFIG
 WHERE IS_ACTIVE = 1
 ORDER BY TABLE_NAME
 """
 
 # v1.0 폴백 SQL (TABLE_DESC, COLUMN_DESCS 컬럼이 없는 경우)
-_SQL_LOAD_CONFIG_V10 = """
+_SQL_LOAD_CONFIG_V10 = f"""
 SELECT
     TABLE_NAME,
     SCHEMA_NAME,
@@ -74,7 +76,7 @@ SELECT
     MASK_COLUMNS,
     ALIAS,
     DESCRIPTION
-FROM JAIN_WM.RAG_ACCESS_CONFIG
+FROM {_SC}.RAG_ACCESS_CONFIG
 WHERE IS_ACTIVE = 1
 ORDER BY TABLE_NAME
 """
@@ -134,7 +136,7 @@ class TableAccessConfig:
     """
 
     table_name: str
-    schema_name: str = "JAIN_WM"
+    schema_name: str = field(default_factory=lambda: (settings.oracle_schema or "JAIN_WM").upper())
     is_active: bool = True
     mask_columns: Set[str] = field(default_factory=set)
     alias: str = ""
