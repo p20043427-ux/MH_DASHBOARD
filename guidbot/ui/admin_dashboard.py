@@ -655,6 +655,24 @@ def _tab_logs() -> None:
 #  탭 3 — 벡터DB 관리
 # ══════════════════════════════════════════════════════════════════════════
 
+def _save_env_value(key: str, value: str) -> bool:
+    """Update or add a key=value line in .env. Returns True on success."""
+    import re as _re
+    env_path = _ROOT / ".env"
+    try:
+        content = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+        pattern = rf'^{_re.escape(key)}\s*=.*$'
+        new_line = f"{key}={value}"
+        if _re.search(pattern, content, _re.MULTILINE):
+            content = _re.sub(pattern, new_line, content, flags=_re.MULTILINE)
+        else:
+            content = content.rstrip("\n") + f"\n{new_line}\n"
+        env_path.write_text(content, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
 def _load_dept_stats() -> list:
     """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다."""
     try:
@@ -766,70 +784,98 @@ def _tab_vectordb() -> None:
     st.divider()
     section_header("재구축", "G드라이브(로컬) → 작업폴더 복사 → FAISS 구축 → 마스터 병합", C["violet"])
 
-    # 현재 설정된 G드라이브 소스 경로 표시
-    _src_path = settings.rag_source_path
-    _src_ok   = _src_path.exists()
-    _src_color = C["ok"] if _src_ok else C["warn"]
-    _src_badge = badge_html("연결됨", "ok") if _src_ok else badge_html("경로 없음", "warn")
+    # ── G드라이브 경로 입력 + .env 저장 ────────────────────────────────────
+    _sp1, _sp2 = st.columns([6, 1], gap="small", vertical_alignment="bottom")
+    with _sp1:
+        _src_input = st.text_input(
+            "G드라이브 규정집 경로",
+            value=st.session_state.get("adm_src_saved", str(settings.rag_source_path)),
+            key="adm_src_path_input",
+            placeholder=r"예: G:\공유 드라이브\좋은문화병원_DATA\규정집",
+        )
+    with _sp2:
+        if st.button(".env 저장", key="adm_src_save", use_container_width=True,
+                     help="입력 경로를 .env 의 RAG_SOURCE_PATH 에 저장합니다. 앱 재시작 시 반영됩니다."):
+            if _save_env_value("RAG_SOURCE_PATH", _src_input.strip()):
+                st.session_state["adm_src_saved"] = _src_input.strip()
+                st.success("저장 완료 — 앱 재시작 시 반영됩니다.")
+            else:
+                st.error(".env 저장 실패")
+
+    _src_p  = Path(_src_input.strip()) if _src_input.strip() else settings.rag_source_path
+    _src_ok = _src_p.exists()
+    _sc     = C["ok"] if _src_ok else C["warn"]
+    _sb     = badge_html("연결됨", "ok") if _src_ok else badge_html("경로 없음", "warn")
     _html(
-        f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-left:3px solid {_src_color};'
-        f'border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;">'
-        f'<span style="color:#64748B;">G드라이브(로컬) 소스 경로</span>&nbsp;&nbsp;'
-        f'<code style="color:#0F172A;font-size:11px;">{_src_path}</code>&nbsp;&nbsp;'
-        f'{_src_badge}'
-        f'<span style="color:#94A3B8;margin-left:12px;">· .env 의 RAG_SOURCE_PATH 로 변경</span>'
+        f'<div style="font-size:11px;color:#64748B;margin:-6px 0 10px;">'
+        f'{_sb}&nbsp;'
+        f'<code style="font-size:11px;color:#334155;">{_src_p}</code>'
         f'</div>'
     )
+
+    # 동적 부서 목록 — 입력 경로에서 실시간 읽기
+    if _src_ok:
+        _live_depts = sorted(
+            d.name for d in _src_p.iterdir()
+            if d.is_dir() and not d.name.startswith(".")
+        )
+        if list(_src_p.glob("*.pdf")):
+            _live_depts = ["_공통(루트)"] + _live_depts
+    else:
+        _live_depts = dept_list  # G드라이브 미연결 시 로컬 캐시 폴백
+
     _html('<div class="adm-warn">⚠️ 재구축은 부서당 2~10분 소요됩니다. 실행 중 챗봇 응답이 느려질 수 있습니다.</div>')
 
-    # 부서 선택 + 재구축 (한 행)
+    # ── 부서 선택 + 재구축 (한 행) ─────────────────────────────────────────
     c1, c2, c3 = st.columns([4, 2, 2], gap="small", vertical_alignment="bottom")
     with c1:
         sel_dept = st.selectbox(
             "재구축할 부서 선택",
-            ["선택하세요..."] + dept_list,
+            ["선택하세요..."] + _live_depts,
             key="adm_dept_sel",
             label_visibility="collapsed",
         )
     with c2:
-        do_sync = st.checkbox("G드라이브→작업폴더 복사", value=_src_ok, key="adm_dept_sync",
-                              help=f"체크 시 '{_src_path}' 에서 PDF를 data_rag_working/ 으로 복사한 뒤 구축합니다.")
+        do_sync = st.checkbox(
+            "G드라이브→작업폴더 복사", value=_src_ok, key="adm_dept_sync",
+            help="체크 시 지정 경로에서 PDF를 data_rag_working/ 으로 복사한 뒤 구축합니다.",
+        )
     with c3:
         btn_dept = st.button(
-            "선택 부서 재구축",
-            key="adm_rb_dept_one",
-            use_container_width=True,
-            type="primary",
+            "선택 부서 재구축", key="adm_rb_dept_one",
+            use_container_width=True, type="primary",
             disabled=(sel_dept == "선택하세요..."),
         )
 
     if btn_dept and sel_dept != "선택하세요...":
-        with st.spinner(f"{sel_dept} 재구축 중... (동기화 → 임베딩 → 마스터 병합)"):
-            ok, msg = _run_dept_rebuild(sel_dept, sync=do_sync)
+        with st.spinner(f"{sel_dept} 재구축 중... (복사 → 임베딩 → 마스터 병합)"):
+            import core.dept_vector_store as _dvs_mod
+            _orig_src = _dvs_mod._SRC_ROOT
+            try:
+                _dvs_mod._SRC_ROOT = _src_p
+                ok, msg = _run_dept_rebuild(sel_dept, sync=do_sync)
+            finally:
+                _dvs_mod._SRC_ROOT = _orig_src
         (st.success if ok else st.error)(msg)
 
-    # 전체 작업 — 2×2 버튼 그리드
+    # ── 전체 작업 — 1행 4열 ────────────────────────────────────────────────
     gap(8)
-    bc1, bc2 = st.columns(2, gap="small")
+    bc1, bc2, bc3, bc4 = st.columns(4, gap="small")
     with bc1:
-        if st.button("전체 부서 재구축 + 마스터 병합", key="adm_rb_all_dept",
-                     use_container_width=True):
+        if st.button("전체 부서 재구축", key="adm_rb_all_dept", use_container_width=True,
+                     help="모든 부서 복사 → FAISS 구축 → 마스터 병합"):
             with st.spinner("전체 부서 재구축 중..."):
-                ok, msg = _run_all_dept_rebuild(sync=do_sync)
-            (st.success if ok else st.error)(msg)
-        gap(4)
-        if st.button("스키마 재구축 (schema_db)", key="adm_rb_schema2",
-                     use_container_width=True):
-            with st.spinner("스키마 재구축 중..."):
+                import core.dept_vector_store as _dvs_mod2
+                _orig2 = _dvs_mod2._SRC_ROOT
                 try:
-                    from db.schema_vector_store import rebuild_schema_index
-                    rebuild_schema_index()
-                    st.success("스키마 인덱스 완료")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+                    _dvs_mod2._SRC_ROOT = _src_p
+                    ok, msg = _run_all_dept_rebuild(sync=do_sync)
+                finally:
+                    _dvs_mod2._SRC_ROOT = _orig2
+            (st.success if ok else st.error)(msg)
     with bc2:
-        if st.button("마스터 병합만 (재구축 없이)", key="adm_merge_only",
-                     use_container_width=True):
+        if st.button("마스터 병합", key="adm_merge_only", use_container_width=True,
+                     help="부서 인덱스를 재구축 없이 마스터로 병합"):
             with st.spinner("마스터 병합 중..."):
                 try:
                     from core.dept_vector_store import DeptVectorStoreManager
@@ -840,10 +886,20 @@ def _tab_vectordb() -> None:
                         st.error(f"병합 실패: {mg.error}")
                 except Exception as e:
                     st.error(f"오류: {e}")
-        gap(4)
-        if st.button("전체 통합 재구축 (build_db.py)", key="adm_rb_full",
-                     use_container_width=True):
-            with st.spinner("전체 재구축 중 (G드라이브→임베딩→FAISS, 10~20분)..."):
+    with bc3:
+        if st.button("스키마 재구축", key="adm_rb_schema2", use_container_width=True,
+                     help="Oracle DB 스키마 FAISS 인덱스 재구축"):
+            with st.spinner("스키마 재구축 중..."):
+                try:
+                    from db.schema_vector_store import rebuild_schema_index
+                    rebuild_schema_index()
+                    st.success("스키마 인덱스 완료")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+    with bc4:
+        if st.button("전체 통합 재구축", key="adm_rb_full", use_container_width=True,
+                     help="build_db.py 실행 — 규정집+DB명세서+스키마 (10~20분)"):
+            with st.spinner("전체 재구축 중 (10~20분)..."):
                 try:
                     import subprocess, sys
                     _cmd = [sys.executable, str(_ROOT / "build_db.py")]
@@ -861,7 +917,7 @@ def _tab_vectordb() -> None:
                 except Exception as e:
                     st.error(f"오류: {e}")
     _html('<div style="font-size:11px;color:#94A3B8;margin-top:6px;">'
-          '※ 전체 통합 재구축: 규정집+DB명세서+스키마 모두 포함 / 부서별·스키마 재구축: 각 항목만</div>')
+          '※ 전체 통합: 규정집+DB명세서+스키마 / 전체 부서·스키마: 각 항목만</div>')
 
     # ══════════════════════════════════════════════════════════════════════
     # 섹션 3 — 백업 / 복구
