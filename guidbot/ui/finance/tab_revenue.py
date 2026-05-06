@@ -88,7 +88,7 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
                 legend=dict(orientation="v",x=1.02,y=0.5,font=dict(size=11),bgcolor="rgba(0,0,0,0)"),
                 annotations=[dict(text=f"<b>{_fmt_won(_tot_amt)}</b>",x=0.5,y=0.5,
                     font=dict(size=13,color=C["t1"]),showarrow=False)])
-            st.plotly_chart(_fig, use_container_width=True, key="rev_pie")
+            st.plotly_chart(_fig, width="stretch", key="rev_pie")
             _TH3 = "padding:7px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748B;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC;"
             _t3 = (
                 '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;">'
@@ -138,7 +138,7 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
             _fig2.update_yaxes(tickformat=",",title_text="수납금액(만원)",title_font=dict(size=10,color=C["t3"]))
             _fig2.update_layout(yaxis2=dict(overlaying="y",side="right",showgrid=False,
                 tickfont=dict(size=10,color=C["indigo"]),title=dict(text="건수",font=dict(size=10,color=C["indigo"]))))
-            st.plotly_chart(_fig2, use_container_width=True, key="rev_trend")
+            st.plotly_chart(_fig2, width="stretch", key="rev_trend")
         else:
             _plotly_empty()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -162,7 +162,7 @@ def _tab_revenue(finance_today, finance_trend, finance_by_dept, overdue_stat):
                 margin=dict(l=0,r=60,t=4,b=4),showlegend=False,bargap=0.3)
             _fig3.update_xaxes(ticksuffix="만")
             _fig3.update_yaxes(tickfont=dict(size=11),autorange="reversed")
-            st.plotly_chart(_fig3, use_container_width=True, key="rev_dept_bar")
+            st.plotly_chart(_fig3, width="stretch", key="rev_dept_bar")
         else:
             _plotly_empty()
         st.markdown("</div>", unsafe_allow_html=True)

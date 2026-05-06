@@ -240,7 +240,7 @@ def _chart_region_bar(region_agg: Dict[str, int], title: str,
     fig.update_xaxes(title_text="환자수(명)", title_font=dict(size=10, color=C["t3"]),
                      gridcolor="#F1F5F9")
     fig.update_yaxes(tickfont=dict(size=9))
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 def _is_busan(region: str) -> bool:
@@ -282,7 +282,7 @@ def _chart_gender_pie(gender_agg: Dict[str, int], title: str,
             showarrow=False,
         )],
     )
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 def _chart_age_bar(age_agg: Dict[str, int], title: str,
@@ -313,7 +313,7 @@ def _chart_age_bar(age_agg: Dict[str, int], title: str,
     fig.update_xaxes(tickfont=dict(size=10))
     fig.update_yaxes(title_text="환자수(명)", title_font=dict(size=10, color=C["t3"]),
                      gridcolor="#F1F5F9")
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 def _chart_cat_age_stacked(cat_age: Dict[str, Dict[str, int]], title: str,
@@ -349,7 +349,7 @@ def _chart_cat_age_stacked(cat_age: Dict[str, Dict[str, int]], title: str,
     fig.update_xaxes(tickfont=dict(size=11))
     fig.update_yaxes(title_text="환자수(명)", title_font=dict(size=10, color=C["t3"]),
                      gridcolor="#F1F5F9")
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 def _chart_trend_line(trend_rows: List[Dict], dept: str,
@@ -392,7 +392,7 @@ def _chart_trend_line(trend_rows: List[Dict], dept: str,
     fig.update_xaxes(tickfont=dict(size=10), tickangle=-30)
     fig.update_yaxes(title_text="환자수(명)", title_font=dict(size=10, color=C["t3"]),
                      gridcolor="#F1F5F9")
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 def _chart_compare_bar(data_a: Dict[str, int], data_b: Dict[str, int],
@@ -455,7 +455,7 @@ def _chart_compare_bar(data_a: Dict[str, int], data_b: Dict[str, int],
     fig.update_yaxes(title_text="환자수(명)" if not horizontal else "",
                      title_font=dict(size=10, color=C["t3"]),
                      gridcolor="#F1F5F9")
-    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(fig, width="stretch", key=chart_key)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -694,7 +694,7 @@ def _render_single(dept: str, avail_months: List[str]):
                     showarrow=False,
                 )],
             )
-            pie_col1.plotly_chart(fig_pie, use_container_width=True,
+            pie_col1.plotly_chart(fig_pie, width="stretch",
                                   key=f"da_region_pie_{dept}_{sel_ym}")
 
             # 부산 내 Top5
