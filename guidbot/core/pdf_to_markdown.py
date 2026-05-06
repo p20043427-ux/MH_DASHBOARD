@@ -298,7 +298,7 @@ def _fallback_pypdf_to_markdown(pdf_path: Path) -> str:
 def _save_markdown(md_text: str, pdf_path: Path, output_dir: Optional[Path]) -> None:
     """변환된 Markdown을 파일로 저장합니다."""
     if output_dir is None:
-        output_dir = Path(settings.local_work_dir).parent / "docs" / "markdown"
+        output_dir = Path(settings.markdown_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     md_path = output_dir / f"{pdf_path.stem}.md"
     md_path.write_text(md_text, encoding="utf-8")

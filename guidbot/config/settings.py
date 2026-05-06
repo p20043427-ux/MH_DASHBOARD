@@ -422,6 +422,16 @@ class AppSettings(BaseSettings):
         ),
     )
 
+    docs_dir: Path = Field(
+        default=_BASE_DIR / "docs",
+        description="문서 루트 경로 (db_manuals/, markdown/ 등의 상위 폴더).",
+    )
+
+    markdown_dir: Path = Field(
+        default=_BASE_DIR / "docs" / "markdown",
+        description="PDF→Markdown 변환 결과 저장 경로 (build_db --use-markdown 시 사용).",
+    )
+
     log_dir: Path = Field(
         default=_BASE_DIR / "logs",
         description="로그 파일 저장 경로. 모듈별 별도 파일, 일별 롤오버, 30일 보관.",
@@ -873,7 +883,9 @@ class AppSettings(BaseSettings):
             self.local_cache_path,
             self.rag_db_path,
             self.local_work_dir,
-            self.db_docs_dir,  # DB 명세서 PDF 폴더 자동 생성
+            self.db_docs_dir,
+            self.docs_dir,
+            self.markdown_dir,
             self.log_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)

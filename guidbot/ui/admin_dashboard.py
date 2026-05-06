@@ -1008,9 +1008,12 @@ def _tab_sysinfo() -> None:
 
     gap(16)
     PKGS = [
-        "streamlit", "langchain", "langchain-core", "langchain-community",
-        "google-genai", "faiss-cpu", "sentence-transformers", "torch",
-        "oracledb", "pydantic", "pandas", "plotly",
+        "streamlit", "plotly", "pandas", "numpy",
+        "langchain", "langchain-core", "langchain-community", "langchain-huggingface",
+        "langchain-text-splitters", "google-genai", "faiss-cpu", "rank-bm25",
+        "sentence-transformers", "torch", "pypdf", "pdfplumber",
+        "oracledb", "SQLAlchemy", "PyMySQL", "pydantic",
+        "pydantic-settings", "python-dotenv",
     ]
     import importlib.metadata as im
     rows_pkg = []

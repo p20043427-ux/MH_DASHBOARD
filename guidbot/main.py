@@ -175,6 +175,21 @@ def _check_health(vector_db) -> DBHealth:
         )
 
 
+def _resolve_doc_path(source: str) -> Optional[Path]:
+    """PDF 파일 경로를 여러 위치에서 순서대로 탐색해 반환합니다."""
+    fname = Path(source).name
+    candidates = [
+        settings.local_work_dir / source,
+        settings.local_work_dir / fname,
+        settings.rag_source_path / source,
+        settings.rag_source_path / fname,
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
 def _render_mode_badge(mode: str, pipeline_label: str = "") -> None:
     """검색 모드 뱃지 표시."""
     _MODE_COLORS = {
@@ -332,8 +347,7 @@ def _stream_answer(
     if pipeline_result and pipeline_result.ranked_docs:
         source_section_header(len(pipeline_result.ranked_docs))
         for doc in pipeline_result.ranked_docs:
-            candidate_path = settings.local_work_dir / doc.source
-            doc_path = candidate_path if candidate_path.exists() else None
+            doc_path = _resolve_doc_path(doc.source)
             source_trust_card(
                 rank=doc.rank,
                 source=doc.source,
@@ -623,9 +637,11 @@ def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
                             article=src.get("article", ""),
                             revision_date=src.get("revision_date", ""),
                             chunk_text=src["chunk_text"],
-                            doc_path=Path(src["doc_path_str"])
-                            if src.get("doc_path_str")
-                            else None,
+                            doc_path=(
+                                Path(src["doc_path_str"])
+                                if src.get("doc_path_str")
+                                else _resolve_doc_path(src["source"])
+                            ),
                             card_ns=f"hist_{i}",
                         )
 
