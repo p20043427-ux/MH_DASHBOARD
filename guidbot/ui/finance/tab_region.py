@@ -358,56 +358,54 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             st.session_state[_SESS_DEPTS] = []
     _dept_opts_row = ["── 진료과를 선택하세요 ──"] + st.session_state.get(_SESS_DEPTS, [])
 
+    # ── 컨트롤 행 CSS (레이블 크기 통일, selectbox 겹침 방지) ────────────
+    st.markdown(
+        """<style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"]
+          label p { font-size: 11px !important; color: #64748B !important;
+                    margin-bottom: 0 !important; }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"]
+          div[data-baseweb="select"] { margin-top: 0 !important; }
+        </style>""",
+        unsafe_allow_html=True,
+    )
+
     # 컬럼 순서: [진료과(넓게)] [분석기간] [조회] ‖ [조회월] [비교월] [🔄]
-    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns([3, 1.8, 1, 1.8, 1.8, 0.6], gap="small")
+    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns(
+        [3.2, 1.8, 1.2, 1.8, 1.8, 0.7], gap="small", vertical_alignment="bottom"
+    )
     with _rc1:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
-            f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
-            unsafe_allow_html=True,
-        )
         _sel_dept = st.selectbox(
-            "진료과", options=_dept_opts_row, index=0,
-            key="reg_dept_v3", label_visibility="collapsed",
+            "🏥 진료과 선택 *",
+            options=_dept_opts_row, index=0,
+            key="reg_dept_v3",
             help="분석할 진료과를 선택하세요 (필수)",
         )
     with _rc2:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">⏱ 분석 기간</div>',
-            unsafe_allow_html=True,
-        )
         _period_label = st.selectbox(
-            "분석 기간", options=list(_PERIOD_MAP.keys()),
-            key="reg_period_sel", label_visibility="collapsed",
+            "⏱ 분석 기간",
+            options=list(_PERIOD_MAP.keys()),
+            key="reg_period_sel",
         )
     with _rc3:
-        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
         _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
     with _rc4:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">📅 조회 월</div>',
-            unsafe_allow_html=True,
-        )
         _sel_ym = st.selectbox(
-            "조회 월", options=_ym_opts,
+            "📅 조회 월",
+            options=_ym_opts,
             format_func=lambda x: f"{x[:4]}-{x[4:]}",
-            key="reg_ym_sel", label_visibility="collapsed",
+            key="reg_ym_sel",
         )
     with _rc5:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
-            f'📊 비교 월 <span style="opacity:.6;">(선택)</span></div>',
-            unsafe_allow_html=True,
-        )
         _cmp_raw = st.selectbox(
-            "비교 월", options=_cmp_opts,
+            "📊 비교 월",
+            options=_cmp_opts,
             format_func=lambda x: x if x == "없음" else f"{x[:4]}-{x[4:]}",
-            key="reg_cmp_sel", label_visibility="collapsed",
+            key="reg_cmp_sel",
         )
         _cmp_ym = None if _cmp_raw == "없음" else _cmp_raw
     _loaded_ym = st.session_state.get(_SESS_YM)
     with _rc6:
-        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
         if _loaded_ym and st.button("🔄", key="reg_refresh_btn", help="다시 조회"):
             for _k in (_SESS_D, _SESS_M, _SESS_YM, _SESS_DEPTS):
                 st.session_state.pop(_k, None)
@@ -1019,41 +1017,22 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
 
     _mo_months = sorted(_mo_lookup.keys())
 
-    # 전년도 대비 가능한 달 (현재 월과 -100 모두 있는 달)
-    _today_ym_cap = _dt_r.date.today().strftime("%Y%m")
-    _yoy_pairs = [
-        (ym, str(int(ym) - 100))
-        for ym in _mo_months
-        if str(int(ym) - 100) in _mo_lookup
-        and ym <= _today_ym_cap
-    ]
+    # 전년도 대비: 위에서 선택한 조회월 기준 자동 설정
+    _yoy_cur = _sel_ym
+    _yoy_prv = str(int(_yoy_cur) - 100)
+    _yoy_available = _yoy_cur in _mo_lookup and _yoy_prv in _mo_lookup
 
-    if _yoy_pairs:
+    if _yoy_available:
         _gap()
         st.markdown(
             f'<div class="wd-card" style="border-top:3px solid {C["indigo"]};">',
             unsafe_allow_html=True,
         )
         _sec_hd(
-            f"📊 {_sel_dept} — 지정월 전년도 대비 지역 비교",
+            f"📊 {_sel_dept} — {_yoy_cur[:4]}년 {_yoy_cur[4:]}월 vs 전년 동월 지역 비교",
             "V_REGION_DEPT_MONTHLY · DISTINCT 환자수 기준 · 부산·경남 상세",
             C["indigo"],
         )
-
-        # 월 선택
-        _yoy_opts = [p[0] for p in _yoy_pairs]
-        _yoy_cur = st.selectbox(
-            "비교 기준월",
-            options=_yoy_opts,
-            index=len(_yoy_opts) - 1,
-            format_func=lambda ym: (
-                f"{ym[:4]}년 {ym[4:]}월  ←→  "
-                f"{int(ym[:4])-1}년 {ym[4:]}월 (전년 동월)"
-            ),
-            key=f"reg_yoy_mo_{_sel_dept}",
-            label_visibility="collapsed",
-        )
-        _yoy_prv = str(int(_yoy_cur) - 100)
 
         _cur_d = _mo_lookup.get(_yoy_cur, {})
         _prv_d = _mo_lookup.get(_yoy_prv, {})
