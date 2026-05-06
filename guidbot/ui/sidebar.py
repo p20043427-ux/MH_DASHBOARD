@@ -623,24 +623,26 @@ def _render_admin_panel() -> None:
             st.markdown(_ADMIN_DIV, unsafe_allow_html=True)
             st.markdown(f'<div style="{_ADMIN_SEC_CSS}">전산팀 도구</div>', unsafe_allow_html=True)
 
-            _ap = st.session_state.get("active_page", "main")
+            _sm = st.session_state.get("search_mode", "standard")
             if st.button(
-                "▸ SQL 대시보드" if _ap == "sql_dashboard" else "   SQL 대시보드",
+                "▸ SQL 대시보드" if _sm == "sql_dashboard" else "   SQL 대시보드",
                 key="admin_goto_sql",
                 use_container_width=True,
-                type="primary" if _ap == "sql_dashboard" else "secondary",
+                type="primary" if _sm == "sql_dashboard" else "secondary",
                 help="직접 SQL 입력/실행 · SELECT 전용 · 실행 로그 기록",
             ):
-                st.session_state["active_page"] = "sql_dashboard"
+                st.session_state["search_mode"] = "sql_dashboard"
+                st.session_state["active_page"] = "main"
                 st.rerun()
             if st.button(
-                "▸ 문서 관리" if _ap == "doc_manager" else "   문서 관리",
+                "▸ 문서 관리" if _sm == "doc_manager" else "   문서 관리",
                 key="admin_goto_docs",
                 use_container_width=True,
-                type="primary" if _ap == "doc_manager" else "secondary",
+                type="primary" if _sm == "doc_manager" else "secondary",
                 help="쿼리 예제 · 테이블 명세 등록 / 관리",
             ):
-                st.session_state["active_page"] = "doc_manager"
+                st.session_state["search_mode"] = "doc_manager"
+                st.session_state["active_page"] = "main"
                 st.rerun()
 
             # ── PDF 추가 ──────────────────────────────────────────

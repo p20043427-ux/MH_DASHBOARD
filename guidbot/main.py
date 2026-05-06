@@ -679,23 +679,16 @@ def main() -> None:
         render_hospital_dashboard(tab=tab)
         return
 
-    if active_page == "sql_dashboard":
-        page_header()
-        from ui.sql_dashboard import render_sql_dashboard
-        render_sql_dashboard()
-        return
-
-    if active_page == "doc_manager":
-        page_header()
-        from ui.doc_manager_ui import render_doc_manager_ui
-        render_doc_manager_ui()
-        return
-
     page_header()
 
     search_mode = st.session_state.get("search_mode", "standard")
 
-    if search_mode == "doc_manage":
+    if search_mode == "sql_dashboard":
+        from ui.sql_dashboard import render_sql_dashboard
+        render_sql_dashboard()
+        return
+
+    if search_mode == "doc_manager":
         from ui.doc_manager_ui import render_doc_manager_ui
         render_doc_manager_ui()
         return
