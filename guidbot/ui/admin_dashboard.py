@@ -823,9 +823,11 @@ def _tab_vectordb() -> None:
             with st.spinner("전체 재구축 중 (G드라이브→임베딩→FAISS, 10~20분)..."):
                 try:
                     import subprocess, sys
+                    _cmd = [sys.executable, str(_ROOT / "build_db.py")]
+                    if not do_sync:
+                        _cmd.append("--no-sync")
                     r = subprocess.run(
-                        [sys.executable, str(_ROOT / "build_db.py"),
-                         "--no-sync" if not do_sync else ""],
+                        _cmd,
                         capture_output=True, text=True, timeout=1800,
                         cwd=str(_ROOT),
                     )
