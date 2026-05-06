@@ -687,8 +687,8 @@ def main() -> None:
 
     if active_page == "doc_manager":
         page_header()
-        from ui.doc_manager import render_doc_manager
-        render_doc_manager()
+        from ui.doc_manager_ui import render_doc_manager_ui
+        render_doc_manager_ui()
         return
 
     page_header()
@@ -696,9 +696,8 @@ def main() -> None:
     search_mode = st.session_state.get("search_mode", "standard")
 
     if search_mode == "doc_manage":
-        from ui.doc_manager import render_doc_manager
-
-        render_doc_manager()
+        from ui.doc_manager_ui import render_doc_manager_ui
+        render_doc_manager_ui()
         return
 
     # ── 관리자 여부 확인 ────────────────────────────────────────────

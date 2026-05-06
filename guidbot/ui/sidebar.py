@@ -594,17 +594,24 @@ def _handle_admin_upload(uploaded_files) -> None:
             st.error(exc.message)
 
 
+_ADMIN_SEC_CSS = (
+    "font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;"
+    "color:rgba(255,255,255,0.30);margin:0.55rem 0 0.22rem;"
+)
+_ADMIN_DIV = '<hr style="margin:0.4rem 0;border:none;border-top:1px solid rgba(255,255,255,0.08);">'
+
+
 def _render_admin_panel() -> None:
     current_role: str = st.session_state.get("role", "user")
-    _admin_expanded = current_role == "admin"
 
-    with st.expander("관리자 전용", expanded=_admin_expanded):
+    with st.expander("관리자", expanded=(current_role == "admin")):
         if current_role == "admin":
+            # ── 인증 배지 ─────────────────────────────────────────
             st.markdown(
-                f'<div style="background:rgba(74,222,128,0.10);'
-                f"border:1px solid rgba(74,222,128,0.25);border-radius:6px;"
-                f"padding:0.35rem 0.6rem;margin-bottom:0.5rem;font-size:11px;"
-                f'color:{T.SUCCESS_SIDEBAR} !important;font-weight:600;">관리자 인증 완료</div>',
+                '<div style="background:rgba(74,222,128,0.10);'
+                "border:1px solid rgba(74,222,128,0.25);border-radius:6px;"
+                'padding:0.32rem 0.7rem;margin-bottom:0.45rem;font-size:11px;'
+                f'font-weight:700;color:{T.SUCCESS_SIDEBAR};">✓ 관리자 인증 완료</div>',
                 unsafe_allow_html=True,
             )
             if st.button("로그아웃", use_container_width=True, key="admin_logout"):
@@ -612,46 +619,33 @@ def _render_admin_panel() -> None:
                 logger.info("관리자 로그아웃")
                 st.rerun()
 
-            st.markdown(
-                '<hr style="margin:0.45rem 0;border:none;'
-                'border-top:1px solid rgba(255,255,255,0.08);">',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div style="font-size:10px;color:rgba(255,255,255,0.28);font-weight:600;'
-                'letter-spacing:0.07em;text-transform:uppercase;margin-bottom:0.25rem;">'
-                "전산팀 도구</div>",
-                unsafe_allow_html=True,
-            )
+            # ── 전산팀 도구 ───────────────────────────────────────
+            st.markdown(_ADMIN_DIV, unsafe_allow_html=True)
+            st.markdown(f'<div style="{_ADMIN_SEC_CSS}">전산팀 도구</div>', unsafe_allow_html=True)
 
+            _ap = st.session_state.get("active_page", "main")
             if st.button(
-                "SQL 대시보드",
+                "▸ SQL 대시보드" if _ap == "sql_dashboard" else "   SQL 대시보드",
                 key="admin_goto_sql",
                 use_container_width=True,
-                help="직접 SQL 입력/실행 + 자유 시각화 + AI 분석",
+                type="primary" if _ap == "sql_dashboard" else "secondary",
+                help="직접 SQL 입력/실행 · SELECT 전용 · 실행 로그 기록",
             ):
                 st.session_state["active_page"] = "sql_dashboard"
                 st.rerun()
             if st.button(
-                "문서 관리",
+                "▸ 문서 관리" if _ap == "doc_manager" else "   문서 관리",
                 key="admin_goto_docs",
                 use_container_width=True,
+                type="primary" if _ap == "doc_manager" else "secondary",
                 help="쿼리 예제 · 테이블 명세 등록 / 관리",
             ):
                 st.session_state["active_page"] = "doc_manager"
                 st.rerun()
 
-            st.markdown(
-                '<hr style="margin:0.45rem 0;border:none;'
-                'border-top:1px solid rgba(255,255,255,0.08);">',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div style="font-size:10px;color:rgba(255,255,255,0.28);font-weight:600;'
-                'letter-spacing:0.07em;text-transform:uppercase;margin-bottom:0.25rem;">'
-                "PDF 추가</div>",
-                unsafe_allow_html=True,
-            )
+            # ── PDF 추가 ──────────────────────────────────────────
+            st.markdown(_ADMIN_DIV, unsafe_allow_html=True)
+            st.markdown(f'<div style="{_ADMIN_SEC_CSS}">PDF 추가</div>', unsafe_allow_html=True)
             new_files = st.file_uploader(
                 "PDF 파일 선택",
                 accept_multiple_files=True,
@@ -670,6 +664,7 @@ def _render_admin_panel() -> None:
                 else:
                     st.warning("업로드할 PDF를 먼저 선택해주세요.")
         else:
+            # ── 패스워드 입력 ─────────────────────────────────────
             pw = st.text_input(
                 "패스워드",
                 type="password",
