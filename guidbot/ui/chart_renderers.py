@@ -67,7 +67,7 @@ def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
             annotations=[dict(text=f"<b>{total}</b><br>명", x=0.5, y=0.5,
                               showarrow=False, font=dict(size=14, color="#0F172A"))],
         )
-        st.plotly_chart(fig, use_container_width=True, key="dept_donut")
+        st.plotly_chart(fig, width="stretch", key="dept_donut")
         # 범례 테이블
         rows = ""
         for i, (nm, val) in enumerate(zip(labels, values)):
@@ -111,7 +111,7 @@ def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
             yaxis=dict(**_AX, autorange="reversed"),
             xaxis=dict(**_AX, title=dict(text="재원 환자 수 (명)", font=dict(size=10))),
         )
-        st.plotly_chart(fig, use_container_width=True, key="dept_bar_h")
+        st.plotly_chart(fig, width="stretch", key="dept_bar_h")
 
     elif chart_type == "treemap":
         fig = go.Figure(go.Treemap(
@@ -127,7 +127,7 @@ def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
             font=dict(color="#333333", size=12),
             margin=dict(l=0, r=0, t=8, b=8),
         )
-        st.plotly_chart(fig, use_container_width=True, key="dept_treemap")
+        st.plotly_chart(fig, width="stretch", key="dept_treemap")
 
 
 def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_rate: float) -> None:
@@ -251,7 +251,7 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
             xaxis=dict(**_AX),
         )
 
-    st.plotly_chart(fig, use_container_width=True, key=f"trend_{key_sfx}")
+    st.plotly_chart(fig, width="stretch", key=f"trend_{key_sfx}")
 
 
 def _render_ward_alt_chart(data: List[Dict], chart_type: str, ward_surg: Dict) -> None:
@@ -291,7 +291,7 @@ def _render_ward_alt_chart(data: List[Dict], chart_type: str, ward_surg: Dict) -
             xaxis=dict(**_AX, range=[0, 115], ticksuffix="%",
                        title=dict(text="병상 가동률 (%)", font=dict(size=10))),
         )
-        st.plotly_chart(fig, use_container_width=True, key="ward_bar_h")
+        st.plotly_chart(fig, width="stretch", key="ward_bar_h")
 
     elif chart_type == "heatmap":
         indicators = ["재원수", "금일입원", "금일퇴원", "가동률(%)"]
@@ -314,7 +314,7 @@ def _render_ward_alt_chart(data: List[Dict], chart_type: str, ward_surg: Dict) -
             xaxis=dict(side="top", tickfont=dict(size=10)),
             yaxis=dict(**_AX, autorange="reversed"),
         )
-        st.plotly_chart(fig, use_container_width=True, key="ward_heatmap")
+        st.plotly_chart(fig, width="stretch", key="ward_heatmap")
 
 
 def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
@@ -356,7 +356,7 @@ def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
             annotations=[dict(text=f"<b>{total}</b><br>명", x=0.5, y=0.5,
                               showarrow=False, font=dict(size=14, color="#0F172A"))],
         )
-        st.plotly_chart(fig, use_container_width=True, key="dx7_pie")
+        st.plotly_chart(fig, width="stretch", key="dx7_pie")
         # 범례 테이블
         rows = ""
         for i, (nm, cnt) in enumerate(top8):
@@ -400,7 +400,7 @@ def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
             yaxis=dict(**_AX, autorange="reversed"),
             xaxis=dict(**_AX, title=dict(text="입원 건수", font=dict(size=10))),
         )
-        st.plotly_chart(fig, use_container_width=True, key="dx7_bar_h")
+        st.plotly_chart(fig, width="stretch", key="dx7_bar_h")
 
     elif chart_type == "treemap":
         if not HAS_PLOTLY:
@@ -414,7 +414,7 @@ def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
             hovertemplate="<b>%{label}</b><br>%{value}건 (%{percentRoot:.1%})<extra></extra>",
         ))
         fig.update_layout(height=270, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#333333", size=12), margin=dict(l=0, r=0, t=8, b=8))
-        st.plotly_chart(fig, use_container_width=True, key="dx7_treemap")
+        st.plotly_chart(fig, width="stretch", key="dx7_treemap")
 
 
 def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
@@ -495,7 +495,7 @@ def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
             yaxis=dict(gridcolor="rgba(0,0,0,0)", tickfont=dict(size=12, color="#0F172A"), zeroline=False),
             bargap=0.3,
         )
-        st.plotly_chart(fig, use_container_width=True, key="dx_overlay")
+        st.plotly_chart(fig, width="stretch", key="dx_overlay")
         # 하단 랭킹 테이블
         rows = ""
         for ri, (nm, tc, yc) in enumerate(zip(top_dx, t_vals, y_vals), 1):
@@ -539,7 +539,7 @@ def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
             yaxis=dict(**_AX, title=dict(text="입원 환자 수 (명)", font=dict(size=10))),
             margin=dict(l=0, r=0, t=8, b=60),
         )
-        st.plotly_chart(fig, use_container_width=True, key="dx_grouped")
+        st.plotly_chart(fig, width="stretch", key="dx_grouped")
 
     elif chart_type == "bar_h":
         deltas      = [t - y for t, y in zip(t_vals, y_vals)]
@@ -568,4 +568,4 @@ def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
             annotations=anns,
             margin=dict(l=0, r=50, t=8, b=40),
         )
-        st.plotly_chart(fig, use_container_width=True, key="dx_bar_h")
+        st.plotly_chart(fig, width="stretch", key="dx_bar_h")

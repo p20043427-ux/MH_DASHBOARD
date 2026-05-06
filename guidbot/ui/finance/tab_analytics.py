@@ -115,7 +115,7 @@ def _tab_analytics(
                 hovermode="x unified")
             _figOPD.update_xaxes(tickfont=dict(size=12,color="#334155"))
             _figOPD.update_yaxes(title_text="인원 (명)",title_font=dict(size=10,color=C["t3"]))
-            st.plotly_chart(_figOPD, use_container_width=True, key="an_7day_trend")
+            st.plotly_chart(_figOPD, width="stretch", key="an_7day_trend")
         else:
             st.markdown('<div style="padding:20px;text-align:center;color:#94A3B8;">V_DAILY_DEPT_STAT 기준일 컬럼 필요</div>', unsafe_allow_html=True)
     else:
@@ -157,7 +157,7 @@ def _tab_analytics(
                 _fig_hm.update_layout(**_PLOTLY_LAYOUT, height=_h, margin=dict(l=0,r=0,t=8,b=8))
                 _fig_hm.update_xaxes(tickfont=dict(size=10), side="top")
                 _fig_hm.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-                st.plotly_chart(_fig_hm, use_container_width=True, key=chart_key)
+                st.plotly_chart(_fig_hm, width="stretch", key=chart_key)
             else:
                 _plotly_empty()
         else:
@@ -226,7 +226,7 @@ def _tab_analytics(
                         font=dict(size=11),bgcolor="rgba(0,0,0,0)"))
         _fig_los.update_xaxes(tickangle=-35, tickfont=dict(size=10), gridcolor="rgba(0,0,0,0)")
         _fig_los.update_yaxes(title_text="환자 수(명)", title_font=dict(size=10,color=C["t3"]))
-        st.plotly_chart(_fig_los, use_container_width=True, key="an_los_dept_bar")
+        st.plotly_chart(_fig_los, width="stretch", key="an_los_dept_bar")
 
         # DRG 임계 경고
         _drg_bins = {b for b in _bins_ordered if any(k in b for k in ("15","30","60"))}

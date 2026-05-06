@@ -797,7 +797,7 @@ def _render_chart(
     fig = _draw_chart_figure(df, active_type, active_x, active_y, colors)
 
     if fig:
-        st.plotly_chart(fig, use_container_width=True, key=f"plotly_{_ck}")
+        st.plotly_chart(fig, width="stretch", key=f"plotly_{_ck}")
     else:
         try:
             df_chart = df.set_index(active_x)[[active_y]]
@@ -1008,7 +1008,7 @@ def _render_custom_chart_builder(
                 height=400,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02),
             )
-            st.plotly_chart(fig, use_container_width=True, key=f"plotly_cv_{_ck}")
+            st.plotly_chart(fig, width="stretch", key=f"plotly_cv_{_ck}")
         else:
             st.bar_chart(_df_agg.set_index(_x_col)[[_yv]], use_container_width=True)
 

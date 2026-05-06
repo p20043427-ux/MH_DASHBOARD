@@ -1204,7 +1204,7 @@ def _tab_monitoring() -> None:
             ))
             fig1.update_layout(**{**PLOTLY_CFG, "title": "시간대별 이벤트 수", "height": 260,
                                   "margin": dict(l=10, r=10, t=36, b=20)})
-            st.plotly_chart(fig1, use_container_width=True, key="adm_mon_hour")
+            st.plotly_chart(fig1, width="stretch", key="adm_mon_hour")
 
         with ch2:
             type_cnt = _cnt(e.get("event_type", "unknown") for e in events)
@@ -1217,7 +1217,7 @@ def _tab_monitoring() -> None:
             ))
             fig2.update_layout(**{**PLOTLY_CFG, "title": "이벤트 타입 분포", "height": 260,
                                   "margin": dict(l=10, r=10, t=36, b=20)})
-            st.plotly_chart(fig2, use_container_width=True, key="adm_mon_type")
+            st.plotly_chart(fig2, width="stretch", key="adm_mon_type")
 
         if llm_events:
             ms_vals = [e["elapsed_ms"] for e in llm_events if e.get("elapsed_ms", 0) < 120_000]
@@ -1229,7 +1229,7 @@ def _tab_monitoring() -> None:
                                       "title": f"LLM 응답 시간 분포  (평균 {avg_ms:,}ms)",
                                       "xaxis_title": "응답시간 (ms)", "yaxis_title": "건수",
                                       "height": 220, "margin": dict(l=10, r=10, t=36, b=30)})
-                st.plotly_chart(fig3, use_container_width=True, key="adm_mon_llm")
+                st.plotly_chart(fig3, width="stretch", key="adm_mon_llm")
 
     except ImportError:
         st.info("plotly 미설치 — 차트를 표시할 수 없습니다.")

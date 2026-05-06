@@ -213,7 +213,9 @@ def _tab_monthly(*_, **__) -> None:
         for r in _data
         if str(r.get("기준년월", ""))[:6] == _loaded_m2
     }
-    _all_depts_raw = sorted(set(list(_d1.keys()) + list(_d2.keys())))
+    _all_depts_raw = sorted(
+        k for k in set(list(_d1.keys()) + list(_d2.keys())) if k is not None
+    )
     _dept_visit = {
         d: _vi(_d2.get(d, _d1.get(d, {})), "외래환자수")
         for d in _all_depts_raw
@@ -411,7 +413,7 @@ def _tab_monthly(*_, **__) -> None:
     )
     _fig_opd.update_xaxes(tickangle=-35, tickfont=dict(size=10))
     _fig_opd.update_yaxes(title_text="외래환자수(명)", title_font=dict(size=10, color=C["t3"]))
-    st.plotly_chart(_fig_opd, use_container_width=True, key="mon_opd_bar")
+    st.plotly_chart(_fig_opd, width="stretch", key="mon_opd_bar")
     st.markdown("</div>", unsafe_allow_html=True)
     _gap()
 
@@ -462,7 +464,7 @@ def _tab_monthly(*_, **__) -> None:
     )
     _fig_new.update_xaxes(tickangle=-35, tickfont=dict(size=10))
     _fig_new.update_yaxes(title_text="신환자수(명)", title_font=dict(size=10, color=C["t3"]))
-    st.plotly_chart(_fig_new, use_container_width=True, key="mon_new_bar")
+    st.plotly_chart(_fig_new, width="stretch", key="mon_new_bar")
     st.markdown("</div>", unsafe_allow_html=True)
     _gap()
 
@@ -505,5 +507,5 @@ def _tab_monthly(*_, **__) -> None:
         ticksuffix="%",
     )
     _fig_rat.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-    st.plotly_chart(_fig_rat, use_container_width=True, key="mon_ratio_bar")
+    st.plotly_chart(_fig_rat, width="stretch", key="mon_ratio_bar")
     st.markdown("</div>", unsafe_allow_html=True)

@@ -992,7 +992,7 @@ def _render_ward() -> None:
         )
         _col_bar_adm, _col_age_adm = st.columns([3, 2], gap="small")
         with _col_bar_adm:
-            st.plotly_chart(_fig_adm, use_container_width=True, key="ward_adm_bar")
+            st.plotly_chart(_fig_adm, width="stretch", key="ward_adm_bar")
         with _col_age_adm:
             _age_html = (
                 '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
@@ -1413,7 +1413,7 @@ def _render_finance() -> None:
                 textinfo="label+percent", textfont=dict(size=10, color="rgba(255,255,255,0.8)"),
             ))
             fig.update_layout(height=200, margin=dict(l=0, r=0, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", showlegend=False)
-            st.plotly_chart(fig, use_container_width=True, key="finance_pie")
+            st.plotly_chart(fig, width="stretch", key="finance_pie")
     with col_od:
         _section_title("미수금 현황")
         for r in overdue:
@@ -1457,7 +1457,7 @@ def _render_opd() -> None:
             colors = ["rgba(255,123,123,0.8)" if v >= 200 else "rgba(91,156,246,0.8)" if v >= 150 else "rgba(91,156,246,0.4)" for v in values]
             fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colors, marker=dict(line=dict(width=0))))
             fig.update_layout(height=200, margin=dict(l=0, r=0, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color=C["t2"], size=10), xaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10)), yaxis=dict(gridcolor="#F1F5F9", tickfont=dict(size=10)), showlegend=False)
-            st.plotly_chart(fig, use_container_width=True, key="opd_hourly_chart")
+            st.plotly_chart(fig, width="stretch", key="opd_hourly_chart")
     with col_top:
         _section_title("진료과별 환자수 TOP 5")
         top5_colors = [C["blue"], C["green"], C["amber"], C["coral"], C["sky"]]

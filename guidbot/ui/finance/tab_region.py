@@ -711,7 +711,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             )
             _fig_bar.update_xaxes(showticklabels=False, showgrid=False)
             _fig_bar.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-            st.plotly_chart(_fig_bar, use_container_width=True, key="reg_v3_hbar")
+            st.plotly_chart(_fig_bar, width="stretch", key="reg_v3_hbar")
         else:
             _plotly_empty()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -763,7 +763,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                                    tickangle=-30 if _n_days >= 14 else 0)
             _fig_line.update_yaxes(title_text="환자수(명)",
                                    title_font=dict(size=10, color=C["t3"]))
-            st.plotly_chart(_fig_line, use_container_width=True, key="reg_v3_line")
+            st.plotly_chart(_fig_line, width="stretch", key="reg_v3_line")
         else:
             _plotly_empty()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -807,7 +807,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         )
         _fig_hm3.update_xaxes(side="top", tickfont=dict(size=9), tickangle=-45)
         _fig_hm3.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-        st.plotly_chart(_fig_hm3, use_container_width=True, key="reg_v3_heatmap")
+        st.plotly_chart(_fig_hm3, width="stretch", key="reg_v3_heatmap")
         st.markdown("</div>", unsafe_allow_html=True)
         _gap()
  
@@ -1138,7 +1138,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                 **_PLOTLY_LAYOUT, height=340,
                 margin=dict(l=0, r=0, t=8, b=0),
             )
-            st.plotly_chart(_fig_tm, use_container_width=True,
+            st.plotly_chart(_fig_tm, width="stretch",
                             key=f"reg_yoy_tm_{_sel_dept}_{_yoy_cur}")
 
             # ── 범례
@@ -1225,7 +1225,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             )
             _fig7.update_xaxes(tickfont=dict(size=10), tickangle=-20)
             _fig7.update_yaxes(showticklabels=False)
-            st.plotly_chart(_fig7, use_container_width=True, key=chart_key)
+            st.plotly_chart(_fig7, width="stretch", key=chart_key)
 
         _dc1, _dc2 = st.columns(2, gap="small")
         with _dc1:
@@ -1327,7 +1327,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             _fig_mo.update_xaxes(tickfont=dict(size=10))
             _fig_mo.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.06)",
                                   showticklabels=False)
-            st.plotly_chart(_fig_mo, use_container_width=True,
+            st.plotly_chart(_fig_mo, width="stretch",
                             key=f"reg_mo_bar_{_sel_dept}")
 
         # 월별 요약 테이블 (최근 12개월 · 컴팩트)
@@ -1530,7 +1530,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                         )
                         _fig_i.update_xaxes(showticklabels=False, showgrid=False)
                         _fig_i.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-                        st.plotly_chart(_fig_i, use_container_width=True,
+                        st.plotly_chart(_fig_i, width="stretch",
                                         key=f"reg_cmp_inc2_{_sel_dept}_{_cmp_a}_{_cmp_b}")
                     else:
                         st.info("증가 지역 없음")
@@ -1559,7 +1559,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                         )
                         _fig_d.update_xaxes(showticklabels=False, showgrid=False)
                         _fig_d.update_yaxes(tickfont=dict(size=10), autorange="reversed")
-                        st.plotly_chart(_fig_d, use_container_width=True,
+                        st.plotly_chart(_fig_d, width="stretch",
                                         key=f"reg_cmp_dec2_{_sel_dept}_{_cmp_a}_{_cmp_b}")
                     else:
                         st.info("감소 지역 없음")

@@ -271,7 +271,7 @@ def _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail
                         margin=dict(l=0,r=0,t=4,b=4), showlegend=False,
                         annotations=[dict(text=f"<b>{_ptotal:,}</b><br><span style='font-size:10px'>명</span>",
                             x=0.5,y=0.5,font=dict(size=13,color=_pclr),showarrow=False)])
-                    st.plotly_chart(_figP, use_container_width=True, key=_pkey)
+                    st.plotly_chart(_figP, width="stretch", key=_pkey)
                 else:
                     st.markdown(f'<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:12px;">데이터 없음</div>', unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
@@ -340,7 +340,7 @@ def _tab_realtime(opd_kpi, dept_status, kiosk_status, discharge_pipe, bed_detail
             _figKC.update_xaxes(tickfont=dict(size=12,color="#334155"))
             _figKC.update_yaxes(title_text="수납 건수",title_font=dict(size=10,color=C["t3"]),
                 range=[0, _kc_max*1.22])
-            st.plotly_chart(_figKC, use_container_width=True, key="kiosk_counter_trend")
+            st.plotly_chart(_figKC, width="stretch", key="kiosk_counter_trend")
         else:
             st.markdown('<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;">V_KIOSK_COUNTER_TREND 생성 후 조회 가능</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -603,7 +603,7 @@ def _render_day_inweon(day_inweon: list) -> None:
         yaxis=dict(visible=False, showgrid=False, zeroline=False, autorange="reversed"),
     )
 
-    st.plotly_chart(_fig, use_container_width=True, key=chart_key)
+    st.plotly_chart(_fig, width="stretch", key=chart_key)
 
     # ── 구군 순위 보조 바 (TOP 12)
     _sorted_cnt = sorted(_cnt.items(), key=lambda x: -x[1])
