@@ -1341,16 +1341,158 @@ def _tab_monitoring() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════
+#  탭 8 — 환경 설정
+# ══════════════════════════════════════════════════════════════════════════
+
+def _tab_settings() -> None:
+    topbar()
+    section_header("환경 설정", ".env 경로 / URL / 부서 링크 관리")
+    _html('<div class="adm-warn">⚠️ 저장 후 앱을 재시작해야 변경 사항이 반영됩니다.</div>')
+
+    # ── 섹션 1: 경로 설정 ────────────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("경로 설정", "G드라이브 · 데이터 저장 기준 경로", C["blue"])
+
+    with st.form("cfg_paths", border=False):
+        _p_rag = st.text_input(
+            "G드라이브 규정집 경로 (RAG_SOURCE_PATH)",
+            value=str(settings.rag_source_path),
+            placeholder=r"G:\공유 드라이브\좋은문화병원_DATA\규정집",
+            help="부서별 PDF가 있는 Google Drive 로컬 마운트 경로",
+        )
+        _p_base = st.text_input(
+            "앱 기본 데이터 경로 (APP_BASE_DIR)",
+            value=str(settings.rag_db_path.parent),
+            placeholder=r"D:\DASHBOARD\MH_DASHBOARD\guidbot",
+            help="vector_store, data_rag_working, logs 등이 생성되는 기준 경로",
+        )
+        if st.form_submit_button("경로 저장", type="primary"):
+            ok1 = _save_env_value("RAG_SOURCE_PATH", _p_rag.strip())
+            ok2 = _save_env_value("APP_BASE_DIR", _p_base.strip())
+            if ok1 and ok2:
+                st.session_state["adm_src_saved"] = _p_rag.strip()
+                st.success("저장 완료 — 앱 재시작 시 반영됩니다.")
+            else:
+                st.error(".env 저장 실패. 파일 권한을 확인하세요.")
+
+    gap(4)
+    for lbl, path_str in [
+        ("규정집 경로", str(settings.rag_source_path)),
+        ("기본 데이터 경로", str(settings.rag_db_path.parent)),
+    ]:
+        _p = Path(path_str)
+        _b = badge_html("존재", "ok") if _p.exists() else badge_html("없음", "warn")
+        _html(
+            f'<div style="font-size:11px;color:#64748B;margin-bottom:2px;">'
+            f'{_b}&nbsp;<span style="font-weight:600;">{lbl}</span>&nbsp;'
+            f'<code style="font-size:10px;">{_p}</code></div>'
+        )
+
+    # ── 섹션 2: 서비스 URL ───────────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("서비스 URL", "앱 간 이동 링크 · Google 문서 바로가기", C["teal"])
+
+    with st.form("cfg_urls", border=False):
+        cu1, cu2 = st.columns(2, gap="medium")
+        with cu1:
+            _u_dash  = st.text_input("병동 대시보드 (DASHBOARD_URL)",
+                                     value=settings.dashboard_url,
+                                     placeholder="http://192.168.1.100:8501/")
+            _u_chat  = st.text_input("챗봇 (CHATBOT_URL)",
+                                     value=settings.chatbot_url,
+                                     placeholder="http://192.168.1.100:8502/")
+            _u_fin   = st.text_input("원무 대시보드 (FINANCE_URL)",
+                                     value=settings.finance_url,
+                                     placeholder="http://192.168.1.100:8503/")
+            _u_admin = st.text_input("관리자 (ADMIN_URL)",
+                                     value=settings.admin_url,
+                                     placeholder="http://192.168.1.100:8504/")
+        with cu2:
+            _u_docs   = st.text_input("회람 문서 URL (DOCS_URL)",
+                                      value=settings.docs_url or "",
+                                      placeholder="https://docs.google.com/document/d/...")
+            _u_gdrive = st.text_input("벡터DB 드라이브 URL (GDRIVE_VDB_FOLDER_URL)",
+                                      value=settings.gdrive_vdb_folder_url or "",
+                                      placeholder="https://drive.google.com/drive/folders/...")
+        if st.form_submit_button("URL 저장", type="primary"):
+            for _k, _v in [
+                ("DASHBOARD_URL", _u_dash), ("CHATBOT_URL", _u_chat),
+                ("FINANCE_URL",   _u_fin),  ("ADMIN_URL",   _u_admin),
+                ("DOCS_URL",      _u_docs), ("GDRIVE_VDB_FOLDER_URL", _u_gdrive),
+            ]:
+                _save_env_value(_k, _v.strip())
+            st.success("저장 완료 — 앱 재시작 시 반영됩니다.")
+
+    # ── 섹션 3: 부서 문서 링크 ──────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("부서 문서 링크", "챗봇 사이드바 Google Drive 바로가기 · 비워두면 자동 숨김", C["indigo"])
+
+    with st.form("cfg_depts", border=False):
+        dd1, dd2 = st.columns(2, gap="medium")
+        _dept_defs = [
+            ("DEPT_DOC_WARD",      "병동",           settings.dept_doc_ward),
+            ("DEPT_DOC_ER",        "응급실",          settings.dept_doc_er),
+            ("DEPT_DOC_ICU",       "중환자실",         settings.dept_doc_icu),
+            ("DEPT_DOC_DELIVERY",  "분만실",           settings.dept_doc_delivery),
+            ("DEPT_DOC_NICU",      "신생아실 (NICU)", settings.dept_doc_nicu),
+            ("DEPT_DOC_OR",        "수술실",           settings.dept_doc_or),
+            ("DEPT_DOC_NURSING",   "간호부",           settings.dept_doc_nursing),
+            ("DEPT_DOC_ADMIN",     "원무과",           settings.dept_doc_admin),
+            ("DEPT_DOC_MEDICAL",   "진료부",           settings.dept_doc_medical),
+            ("DEPT_DOC_LAB",       "검사실",           settings.dept_doc_lab),
+            ("DEPT_DOC_RADIOLOGY", "영상의학과",        settings.dept_doc_radiology),
+            ("DEPT_DOC_PHARMACY",  "약제부",           settings.dept_doc_pharmacy),
+            ("DEPT_DOC_REHAB",     "재활치료실",        settings.dept_doc_rehab),
+            ("DEPT_DOC_SOCIAL",    "사회사업팀",        settings.dept_doc_social),
+        ]
+        _dept_vals: dict = {}
+        for i, (env_key, label, cur_val) in enumerate(_dept_defs):
+            with (dd1 if i % 2 == 0 else dd2):
+                _dept_vals[env_key] = st.text_input(
+                    label, value=cur_val or "", key=f"cfg_{env_key}",
+                    placeholder="https://drive.google.com/drive/folders/...",
+                )
+        if st.form_submit_button("부서 링크 저장", type="primary"):
+            for _k, _v in _dept_vals.items():
+                _save_env_value(_k, _v.strip())
+            st.success("저장 완료 — 앱 재시작 시 반영됩니다.")
+
+    # ── 섹션 4: 보안 설정 안내 ──────────────────────────────────────────
+    gap(16)
+    st.divider()
+    section_header("보안 설정", "API 키 · 패스워드 — UI에서 편집 불가", C["warn"])
+    _env_file = str(_ROOT / ".env")
+    _html(
+        f'<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:8px;padding:16px 18px;">'
+        f'<div style="font-size:13px;font-weight:700;color:#713F12;margin-bottom:8px;">'
+        f'⚠️ 보안상 UI에서 편집하지 않습니다 — .env 파일을 직접 수정하세요</div>'
+        f'<code style="background:#FEF08A;padding:3px 8px;border-radius:4px;font-size:11px;">'
+        f'{_env_file}</code>'
+        f'<div style="margin-top:12px;font-size:12px;color:#92400E;font-family:monospace;'
+        f'background:#FFFDE7;border-radius:6px;padding:10px 14px;line-height:2.2;">'
+        f'GOOGLE_API_KEY=<span style="color:#B45309;">&lt;Gemini API 키&gt;</span><br>'
+        f'GOOGLE_API_KEY_2=<span style="color:#B45309;">&lt;예비 키 (선택)&gt;</span><br>'
+        f'ADMIN_PASSWORD=<span style="color:#B45309;">&lt;관리자 패스워드&gt;</span><br>'
+        f'ORACLE_PASSWORD=<span style="color:#B45309;">&lt;Oracle DB 패스워드&gt;</span><br>'
+        f'DB_PASSWORD=<span style="color:#B45309;">&lt;MySQL/MariaDB 패스워드&gt;</span>'
+        f'</div></div>'
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════
 #  메인 렌더
 # ══════════════════════════════════════════════════════════════════════════
 
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "🖥️ 운영 현황",   "📋 로그 뷰어",  "🗄️ 벡터DB 관리",
         "📄 문서 관리",   "⚙️ 시스템 정보",
-        "🤖 챗봇 관리",   "📊 모니터링",
+        "🤖 챗봇 관리",   "📊 모니터링",   "🔧 환경설정",
     ])
     with t1: _tab_ops()
     with t2: _tab_logs()
@@ -1359,3 +1501,4 @@ def render_admin_dashboard() -> None:
     with t5: _tab_sysinfo()
     with t6: _tab_chatbot()
     with t7: _tab_monitoring()
+    with t8: _tab_settings()
