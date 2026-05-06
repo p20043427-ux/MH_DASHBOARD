@@ -764,7 +764,22 @@ def _tab_vectordb() -> None:
     # ══════════════════════════════════════════════════════════════════════
     gap(16)
     st.divider()
-    section_header("재구축", "G드라이브 동기화 → FAISS 구축 → 마스터 병합", C["violet"])
+    section_header("재구축", "G드라이브(로컬) → 작업폴더 복사 → FAISS 구축 → 마스터 병합", C["violet"])
+
+    # 현재 설정된 G드라이브 소스 경로 표시
+    _src_path = settings.rag_source_path
+    _src_ok   = _src_path.exists()
+    _src_color = C["ok"] if _src_ok else C["warn"]
+    _src_badge = badge_html("연결됨", "ok") if _src_ok else badge_html("경로 없음", "warn")
+    _html(
+        f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-left:3px solid {_src_color};'
+        f'border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;">'
+        f'<span style="color:#64748B;">G드라이브(로컬) 소스 경로</span>&nbsp;&nbsp;'
+        f'<code style="color:#0F172A;font-size:11px;">{_src_path}</code>&nbsp;&nbsp;'
+        f'{_src_badge}'
+        f'<span style="color:#94A3B8;margin-left:12px;">· .env 의 RAG_SOURCE_PATH 로 변경</span>'
+        f'</div>'
+    )
     _html('<div class="adm-warn">⚠️ 재구축은 부서당 2~10분 소요됩니다. 실행 중 챗봇 응답이 느려질 수 있습니다.</div>')
 
     # 부서 선택 + 재구축 (한 행)
@@ -777,7 +792,8 @@ def _tab_vectordb() -> None:
             label_visibility="collapsed",
         )
     with c2:
-        do_sync = st.checkbox("G드라이브 동기화", value=True, key="adm_dept_sync")
+        do_sync = st.checkbox("G드라이브→작업폴더 복사", value=_src_ok, key="adm_dept_sync",
+                              help=f"체크 시 '{_src_path}' 에서 PDF를 data_rag_working/ 으로 복사한 뒤 구축합니다.")
     with c3:
         btn_dept = st.button(
             "선택 부서 재구축",
