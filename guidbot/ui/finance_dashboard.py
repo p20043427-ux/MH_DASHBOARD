@@ -289,8 +289,7 @@ def render_finance_dashboard() -> None:
         )
 
     with t_monthly:
-        monthly_opd_dept = _fq('monthly_opd_dept')
-        _tab_monthly(monthly_opd_dept, [])
+        _tab_monthly()
 
     with t_region:
         _tab_region([], [])
