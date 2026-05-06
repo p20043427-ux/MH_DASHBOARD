@@ -64,6 +64,21 @@ try:
 except ImportError:
     HAS_FOLIUM = False  # type: ignore
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_dept_list_cached(schema: str) -> list:
+    """진료과 목록 1시간 캐시 — 탭 전환/리런마다 재조회 방지."""
+    try:
+        from db.oracle_client import execute_query as _eq_d
+        rows = _eq_d(
+            f"SELECT DISTINCT 진료과명 FROM {schema}.V_REGION_DEPT_DAILY "
+            f"WHERE 진료과명 IS NOT NULL ORDER BY 진료과명",
+            max_rows=200,
+        ) or []
+        return [r["진료과명"] for r in rows if r.get("진료과명")]
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_sigungu_geojson_cached() -> Optional[dict]:
     
@@ -337,80 +352,60 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         _ab = _td2.year * 12 + (_td2.month - 1) - _i
         _ym_opts.append(f"{_ab // 12}{_ab % 12 + 1:02d}")
 
-    # ── 통합 컨트롤 행 (진료과 선택 · 분석기간 · 조회 | 조회월 · 비교월 · 🔄) ──
+    # ── 필터 폼 ────────────────────────────────────────────────────────
+    # st.form 사용: 드롭다운 변경 시 리런 없음 → 조회 버튼 클릭 시에만 쿼리 실행
     _PERIOD_MAP = {"한달": 31, "2주일": 14, "1주일": 7}
     _cmp_opts   = ["없음"] + _ym_opts[1:]
 
-    # 진료과 목록 사전 로드 (경량 쿼리 — 첫 방문 시 1회 실행)
-    _SESS_DEPTS = "reg_tab_dept_list"
-    if _SESS_DEPTS not in st.session_state:
-        try:
-            from db.oracle_client import execute_query as _eq_d
-            _raw_depts = _eq_d(
-                f"SELECT DISTINCT 진료과명 FROM {_SC}.V_REGION_DEPT_DAILY "
-                f"WHERE 진료과명 IS NOT NULL ORDER BY 진료과명",
-                max_rows=200,
-            ) or []
-            st.session_state[_SESS_DEPTS] = [
-                _r["진료과명"] for _r in _raw_depts if _r.get("진료과명")
-            ]
-        except Exception:
-            st.session_state[_SESS_DEPTS] = []
-    _dept_opts_row = ["── 진료과를 선택하세요 ──"] + st.session_state.get(_SESS_DEPTS, [])
+    # 진료과 목록: @st.cache_data 1시간 캐시 — 탭 이동·리런마다 재조회 없음
+    _dept_opts_row = ["── 진료과를 선택하세요 ──"] + _fetch_dept_list_cached(_SC)
 
-    # ── 컨트롤 행 CSS (레이블 크기 통일, selectbox 겹침 방지) ────────────
-    st.markdown(
-        """<style>
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"]
-          label p { font-size: 11px !important; color: #64748B !important;
-                    margin-bottom: 0 !important; }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"]
-          div[data-baseweb="select"] { margin-top: 0 !important; }
-        </style>""",
-        unsafe_allow_html=True,
-    )
+    with st.form("reg_filter_form", border=False):
+        _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns(
+            [3.2, 1.8, 1.8, 1.8, 1.2, 0.8], gap="small", vertical_alignment="bottom"
+        )
+        with _rc1:
+            _sel_dept = st.selectbox(
+                "🏥 진료과 선택 *",
+                options=_dept_opts_row, index=0,
+                key="reg_dept_v3",
+                help="분석할 진료과를 선택하세요 (필수)",
+            )
+        with _rc2:
+            _sel_ym = st.selectbox(
+                "📅 조회 월",
+                options=_ym_opts,
+                format_func=lambda x: f"{x[:4]}-{x[4:]}",
+                key="reg_ym_sel",
+            )
+        with _rc3:
+            _cmp_raw = st.selectbox(
+                "📊 비교 월",
+                options=_cmp_opts,
+                format_func=lambda x: x if x == "없음" else f"{x[:4]}-{x[4:]}",
+                key="reg_cmp_sel",
+            )
+        with _rc4:
+            _period_label = st.selectbox(
+                "⏱ 분석 기간",
+                options=list(_PERIOD_MAP.keys()),
+                key="reg_period_sel",
+            )
+        with _rc5:
+            _do_load = st.form_submit_button(
+                "🔍 조회", use_container_width=True, type="primary"
+            )
+        with _rc6:
+            _do_reset = st.form_submit_button("🔄", use_container_width=True, help="초기화")
 
-    # 컬럼 순서: [진료과(넓게)] [분석기간] [조회] ‖ [조회월] [비교월] [🔄]
-    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns(
-        [3.2, 1.8, 1.2, 1.8, 1.8, 0.7], gap="small", vertical_alignment="bottom"
-    )
-    with _rc1:
-        _sel_dept = st.selectbox(
-            "🏥 진료과 선택 *",
-            options=_dept_opts_row, index=0,
-            key="reg_dept_v3",
-            help="분석할 진료과를 선택하세요 (필수)",
-        )
-    with _rc2:
-        _period_label = st.selectbox(
-            "⏱ 분석 기간",
-            options=list(_PERIOD_MAP.keys()),
-            key="reg_period_sel",
-        )
-    with _rc3:
-        _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
-    with _rc4:
-        _sel_ym = st.selectbox(
-            "📅 조회 월",
-            options=_ym_opts,
-            format_func=lambda x: f"{x[:4]}-{x[4:]}",
-            key="reg_ym_sel",
-        )
-    with _rc5:
-        _cmp_raw = st.selectbox(
-            "📊 비교 월",
-            options=_cmp_opts,
-            format_func=lambda x: x if x == "없음" else f"{x[:4]}-{x[4:]}",
-            key="reg_cmp_sel",
-        )
-        _cmp_ym = None if _cmp_raw == "없음" else _cmp_raw
+    _cmp_ym = None if _cmp_raw == "없음" else _cmp_raw
     _loaded_ym = st.session_state.get(_SESS_YM)
-    with _rc6:
-        if _loaded_ym and st.button("🔄", key="reg_refresh_btn", help="다시 조회"):
-            for _k in (_SESS_D, _SESS_M, _SESS_YM, _SESS_DEPTS):
-                st.session_state.pop(_k, None)
-            st.session_state.pop("reg_dept_v3", None)
-            st.rerun()
+
+    # 초기화
+    if _do_reset:
+        for _k in (_SESS_D, _SESS_M, _SESS_YM):
+            st.session_state.pop(_k, None)
+        st.rerun()
 
     # ── 이전 달 계산 (일별 비교용)
     def _prev_ym_of(ym: str) -> str:
@@ -421,12 +416,12 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         return f"{_y}{_m:02d}"
     _prev_ym = _prev_ym_of(_sel_ym)
 
-    # ── 조회 실행 ─────────────────────────────────────────────────────
+    # ── 조회 실행 (조회 버튼 클릭 시에만 실행) ───────────────────────────
     if _do_load:
         if _sel_dept == "── 진료과를 선택하세요 ──":
             st.warning("진료과를 먼저 선택한 뒤 조회하세요.")
         else:
-            _dept_q = _sel_dept.replace("'", "''")  # SQL 문자열 이스케이프
+            _dept_q = _sel_dept.replace("'", "''")
             with st.spinner(f"{_sel_ym[:4]}-{_sel_ym[4:]} / {_sel_dept} 조회 중…"):
                 try:
                     from db.oracle_client import execute_query as _eq
