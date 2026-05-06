@@ -337,24 +337,53 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
         _ab = _td2.year * 12 + (_td2.month - 1) - _i
         _ym_opts.append(f"{_ab // 12}{_ab % 12 + 1:02d}")
 
-    # ── 통합 컨트롤 행 (조회월 · 비교월 · 분석기간 · 진료과 선택 · 조회) ──
+    # ── 통합 컨트롤 행 (진료과 선택 · 분석기간 · 조회 | 조회월 · 비교월 · 🔄) ──
     _PERIOD_MAP = {"한달": 31, "2주일": 14, "1주일": 7}
     _cmp_opts   = ["없음"] + _ym_opts[1:]
 
-    # 진료과 옵션 사전 구성 (세션 캐시 데이터 활용 — 첫 로드 전에는 placeholder만)
-    _early_rd = st.session_state.get(_SESS_D, []) or []
-    if _early_rd:
-        _dtot_e: dict = {}
-        for _r in _early_rd:
-            _dp = _r.get("진료과명", "")
-            if _dp:
-                _dtot_e[_dp] = _dtot_e.get(_dp, 0) + int(_r.get("환자수", 0) or 0)
-        _dept_opts_row = ["── 진료과를 선택하세요 ──"] + sorted(_dtot_e, key=lambda d: -_dtot_e[d])
-    else:
-        _dept_opts_row = ["── 진료과를 선택하세요 ──"]
+    # 진료과 목록 사전 로드 (경량 쿼리 — 첫 방문 시 1회 실행)
+    _SESS_DEPTS = "reg_tab_dept_list"
+    if _SESS_DEPTS not in st.session_state:
+        try:
+            from db.oracle_client import execute_query as _eq_d
+            _raw_depts = _eq_d(
+                f"SELECT DISTINCT 진료과명 FROM {_SC}.V_REGION_DEPT_DAILY "
+                f"WHERE 진료과명 IS NOT NULL ORDER BY 진료과명",
+                max_rows=200,
+            ) or []
+            st.session_state[_SESS_DEPTS] = [
+                _r["진료과명"] for _r in _raw_depts if _r.get("진료과명")
+            ]
+        except Exception:
+            st.session_state[_SESS_DEPTS] = []
+    _dept_opts_row = ["── 진료과를 선택하세요 ──"] + st.session_state.get(_SESS_DEPTS, [])
 
-    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns([2, 2, 2, 3, 1, 0.6], gap="small")
+    # 컬럼 순서: [진료과(넓게)] [분석기간] [조회] ‖ [조회월] [비교월] [🔄]
+    _rc1, _rc2, _rc3, _rc4, _rc5, _rc6 = st.columns([3, 1.8, 1, 1.8, 1.8, 0.6], gap="small")
     with _rc1:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
+            f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
+            unsafe_allow_html=True,
+        )
+        _sel_dept = st.selectbox(
+            "진료과", options=_dept_opts_row, index=0,
+            key="reg_dept_v3", label_visibility="collapsed",
+            help="분석할 진료과를 선택하세요 (필수)",
+        )
+    with _rc2:
+        st.markdown(
+            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">⏱ 분석 기간</div>',
+            unsafe_allow_html=True,
+        )
+        _period_label = st.selectbox(
+            "분석 기간", options=list(_PERIOD_MAP.keys()),
+            key="reg_period_sel", label_visibility="collapsed",
+        )
+    with _rc3:
+        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
+        _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
+    with _rc4:
         st.markdown(
             f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">📅 조회 월</div>',
             unsafe_allow_html=True,
@@ -364,7 +393,7 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             format_func=lambda x: f"{x[:4]}-{x[4:]}",
             key="reg_ym_sel", label_visibility="collapsed",
         )
-    with _rc2:
+    with _rc5:
         st.markdown(
             f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
             f'📊 비교 월 <span style="opacity:.6;">(선택)</span></div>',
@@ -376,34 +405,11 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
             key="reg_cmp_sel", label_visibility="collapsed",
         )
         _cmp_ym = None if _cmp_raw == "없음" else _cmp_raw
-    with _rc3:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">⏱ 분석 기간</div>',
-            unsafe_allow_html=True,
-        )
-        _period_label = st.selectbox(
-            "분석 기간", options=list(_PERIOD_MAP.keys()),
-            key="reg_period_sel", label_visibility="collapsed",
-        )
-    with _rc4:
-        st.markdown(
-            f'<div style="font-size:10px;color:{C["t3"]};padding-bottom:2px;">'
-            f'🏥 진료과 선택 <span style="color:{C["red"]};">*</span></div>',
-            unsafe_allow_html=True,
-        )
-        _sel_dept = st.selectbox(
-            "진료과", options=_dept_opts_row, index=0,
-            key="reg_dept_v3", label_visibility="collapsed",
-            help="분석할 진료과를 선택하세요",
-        )
-    with _rc5:
-        st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
-        _do_load = st.button("🔍 조회", key="reg_load_btn", use_container_width=True)
     _loaded_ym = st.session_state.get(_SESS_YM)
     with _rc6:
         st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
         if _loaded_ym and st.button("🔄", key="reg_refresh_btn", help="다시 조회"):
-            for _k in (_SESS_D, _SESS_M, _SESS_YM):
+            for _k in (_SESS_D, _SESS_M, _SESS_YM, _SESS_DEPTS):
                 st.session_state.pop(_k, None)
             st.session_state.pop("reg_dept_v3", None)
             st.rerun()
@@ -419,29 +425,34 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
 
     # ── 조회 실행 ─────────────────────────────────────────────────────
     if _do_load:
-        with st.spinner(f"{_sel_ym[:4]}-{_sel_ym[4:]} 데이터 조회 중…"):
-            try:
-                from db.oracle_client import execute_query as _eq
-                _rd = _eq(
-                    f"SELECT 기준일자, 진료과명, 지역, 환자수 "
-                    f"FROM {_SC}.V_REGION_DEPT_DAILY "
-                    f"WHERE 기준일자 LIKE '{_sel_ym}%' "
-                    f"   OR 기준일자 LIKE '{_prev_ym}%' "
-                    f"ORDER BY 기준일자 DESC, 진료과명, 환자수 DESC",
-                    max_rows=100000,
-                ) or []
-                _rm = _eq(
-                    f"SELECT 기준월, 진료과명, 지역, 환자수 "
-                    f"FROM {_SC}.V_REGION_DEPT_MONTHLY "
-                    f"ORDER BY 기준월 DESC, 진료과명, 환자수 DESC",
-                    max_rows=100000,
-                ) or []
-                st.session_state[_SESS_D]  = _rd
-                st.session_state[_SESS_M]  = _rm
-                st.session_state[_SESS_YM] = _sel_ym
-                st.rerun()
-            except Exception as _e:
-                st.error(f"조회 오류: {_e}")
+        if _sel_dept == "── 진료과를 선택하세요 ──":
+            st.warning("진료과를 먼저 선택한 뒤 조회하세요.")
+        else:
+            _dept_q = _sel_dept.replace("'", "''")  # SQL 문자열 이스케이프
+            with st.spinner(f"{_sel_ym[:4]}-{_sel_ym[4:]} / {_sel_dept} 조회 중…"):
+                try:
+                    from db.oracle_client import execute_query as _eq
+                    _rd = _eq(
+                        f"SELECT 기준일자, 진료과명, 지역, 환자수 "
+                        f"FROM {_SC}.V_REGION_DEPT_DAILY "
+                        f"WHERE (기준일자 LIKE '{_sel_ym}%' OR 기준일자 LIKE '{_prev_ym}%') "
+                        f"  AND 진료과명 = '{_dept_q}' "
+                        f"ORDER BY 기준일자 DESC, 환자수 DESC",
+                        max_rows=50000,
+                    ) or []
+                    _rm = _eq(
+                        f"SELECT 기준월, 진료과명, 지역, 환자수 "
+                        f"FROM {_SC}.V_REGION_DEPT_MONTHLY "
+                        f"WHERE 진료과명 = '{_dept_q}' "
+                        f"ORDER BY 기준월 DESC, 환자수 DESC",
+                        max_rows=10000,
+                    ) or []
+                    st.session_state[_SESS_D]  = _rd
+                    st.session_state[_SESS_M]  = _rm
+                    st.session_state[_SESS_YM] = _sel_ym
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"조회 오류: {_e}")
         return
 
     # 로드 안된 상태 → 안내 화면 표시 후 종료
@@ -473,8 +484,9 @@ def _tab_region(region_data: List[Dict], region_monthly: List[Dict] = None) -> N
                 f'<div style="font-size:13px;color:{C["t2"]};line-height:1.9;'
                 f'margin-bottom:20px;">'
                 f'진료과별 환자 주소지 분포 · 일별 유입 추이 · 지역 비교 분석<br>'
-                f'위에서 <b style="color:{C["t1"]};">{_sel_ym[:4]}-{_sel_ym[4:]}</b> 월을 '
-                f'선택한 뒤 &nbsp;<b>🔍 조회</b>&nbsp; 버튼을 클릭하세요.</div>'
+                f'<b style="color:{C["t1"]};">① 진료과 선택</b> → '
+                f'<b style="color:{C["t1"]};">② 조회 월 확인</b> → '
+                f'<b style="color:{C["t1"]};">③ 🔍 조회</b> 순서로 진행하세요.</div>'
                 f'<div style="display:inline-flex;align-items:center;gap:8px;'
                 f'background:{C["teal"]}12;border-radius:8px;padding:10px 18px;">'
                 f'<span style="font-size:12px;color:{C["t3"]};">데이터 소스 ·</span>'
