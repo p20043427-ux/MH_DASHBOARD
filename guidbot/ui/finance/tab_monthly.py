@@ -368,102 +368,84 @@ def _tab_monthly(*_, **__) -> None:
 
     # ── 차트 1: 진료과별 외래환자수 비교 막대 ────────────────────────
     st.markdown(
-        f'<div class="wd-card" style="border-top:3px solid {C["blue"]};">',
+        f'<div class="wd-card" style="border-top:3px solid {C["violet"]};">',
         unsafe_allow_html=True,
     )
-    _sec_hd("📊 진료과별 외래환자수 비교", f"{_m1_label} vs {_m2_label}", C["blue"])
+    _sec_hd("📊 진료과별 외래환자수 비교", f"{_m1_label} vs {_m2_label}", C["violet"])
 
     _opd1_vals = [_vi(_d1.get(d, {}), "외래환자수") for d in _all_depts]
     _opd2_vals = [_vi(_d2.get(d, {}), "외래환자수") for d in _all_depts]
-    _diff_vals = [_opd2_vals[i] - _opd1_vals[i] for i in range(len(_all_depts))]
-    _diff_text = [
-        f"{'▲' if v > 0 else '▼' if v < 0 else ''}{abs(v)}" if v != 0 else ""
-        for v in _diff_vals
-    ]
-    _diff_c2 = [C["red"] if v > 0 else C["blue"] if v < 0 else "rgba(0,0,0,0)" for v in _diff_vals]
+    _opd_max   = max(max(_opd1_vals, default=0), max(_opd2_vals, default=0))
 
     _fig_opd = go.Figure()
     _fig_opd.add_trace(go.Bar(
         name=f"{_m1_label} 외래",
         x=_all_depts, y=_opd1_vals,
-        marker_color=C.get("blue_l", "#BFDBFE"),
-        marker=dict(line=dict(color=C["blue"], width=0.5)),
+        marker_color=C["violet"], marker=dict(line=dict(width=0)),
+        text=[f"{v:,}" for v in _opd1_vals], textposition="outside",
+        textfont=dict(size=11, color=C["violet"]),
         hovertemplate=f"<b>%{{x}}</b><br>{_m1_label}: %{{y:,}}명<extra></extra>",
     ))
     _fig_opd.add_trace(go.Bar(
         name=f"{_m2_label} 외래",
         x=_all_depts, y=_opd2_vals,
-        marker_color=C.get("indigo_l", "#C7D2FE"),
-        marker=dict(line=dict(color=C["indigo"], width=0.5)),
+        marker_color=C["teal"], marker=dict(line=dict(width=0)),
+        text=[f"{v:,}" for v in _opd2_vals], textposition="outside",
+        textfont=dict(size=11, color=C["teal"]),
         hovertemplate=f"<b>%{{x}}</b><br>{_m2_label}: %{{y:,}}명<extra></extra>",
     ))
-    _fig_opd.add_trace(go.Scatter(
-        x=_all_depts,
-        y=[max(a, b) + 1 for a, b in zip(_opd1_vals, _opd2_vals)],
-        mode="text", text=_diff_text,
-        textfont=dict(size=10, color=_diff_c2),
-        showlegend=False, hoverinfo="skip",
-    ))
     _fig_opd.update_layout(
-        **_PLOTLY_LAYOUT, barmode="group", height=320,
-        margin=dict(l=0, r=0, t=30, b=60),
-        legend=dict(orientation="h", y=1.10, x=0.5, xanchor="center",
+        **_PLOTLY_LAYOUT, barmode="group", height=280,
+        margin=dict(l=0, r=0, t=30, b=50),
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
                     font=dict(size=12), bgcolor="rgba(0,0,0,0)"),
-        bargap=0.2, bargroupgap=0.05,
+        bargap=0.25, bargroupgap=0.05,
     )
-    _fig_opd.update_xaxes(tickangle=-35, tickfont=dict(size=10))
-    _fig_opd.update_yaxes(title_text="외래환자수(명)", title_font=dict(size=10, color=C["t3"]))
+    _fig_opd.update_xaxes(tickangle=-35, tickfont=dict(size=12, color="#334155"))
+    _fig_opd.update_yaxes(title_text="외래환자수(명)", title_font=dict(size=10, color=C["t3"]),
+                          range=[0, _opd_max * 1.22])
     st.plotly_chart(_fig_opd, width="stretch", key="mon_opd_bar")
     st.markdown("</div>", unsafe_allow_html=True)
     _gap()
 
     # ── 차트 2: 진료과별 신환자수 비교 막대 ──────────────────────────
     st.markdown(
-        f'<div class="wd-card" style="border-top:3px solid {C["green"]};">',
+        f'<div class="wd-card" style="border-top:3px solid {C["teal"]};">',
         unsafe_allow_html=True,
     )
-    _sec_hd("📊 진료과별 신환자수 비교", f"{_m1_label} vs {_m2_label}", C["green"])
+    _sec_hd("📊 진료과별 신환자수 비교", f"{_m1_label} vs {_m2_label}", C["teal"])
 
     _new1_vals = [_vi(_d1.get(d, {}), "신환자수") for d in _all_depts]
     _new2_vals = [_vi(_d2.get(d, {}), "신환자수") for d in _all_depts]
-    _ndiff_vals = [_new2_vals[i] - _new1_vals[i] for i in range(len(_all_depts))]
-    _ndiff_text = [
-        f"{'▲' if v > 0 else '▼' if v < 0 else ''}{abs(v)}" if v != 0 else ""
-        for v in _ndiff_vals
-    ]
-    _ndiff_c = [C["red"] if v > 0 else C["blue"] if v < 0 else "rgba(0,0,0,0)" for v in _ndiff_vals]
+    _new_max   = max(max(_new1_vals, default=0), max(_new2_vals, default=0))
 
     _fig_new = go.Figure()
     _fig_new.add_trace(go.Bar(
         name=f"{_m1_label} 신환",
         x=_all_depts, y=_new1_vals,
-        marker_color=C.get("blue_l", "#BFDBFE"),
-        marker=dict(line=dict(color=C["blue"], width=0.5)),
+        marker_color=C["violet"], marker=dict(line=dict(width=0)),
+        text=[f"{v:,}" for v in _new1_vals], textposition="outside",
+        textfont=dict(size=11, color=C["violet"]),
         hovertemplate=f"<b>%{{x}}</b><br>{_m1_label}: %{{y:,}}명<extra></extra>",
     ))
     _fig_new.add_trace(go.Bar(
         name=f"{_m2_label} 신환",
         x=_all_depts, y=_new2_vals,
-        marker_color=C.get("indigo_l", "#C7D2FE"),
-        marker=dict(line=dict(color=C["indigo"], width=0.5)),
+        marker_color=C["teal"], marker=dict(line=dict(width=0)),
+        text=[f"{v:,}" for v in _new2_vals], textposition="outside",
+        textfont=dict(size=11, color=C["teal"]),
         hovertemplate=f"<b>%{{x}}</b><br>{_m2_label}: %{{y:,}}명<extra></extra>",
     ))
-    _fig_new.add_trace(go.Scatter(
-        x=_all_depts,
-        y=[max(a, b) + 1 for a, b in zip(_new1_vals, _new2_vals)],
-        mode="text", text=_ndiff_text,
-        textfont=dict(size=10, color=_ndiff_c),
-        showlegend=False, hoverinfo="skip",
-    ))
     _fig_new.update_layout(
-        **_PLOTLY_LAYOUT, barmode="group", height=320,
-        margin=dict(l=0, r=0, t=30, b=60),
-        legend=dict(orientation="h", y=1.10, x=0.5, xanchor="center",
+        **_PLOTLY_LAYOUT, barmode="group", height=280,
+        margin=dict(l=0, r=0, t=30, b=50),
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
                     font=dict(size=12), bgcolor="rgba(0,0,0,0)"),
-        bargap=0.2, bargroupgap=0.05,
+        bargap=0.25, bargroupgap=0.05,
     )
-    _fig_new.update_xaxes(tickangle=-35, tickfont=dict(size=10))
-    _fig_new.update_yaxes(title_text="신환자수(명)", title_font=dict(size=10, color=C["t3"]))
+    _fig_new.update_xaxes(tickangle=-35, tickfont=dict(size=12, color="#334155"))
+    _fig_new.update_yaxes(title_text="신환자수(명)", title_font=dict(size=10, color=C["t3"]),
+                          range=[0, _new_max * 1.22])
     st.plotly_chart(_fig_new, width="stretch", key="mon_new_bar")
     st.markdown("</div>", unsafe_allow_html=True)
     _gap()
