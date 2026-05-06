@@ -373,7 +373,7 @@ def _render_data_table(
         return
 
     df = pd.DataFrame(rows, columns=column_names)
-    st.dataframe(df, use_container_width=True, height=min(400, 60 + row_count * 35))
+    st.dataframe(df, width="stretch", height=min(400, 60 + row_count * 35))
 
     csv_data = df.to_csv(index=False, encoding="utf-8-sig")
     st.download_button(
@@ -574,7 +574,7 @@ def _render_grid_with_summary(
                             _s_df.set_index(agg_chart_x)[[agg_chart_y]], height=300
                         )
                     except Exception:
-                        st.dataframe(_s_df, use_container_width=True)
+                        st.dataframe(_s_df, width="stretch")
 
 
 # ──────────────────────────────────────────────────────────────────────

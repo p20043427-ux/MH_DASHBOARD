@@ -316,6 +316,7 @@ def _load_doc_registry() -> List[Dict[str, Any]]:
         return []
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def _load_faiss_docs(max_docs: int = 300) -> List[Dict[str, Any]]:
     pkl_path = settings.rag_db_path / "index.pkl"
     if not pkl_path.exists():
@@ -952,7 +953,7 @@ def _tab_vectordb() -> None:
             st.caption(f"청크 {len(faiss_docs)}건 (최대 300건)")
             try:
                 import pandas as pd
-                st.dataframe(pd.DataFrame(faiss_docs), use_container_width=True,
+                st.dataframe(pd.DataFrame(faiss_docs), width="stretch",
                              hide_index=True, height=min(380, len(faiss_docs) * 35 + 40))
             except ImportError:
                 rows_f = [[d["청크ID"], d["파일명"], d["페이지"], d["카테고리"], d["내용(미리보기)"]]

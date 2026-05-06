@@ -142,14 +142,14 @@ def _tab_card_match() -> None:
                         lambda v: v[:4]+"-****-****-"+v[-4:] if len(v.replace("-","").replace("*",""))>=8 else "****-****-****-****")
                 with st.expander(f"📄 카드사 파일 — {len(_df_card):,}건 (정상승인)", expanded=False):
                     _prev_cols = [c for c in ["승인일시","승인번호","승인금액","카드사","카드번호_표시","거래결과","단말기ID","설치위치"] if c in _df_card.columns]
-                    st.dataframe(_df_card[_prev_cols].rename(columns={"카드번호_표시":"카드번호(마스킹)"}).head(50), use_container_width=True, height=200)
+                    st.dataframe(_df_card[_prev_cols].rename(columns={"카드번호_표시":"카드번호(마스킹)"}).head(50), width="stretch", height=200)
         except Exception as _pe:
             st.error(f"❌ 파일 파싱 오류: {_pe}"); _df_card = None
 
     if not _is_forward and _hosp_rows:
         import pandas as pd
         with st.expander(f"🏥 병원 DB 조회 결과 — {len(_hosp_rows):,}건", expanded=True):
-            st.dataframe(pd.DataFrame(_hosp_rows), use_container_width=True, height=260)
+            st.dataframe(pd.DataFrame(_hosp_rows), width="stretch", height=260)
 
     if not _do_match and "card_match_result" not in st.session_state:
         if not uploaded:
