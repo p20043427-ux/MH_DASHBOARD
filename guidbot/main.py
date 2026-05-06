@@ -682,7 +682,7 @@ def main() -> None:
     if active_page == "sql_dashboard":
         page_header()
         from ui.sql_dashboard import render_sql_dashboard
-        render_sql_dashboard(vector_db=vector_db)
+        render_sql_dashboard()
         return
 
     if active_page == "doc_manager":
