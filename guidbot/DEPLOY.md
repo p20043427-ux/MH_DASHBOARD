@@ -422,7 +422,7 @@ git pull
 | `GOOGLE_API_KEY`           | ✅       | —                          | Gemini API 기본 키                                  |
 | `GOOGLE_API_KEY_2` ~ `4` | 권장     | —                          | 할당량 초과 시 자동 전환 예비 키                    |
 | `CHAT_MODEL`               | —       | `models/gemini-2.5-flash` | LLM 모델 선택                                       |
-| `ADMIN_PASSWORD`           | ✅       | `moonhwa`                 | 관리자 패널 비밀번호 (운영 시 변경 필수)            |
+| `ADMIN_PASSWORD`           | ✅       | 없음 (필수)               | 관리자 패널 비밀번호 — 미설정 시 앱 기동 불가       |
 | `DB_ENABLED`               | —       | `false`                   | Oracle/DB 연결 활성화                               |
 | `DB_TYPE`                  | DB 시 ✅ | —                          | `oracle` / `mysql` / `mssql` / `postgresql` |
 | `DB_HOST`                  | DB 시 ✅ | —                          | DB 서버 IP 또는 호스트명                            |

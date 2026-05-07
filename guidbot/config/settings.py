@@ -650,10 +650,9 @@ class AppSettings(BaseSettings):
     # ──────────────────────────────────────────────────────────────────
 
     admin_password: SecretStr = Field(
-        default=SecretStr("moonhwa"),
         description=(
-            "관리자 패널 패스워드. 운영 환경에서는 반드시 .env 의 "
-            "ADMIN_PASSWORD 환경변수로 설정. 최소 12자, 특수문자 포함 권장."
+            "관리자 패널 패스워드. 반드시 .env 의 ADMIN_PASSWORD 환경변수로 설정. "
+            "최소 12자, 특수문자 포함 권장."
         ),
     )
 
