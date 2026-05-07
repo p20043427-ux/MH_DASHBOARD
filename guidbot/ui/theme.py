@@ -431,14 +431,18 @@ header[data-testid="stHeader"] {{
 /* ═══════════════════════════════════════════════════════
    사이드바 스타일 — Slate-900 어두운 배경 (가독성 패치 적용)
 ═══════════════════════════════════════════════════════ */
-/* 사이드바 전체 배경을 어두운 네이비로 설정 */
+/* 사이드바 전체 배경 — 관리자 대시보드 디자인 기준 통일 (frosted glass) */
 [data-testid="stSidebar"] {{
-  background: var(--clr-sidebar-bg) !important;
-  border-right: none !important;
+  background: rgba(15,23,42,0.97) !important;
+  backdrop-filter: saturate(180%) blur(20px) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
+  border-right: 1px solid rgba(255,255,255,0.07) !important;
 }}
 
-[data-testid="stSidebar"] > div {{
-  background: var(--clr-sidebar-bg) !important;
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {{
+  background: transparent !important;
 }}
 
 /* [v9.5 수정] 사이드바 일반 텍스트 및 라벨 가독성 보강
@@ -696,6 +700,47 @@ header[data-testid="stHeader"] {{
   border: 1px solid rgba(255,255,255,0.2) !important;
   color: #FFFFFF !important;
   font-size: 12px !important;
+}}
+
+/* ── .sb-link 앱 링크 카드 — 관리자 대시보드 디자인 기준 통일 ── */
+[data-testid="stSidebar"] a.sb-link, .sb-link {{
+  display: block; width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-left: 3px solid rgba(99,179,237,0.55);
+  border-radius: 9px; padding: 10px 14px;
+  text-decoration: none !important;
+  color: rgba(255,255,255,0.90) !important;
+  margin-bottom: 7px;
+  transition: background 150ms ease, border-left-color 150ms ease;
+}}
+[data-testid="stSidebar"] a.sb-link:hover, .sb-link:hover {{
+  background: rgba(255,255,255,0.12) !important;
+  border-left-color: rgba(99,179,237,0.85) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > p {{
+  margin: 0 !important; padding: 0 !important;
+}}
+.sb-link-row {{ display: flex !important; justify-content: space-between !important; align-items: center !important; margin-bottom: 3px; }}
+.sb-link-name {{ font-size: 12.5px !important; font-weight: 600 !important; color: rgba(255,255,255,0.90) !important; letter-spacing: -0.1px !important; }}
+.sb-link-port {{ font-size: 10.5px !important; color: rgba(255,255,255,0.32) !important; font-weight: 400 !important; }}
+.sb-link-sub  {{ font-size: 11px !important; color: rgba(255,255,255,0.40) !important; font-weight: 400 !important; }}
+
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 제거 — 전체 앱 공통 ── */
+/* summary > span(아이콘)만 font-size:0, 제목 div[data-testid]는 건드리지 않음 */
+[data-testid="stExpander"] details summary > span {{
+  font-size: 0 !important; color: transparent !important;
+  user-select: none !important; overflow: hidden !important;
+}}
+[data-testid="stExpander"] details summary > span svg {{
+  font-size: initial !important; color: #64748B !important;
+  display: inline-block !important; width: 16px !important; height: 16px !important;
+}}
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {{
+  font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important;
+}}
+[data-testid="stSidebar"] [data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {{
+  color: rgba(255,255,255,0.85) !important;
 }}
 
 /* ═══════════════════════════════════════════════════════

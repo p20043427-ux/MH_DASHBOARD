@@ -219,6 +219,19 @@ header[data-testid="stHeader"] { display: none !important; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 9999px; }
+
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 제거 ── */
+[data-testid="stExpander"] details summary > span {
+  font-size: 0 !important; color: transparent !important;
+  user-select: none !important; overflow: hidden !important;
+}
+[data-testid="stExpander"] details summary > span svg {
+  font-size: initial !important; color: #64748B !important;
+  display: inline-block !important; width: 16px !important; height: 16px !important;
+}
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {
+  font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
