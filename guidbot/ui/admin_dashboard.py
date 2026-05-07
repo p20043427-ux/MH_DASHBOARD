@@ -177,19 +177,21 @@ _ADMIN_CSS: str = """
   font-size: 13px; color: #92400E; margin-bottom: 14px;
 }
 
-/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 완전 제거 ─── */
-/* summary 전체 font-size 0 → 직접 text node 포함 모든 텍스트 비가시화  */
-[data-testid="stExpander"] details summary { font-size: 0 !important; color: transparent !important; }
-/* 콘텐츠 영역(stMarkdownContainer)만 원래 크기로 복원 */
-[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] { font-size: initial !important; color: initial !important; }
-[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p { font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important; margin: 0 !important; }
-/* span/small 직접 숨김 (구 버전 Streamlit 대응) */
-[data-testid="stExpander"] details summary > span,
-[data-testid="stExpander"] details summary > small,
-[data-testid="stExpanderToggleIcon"] span,
-[data-testid="stExpanderToggleIcon"] small { display: none !important; }
-/* SVG 화살표 크기 복원 */
-[data-testid="stExpander"] details summary svg { width: 16px !important; height: 16px !important; display: inline-block !important; flex-shrink: 0 !important; color: #64748B !important; }
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 제거 — Streamlit 1.45 ─── */
+/* 아이콘은 summary > span, 제목은 summary > div[data-testid] → span만 타겟 */
+[data-testid="stExpander"] details summary > span {
+    font-size: 0 !important; color: transparent !important;
+    user-select: none !important; overflow: hidden !important;
+}
+/* span 안의 SVG 화살표는 원래 크기로 복원 */
+[data-testid="stExpander"] details summary > span svg {
+    font-size: initial !important; color: #64748B !important;
+    display: inline-block !important; width: 16px !important; height: 16px !important;
+}
+/* 제목 텍스트(stMarkdownContainer > p)는 절대 건드리지 않음 */
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {
+    font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important;
+}
 </style>
 """
 
