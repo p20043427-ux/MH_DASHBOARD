@@ -1,0 +1,64 @@
+# .pre-commit-config.yaml — 커밋 전 자동 코드 품질 검사
+#
+# 설치: pip install pre-commit && pre-commit install
+# 수동 실행: pre-commit run --all-files
+
+repos:
+  # ── 기본 파일 정리 ─────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key          # API 키·비밀번호 커밋 방지
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]
+
+  # ── .env 파일 커밋 방지 ─────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]      # main 직접 커밋 방지
+
+  # ── Python 포맷 (black) ─────────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        language_version: python3
+        args: ["--line-length=100"]
+
+  # ── import 정렬 (isort) ─────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile=black", "--line-length=100"]
+
+  # ── 정적 분석 (flake8) ─────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.0
+    hooks:
+      - id: flake8
+        args:
+          - "--max-line-length=100"
+          - "--extend-ignore=E203,W503,E501"
+          - "--exclude=tests/rag_benchmark.py"
+
+  # ── docstring 존재 여부 검사 (interrogate) ─────────────────────────
+  # 핵심 모듈(core/, llm/, config/) 의 공개 함수·클래스 docstring 필수화
+  - repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
+    hooks:
+      - id: interrogate
+        args:
+          - "--fail-under=70"           # 70% 이상 docstring 적용 강제
+          - "--ignore-init-module"
+          - "--ignore-magic"
+          - "--ignore-private"
+          - "--verbose"
+        files: ^guidbot/(core|llm|config)/
