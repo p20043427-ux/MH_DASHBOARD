@@ -526,16 +526,17 @@ header[data-testid="stHeader"] {{
   background: transparent !important;
 }}
 
-/* 사이드바 버튼 — 관리자 대시보드 디자인 기준 명도 통일 */
+/* 사이드바 버튼 — 관리자 대시보드(admin_app.py) 기준 완전 통일 */
 [data-testid="stSidebar"] .stButton > button {{
-  background: rgba(255,255,255,0.10) !important;
-  border: 1px solid rgba(255,255,255,0.22) !important;
-  color: rgba(255,255,255,0.90) !important;
-  border-radius: 9px !important;
-  padding: 0.50rem 0.90rem !important;
-  font-size: 12.5px !important;
-  font-weight: 600 !important;
-  transition: all var(--ease) !important;
+  background: rgba(255,255,255,0.08) !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.1px !important;
+  transition: background 150ms ease !important;
   box-shadow: none !important;
 }}
 
@@ -552,9 +553,8 @@ header[data-testid="stHeader"] {{
 
 /* 사이드바 버튼 호버 */
 [data-testid="stSidebar"] .stButton > button:hover {{
-  background: rgba(255,255,255,0.17) !important;
-  border-color: rgba(255,255,255,0.38) !important;
-  color: rgba(255,255,255,0.98) !important;
+  background: rgba(255,255,255,0.15) !important;
+  border-color: rgba(255,255,255,0.25) !important;
 }}
 
 /* type="primary" 버튼 (DB 업데이트 등) */

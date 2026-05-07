@@ -42,71 +42,59 @@ class DBHealth:
 _SIDEBAR_BTN_CSS = """
 <style>
 /* ══════════════════════════════════════════════════════════════
-   사이드바 버튼 통합 디자인 시스템 v3
-   · secondary / primary / a.sb-link-btn 동일 크기·폰트
-   · 선택 상태(primary)만 파란 배경으로 구분
-   · [v3] 비선택 버튼 배경/텍스트 명도 강화 — 어두운 배경에서 가시성 확보
+   사이드바 버튼 — 관리자 대시보드(admin_app.py) 기준 완전 통일 v4
 ════════════════════════════════════════════════════════════════ */
 
-/* ── 공통 크기·폰트 (secondary + primary 모두) ─────────────── */
-[data-testid="stSidebar"] div[data-testid="stButton"] > button,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+/* ── 공통 레이아웃·폰트 */
+[data-testid="stSidebar"] div[data-testid="stButton"] > button {
     width: 100% !important;
     text-align: left !important;
-    padding: 0.52rem 0.90rem !important;
-    border-radius: 9px !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
+    padding: 8px 14px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: -0.1px !important;
     line-height: 1.4 !important;
     box-shadow: none !important;
-    transition: background 130ms ease, border-color 130ms ease, color 130ms ease !important;
+    transition: background 150ms ease !important;
 }
 
-/* ── secondary (비선택 기본) — 관리자 sb-link 카드 기준 명도 통일 ── */
+/* ── secondary (비선택 기본) — admin 기준값 */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
-    background: rgba(255,255,255,0.10) !important;
-    border: 1px solid rgba(255,255,255,0.22) !important;
-    color: rgba(255,255,255,0.90) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    color: #fff !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(255,255,255,0.17) !important;
-    border-color: rgba(255,255,255,0.36) !important;
-    color: rgba(255,255,255,0.98) !important;
+    background: rgba(255,255,255,0.15) !important;
+    border-color: rgba(255,255,255,0.25) !important;
 }
 
-/* ── primary (선택·강조 — 파란 배경) ─────────────────────── */
+/* ── primary (선택·강조 — 파란 배경) */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
-    background: rgba(37,99,235,0.32) !important;
-    border: 1px solid rgba(37,99,235,0.62) !important;
-    color: rgba(255,255,255,0.98) !important;
+    background: rgba(37,99,235,0.28) !important;
+    border: 1px solid rgba(37,99,235,0.55) !important;
+    color: #fff !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
-    background: rgba(37,99,235,0.46) !important;
-    border-color: rgba(37,99,235,0.78) !important;
+    background: rgba(37,99,235,0.40) !important;
 }
 
-/* ── focus / active 공통 초기화 ──────────────────────────── */
+/* ── focus / active 초기화 */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:focus,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:focus-visible,
-[data-testid="stSidebar"] div[data-testid="stButton"] > button:active,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:focus,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:focus-visible,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:active,
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:focus,
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:focus-visible,
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:active {
+[data-testid="stSidebar"] div[data-testid="stButton"] > button:active {
     outline: none !important;
     box-shadow: none !important;
 }
 
-/* ── 버튼 내부 텍스트 상속 ───────────────────────────────── */
+/* ── 버튼 내부 텍스트 상속 */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button p,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button span,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button div {
@@ -116,43 +104,35 @@ _SIDEBAR_BTN_CSS = """
     font-weight: inherit !important;
 }
 
-/* ── 버튼 컨테이너 간격 ──────────────────────────────────── */
-[data-testid="stSidebar"] div[data-testid="stButton"] {
-    margin-bottom: 0.22rem !important;
-}
-[data-testid="stSidebar"] .sb-btn-wrap {
-    margin-top: 0.1rem;
-}
+/* ── 버튼 컨테이너 간격 */
+[data-testid="stSidebar"] div[data-testid="stButton"] { margin-bottom: 0.22rem !important; }
+[data-testid="stSidebar"] .sb-btn-wrap { margin-top: 0.1rem; }
 
-/* ── 링크 버튼 (a.sb-link-btn) — 회람 문서 등 ────────────── */
+/* ── 링크 버튼 (a.sb-link-btn) — admin .sb-link 동일 값 */
 [data-testid="stSidebar"] a.sb-link-btn {
     display: block;
     width: 100%;
     box-sizing: border-box;
-    padding: 9px 13px;
+    padding: 10px 14px;
     border-radius: 9px;
     font-size: 12.5px;
     font-weight: 600;
-    line-height: 1.4;
     text-decoration: none !important;
-    background: rgba(255,255,255,0.10);
-    border: 1px solid rgba(255,255,255,0.22);
-    border-left: 3px solid rgba(99,179,237,0.65);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-left: 3px solid rgba(99,179,237,0.55);
     color: rgba(255,255,255,0.90) !important;
-    transition: background 130ms ease, border-left-color 130ms ease;
+    transition: background 150ms ease, border-left-color 150ms ease;
     margin-bottom: 0.22rem;
     cursor: pointer;
 }
 [data-testid="stSidebar"] a.sb-link-btn:hover {
-    background: rgba(255,255,255,0.17) !important;
-    border-left-color: rgba(99,179,237,0.90) !important;
-    color: rgba(255,255,255,0.98) !important;
+    background: rgba(255,255,255,0.12) !important;
+    border-left-color: rgba(99,179,237,0.85) !important;
     text-decoration: none !important;
 }
-
 </style>
 """
-
 
 def _init_session_state() -> None:
     if "search_mode" not in st.session_state:
@@ -353,14 +333,14 @@ def _render_shortcuts() -> None:
             st.session_state[_edit_key] = False
             st.rerun()
 
-    # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) ──────────────────────
+    # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) — admin 기준값 통일
     _CELL_S = (
-        "flex:1;border:1px solid rgba(255,255,255,0.22);"
-        "border-radius:9px;padding:8px 4px;text-align:center;"
-        "background:rgba(255,255,255,0.10);"
+        "flex:1;border:1px solid rgba(255,255,255,0.15);"
+        "border-radius:8px;padding:8px 4px;text-align:center;"
+        "background:rgba(255,255,255,0.08);"
     )
-    _LBL_S = "display:block;font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.90);"
-    _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.45);margin-top:2px;"
+    _LBL_S = "display:block;font-size:13px;font-weight:500;color:#fff;"
+    _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.38);margin-top:2px;"
 
     _cells = "".join(
         f'<div style="{_CELL_S}">'
