@@ -421,33 +421,22 @@ def _compute_scalability(chk: Dict[str, Tuple[bool, str]]) -> int:
 
 # ── expander 화살표 텍스트 노출 방지 CSS 주입 ─────────────────────────────
 def _inject_tab_css() -> None:
-    """진단 탭 CSS: _arrow_right/_arrow_down 텍스트 완전 제거 + expander 스타일.
-    summary 전체 font-size:0 → stMarkdownContainer만 복원하는 방식으로 텍스트 노드 포함 제거.
-    """
+    """진단 탭 CSS: summary > span(아이콘)만 font-size:0 — 제목 div는 건드리지 않음."""
     st.markdown(
         "<style>"
-        # summary 전체를 font-size:0 으로 비가시화 (직접 text node 포함)
-        "[data-testid='stExpander'] details summary{"
+        # 아이콘 span만 타겟 (summary > div[data-testid]인 제목은 영향 없음)
+        "[data-testid='stExpander'] details summary > span{"
         "  font-size:0 !important; color:transparent !important;"
+        "  user-select:none !important; overflow:hidden !important;"
         "}"
-        # stMarkdownContainer 내부만 원래 크기·색 복원
-        "[data-testid='stExpander'] details summary [data-testid='stMarkdownContainer']{"
-        "  font-size:initial !important; color:initial !important;"
+        # span 안의 SVG 화살표는 원래 크기 복원
+        "[data-testid='stExpander'] details summary > span svg{"
+        "  font-size:initial !important; color:#64748B !important;"
+        "  display:inline-block !important; width:16px !important; height:16px !important;"
         "}"
+        # 제목 p 는 명시적으로 보장
         "[data-testid='stExpander'] details summary [data-testid='stMarkdownContainer'] p{"
-        "  font-size:13px !important; font-weight:600 !important;"
-        "  color:#0F172A !important; margin:0 !important;"
-        "}"
-        # span/small 직접 숨김 (구 버전 Streamlit 대응)
-        "[data-testid='stExpander'] details summary > span,"
-        "[data-testid='stExpander'] details summary > small,"
-        "[data-testid='stExpanderToggleIcon'] span,"
-        "[data-testid='stExpanderToggleIcon'] small{display:none !important;}"
-        # SVG 화살표 크기 복원
-        "[data-testid='stExpander'] details summary svg{"
-        "  width:16px !important; height:16px !important;"
-        "  display:inline-block !important; flex-shrink:0 !important;"
-        "  color:#64748B !important;"
+        "  font-size:13px !important; font-weight:600 !important; color:#0F172A !important;"
         "}"
         "</style>",
         unsafe_allow_html=True,
