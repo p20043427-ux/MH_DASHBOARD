@@ -1,5 +1,5 @@
 """
-ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.1, 2026-05-07)
+ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.2, 2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [v2.0 변경 — 2026-05-07]
   · 완전 라이브화: 기존 static_sec 8개 항목 → 실제 파일 체크 함수로 전환
@@ -14,6 +14,13 @@ ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.1, 2
   · 진단 실행 버튼 추가 — 탭 진입 시 자동 실행 → 버튼 클릭 시만 실행
   · 결과 session_state 캐싱 — 재렌더링 시 재실행 없음
   · Critical 이슈 섹션 — 해결 항목도 ✅ 해결됨으로 항상 표시
+
+[v2.2 변경사항]
+  · _check_llm_temperature() / _check_parallel_queries() 체크 함수 추가
+  · _run_all_checks() 에 LLM_온도 / 쿼리_병렬화 등록 (총 23개)
+  · 성능 진단 표: 실시간 탭 Oracle 쿼리 행 live check 연동
+  · 코드 품질 표: _qrow() 헬퍼로 해결된 행 취소선+✅ 동적 표시
+  · TOP 10 #6: chk_key="" → "쿼리_병렬화" 연결
 
 [역할]
   CTO 관점 정밀 진단 보고서를 실시간 라이브 체크 기반으로 시각화.
@@ -68,7 +75,31 @@ def _check_default_password() -> Tuple[bool, str]:
     txt = target.read_text(encoding="utf-8", errors="ignore")
     if 'default=SecretStr("moonhwa")' in txt or "default=SecretStr('moonhwa')" in txt:
         return False, "admin_password default=SecretStr(\"moonhwa\") 하드코딩 발견"
-    return True, "기본 비밀번호 제거됨"
+    return True, "기본 비밀번호 제거됨 — ADMIN_PASSWORD 환경변수 필수화"
+
+
+def _check_llm_temperature() -> Tuple[bool, str]:
+    """core/llm.py 에서 temperature 하드코딩 여부 확인."""
+    target = _ROOT / "core" / "llm.py"
+    if not target.exists():
+        return False, "core/llm.py 없음"
+    txt = target.read_text(encoding="utf-8", errors="ignore")
+    if '"temperature": 0.1' in txt or "'temperature': 0.1" in txt:
+        return False, "temperature: 0.1 하드코딩 — settings.llm_temperature 무시됨"
+    if "settings.llm_temperature" in txt:
+        return True, "settings.llm_temperature 사용 중"
+    return False, "temperature 설정 확인 불가"
+
+
+def _check_parallel_queries() -> Tuple[bool, str]:
+    """finance_dashboard.py 에서 Oracle 쿼리 병렬화 여부 확인."""
+    target = _ROOT / "ui" / "finance_dashboard.py"
+    if not target.exists():
+        return False, "ui/finance_dashboard.py 없음"
+    txt = target.read_text(encoding="utf-8", errors="ignore")
+    if "_fq_parallel" in txt:
+        return True, "ThreadPoolExecutor 병렬화 적용됨 (_fq_parallel 사용 중)"
+    return False, "10개 _fq() 직렬 실행 — 병렬화 미적용"
 
 
 def _check_dockerfile() -> Tuple[bool, str]:
@@ -343,6 +374,9 @@ def _run_all_checks() -> Dict[str, Tuple[bool, str]]:
         "로그_PII":            _check_log_pii_masking,
         "역할_분리":           _check_admin_roles,
         "CSRF":                _check_csrf,
+        # v2.2 추가 3개
+        "LLM_온도":            _check_llm_temperature,
+        "쿼리_병렬화":         _check_parallel_queries,
     }
     return {k: fn() for k, fn in checks.items()}
 
@@ -875,10 +909,13 @@ def _tab_diagnosis() -> None:
     with st.expander("⚡ 성능 진단", expanded=False):
         _h(_section_card("성능 위험 요소", "쿼리·캐시·렌더링·메모리 9개 영역 분석", C["blue"]))
 
+        _par_ok, _par_detail = chk.get("쿼리_병렬화", (False, ""))
         perf_rows = [
-            ["실시간 탭 Oracle 쿼리", "10개 _fq() 직렬 실행",
-             "2-5초 렌더링 지연, Oracle pool 고갈",
-             _sev("high"), "ThreadPoolExecutor 병렬 실행"],
+            ["실시간 탭 Oracle 쿼리",
+             "_fq_parallel() 병렬 실행 적용됨" if _par_ok else "10개 _fq() 직렬 실행",
+             "✅ 해결 — 0.5-1초" if _par_ok else "2-5초 렌더링 지연, Oracle pool 고갈",
+             _sev("good") if _par_ok else _sev("high"),
+             "현재 상태 유지" if _par_ok else "ThreadPoolExecutor 병렬 실행"],
             ["캐시 TTL 설정", "전체 ttl=1800 (30분)" if not chk["캐시_TTL"][0] else "실시간/분석 TTL 분리됨",
              "실시간 VIEW 29분 전 데이터 노출" if not chk["캐시_TTL"][0] else "양호",
              _sev("high") if not chk["캐시_TTL"][0] else _sev("good"),
@@ -916,19 +953,33 @@ def _tab_diagnosis() -> None:
     with st.expander("🔍 코드 품질 진단", expanded=False):
         _h(_section_card("파일·모듈별 진단", "12개 주요 코드 품질 이슈", C["indigo"]))
 
+        def _qrow(chk_key: str, ref: str, desc: str, base_sev: str, fix: str) -> list:
+            """live check 결과로 심각도·설명을 동적 반영하는 코드 품질 행 생성."""
+            if chk_key and chk.get(chk_key, (False, ""))[0]:
+                _, detail = chk[chk_key]
+                return [
+                    ref,
+                    f'<span style="opacity:0.42;text-decoration:line-through;">{desc}</span>'
+                    f'<br><span style="color:#10b981;font-size:11px;font-weight:600;">'
+                    f'✅ 해결됨 — {detail}</span>',
+                    _sev("good"),
+                    fix,
+                ]
+            return [ref, desc, _sev(base_sev), fix]
+
         quality_rows = [
-            ["config/settings.py:653",
-             "admin_password default=SecretStr(\"moonhwa\")<br>기본 비밀번호 하드코딩",
-             _sev("critical"), "default 제거, required 필드 처리"],
-            ["core/llm.py:88",
-             "temperature: 0.1 하드코딩<br>settings.llm_temperature 설정 무시",
-             _sev("high"), "settings.llm_temperature 사용"],
+            _qrow("기본_비밀번호", "config/settings.py:653",
+                  "admin_password default=SecretStr(\"moonhwa\")<br>기본 비밀번호 하드코딩",
+                  "critical", "default 제거, required 필드 처리"),
+            _qrow("LLM_온도", "core/llm.py:88",
+                  "temperature: 0.1 하드코딩<br>settings.llm_temperature 설정 무시",
+                  "high", "settings.llm_temperature 사용"),
             ["ui/finance/tab_*.py 전체",
              "sys.path insert 패턴 40개 파일 반복<br>런타임 경로 의존",
              _sev("medium"), "pip install -e . 패키지화 후 제거"],
-            ["ui/finance_dashboard.py",
-             "with t1: 블록 내 10개 _fq() 직렬 실행<br>탭 열릴 때마다 Oracle 쿼리 10개",
-             _sev("high"), "ThreadPoolExecutor 병렬화"],
+            _qrow("쿼리_병렬화", "ui/finance_dashboard.py",
+                  "with t1: 블록 내 10개 _fq() 직렬 실행<br>탭 열릴 때마다 Oracle 쿼리 10개",
+                  "high", "ThreadPoolExecutor 병렬화"),
             ["ui/admin_dashboard.py",
              "Path.rglob('*.pdf') 매 렌더링 호출<br>수천 파일 시 렌더링 지연",
              _sev("high"), "@st.cache_data(ttl=300) 추가"],
@@ -1101,7 +1152,7 @@ def _tab_diagnosis() -> None:
             (5,  "캐시_TTL",     "실시간 VIEW 캐시 TTL 분리",
              "🟠 데이터 신뢰도", "⭐ 30분", "실시간성 복구",
              "_fq_realtime(ttl=60), _fq_analysis(ttl=1800) 분리"),
-            (6,  "",             "실시간 탭 Oracle 쿼리 병렬화",
+            (6,  "쿼리_병렬화",  "실시간 탭 Oracle 쿼리 병렬화",
              "🟠 응답 지연", "⭐⭐ 1일",  "렌더링 2-5초 → 0.5초",
              "ThreadPoolExecutor(max_workers=5) 도입"),
             (7,  "",             "Oracle 자동 재연결 루프",
