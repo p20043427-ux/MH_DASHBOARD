@@ -1,6 +1,15 @@
 """
-ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v1.0, 2026-05-07)
+ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.0, 2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v2.0 변경 — 2026-05-07]
+  · 완전 라이브화: 기존 static_sec 8개 항목 → 실제 파일 체크 함수로 전환
+    - _check_parameterized_query / _check_hmac / _check_secret_str_count
+    - _check_oracle_views / _check_mime_validation / _check_log_pii_masking
+    - _check_admin_roles / _check_csrf
+  · 기술부채/유지보수성/확장성 점수도 동적 계산 함수로 변경
+    - _compute_tech_debt / _compute_maintainability / _compute_scalability
+  · expander 화살표 텍스트(_arrow_right/_arrow_down) 노출 수정 CSS 주입
+
 [역할]
   CTO 관점 정밀 진단 보고서를 실시간 라이브 체크 기반으로 시각화.
   단순 정적 문서가 아니라 현재 코드베이스 상태를 실제로 읽어 진단.
@@ -192,24 +201,244 @@ def _check_oracle_timeout() -> Tuple[bool, str]:
     return False, "callTimeout 미설정 — Oracle 쿼리 무한 대기 가능"
 
 
+# ── 추가 라이브 체크 8종 (v2.0 — 기존 static_sec 대체) ──────────────────
+
+def _check_parameterized_query() -> Tuple[bool, str]:
+    """oracle_client.py execute_query 에서 bind variable 사용 여부."""
+    oc = _ROOT / "db" / "oracle_client.py"
+    if not oc.exists():
+        return False, "oracle_client.py 없음"
+    txt = oc.read_text(encoding="utf-8", errors="ignore")
+    if re.search(r':\w+', txt) and ("parameters" in txt or "bind" in txt.lower()):
+        return True, "execute_query() bind variable(:param) 사용 확인"
+    return False, "execute_query() bind variable 패턴 미확인"
+
+
+def _check_hmac() -> Tuple[bool, str]:
+    """관리자 인증 경로에서 hmac.compare_digest 사용 여부."""
+    for f in (_ROOT / "admin_app.py", _ROOT / "ui" / "admin_dashboard.py"):
+        if f.exists():
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+            if "compare_digest" in txt:
+                return True, f"{f.name} — HMAC 타이밍 안전 비교 사용"
+    return False, "compare_digest 패턴 미발견 — 타이밍 공격 취약 가능"
+
+
+def _check_secret_str_count() -> Tuple[bool, str]:
+    """config/settings.py 에서 SecretStr 필드 3개 이상 사용 여부."""
+    target = _ROOT / "config" / "settings.py"
+    if not target.exists():
+        return False, "config/settings.py 없음"
+    txt = target.read_text(encoding="utf-8", errors="ignore")
+    count = txt.count("SecretStr")
+    if count >= 3:
+        return True, f"SecretStr {count}개 — API 키·비밀번호 보호"
+    return False, f"SecretStr {count}개만 사용 — 평문 노출 위험"
+
+
+def _check_oracle_views() -> Tuple[bool, str]:
+    """쿼리에서 V_ (Oracle VIEW) 패턴으로만 접근하는지 확인."""
+    shared = _ROOT / "ui" / "panels" / "_shared.py"
+    if not shared.exists():
+        return False, "_shared.py 없음"
+    txt = shared.read_text(encoding="utf-8", errors="ignore")
+    views = re.findall(r'\bV_[A-Z_]+', txt)
+    # 원본 테이블 직접 접근(JAIN_WM. 뒤에 V_ 아닌 이름) 체크
+    raw_tables = re.findall(r'FROM\s+JAIN_WM\.(?!V_)\w+', txt, re.IGNORECASE)
+    if views and not raw_tables:
+        return True, f"Oracle VIEW {len(set(views))}개 — 원본 테이블 직접 접근 차단"
+    if raw_tables:
+        return False, f"원본 테이블 직접 접근 {len(raw_tables)}건 발견: {raw_tables[0]}"
+    return False, "VIEW 패턴 미발견"
+
+
+def _check_mime_validation() -> Tuple[bool, str]:
+    """파일 업로드 경로에서 MIME 타입 검증 여부."""
+    for p in list((_ROOT / "ui").rglob("*.py")):
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            if "magic.from_buffer" in txt or "python-magic" in txt or "filetype" in txt:
+                return True, f"{p.name} — MIME 검증 적용"
+        except Exception:
+            continue
+    return False, "python-magic / MIME 타입 검증 없음 — 악성 파일 업로드 가능"
+
+
+def _check_log_pii_masking() -> Tuple[bool, str]:
+    """로그/감사 경로에서 PII 마스킹 처리 여부."""
+    for base in (_ROOT / "utils", _ROOT / "core"):
+        if not base.exists():
+            continue
+        for p in base.rglob("*.py"):
+            try:
+                txt = p.read_text(encoding="utf-8", errors="ignore")
+                if ("pii" in txt.lower() or "마스킹" in txt or "mask" in txt.lower()) \
+                        and ("log" in txt.lower() or "audit" in txt.lower()):
+                    return True, f"{p.name} — 로그 경로 PII 마스킹 확인"
+            except Exception:
+                continue
+    return False, "로그 출력 경로 PII 마스킹 없음 — query_audit.log 평문 기록"
+
+
+def _check_admin_roles() -> Tuple[bool, str]:
+    """관리자 역할 등급 분리 여부 (role/permission/level 패턴)."""
+    for f in (_ROOT / "admin_app.py", _ROOT / "config" / "settings.py"):
+        if f.exists():
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+            if re.search(r'\b(role|permission|admin_level|권한)\b', txt, re.I):
+                return True, f"{f.name} — 역할 기반 권한 분리 패턴 존재"
+    return False, "단일 비밀번호 — 역할 등급 없음 (수퍼/일반 구분 불가)"
+
+
+def _check_csrf() -> Tuple[bool, str]:
+    """X-Frame-Options 또는 CSRF 방어 헤더 설정 여부."""
+    targets = [
+        _ROOT / ".streamlit" / "config.toml",
+        _ROOT.parent / "nginx.conf",
+        _ROOT.parent / "nginx" / "default.conf",
+    ]
+    for p in targets:
+        if p.exists():
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            if "X-Frame-Options" in txt or "SAMEORIGIN" in txt or "enableXsrfProtection" in txt:
+                return True, f"{p.name} — X-Frame-Options / XSRF 설정 존재"
+    # Streamlit 기본 XSRF 활성 여부 확인
+    cfg = _ROOT / ".streamlit" / "config.toml"
+    if cfg.exists():
+        txt = cfg.read_text(encoding="utf-8", errors="ignore")
+        if "enableXsrfProtection = false" in txt:
+            return False, "config.toml enableXsrfProtection=false — XSRF 비활성화"
+        return True, "Streamlit 기본 XSRF 보호 활성 상태"
+    return False, "X-Frame-Options 미설정, .streamlit/config.toml 없음"
+
+
 def _run_all_checks() -> Dict[str, Tuple[bool, str]]:
-    """모든 라이브 체크 실행 후 결과 dict 반환."""
+    """모든 라이브 체크 실행 후 결과 dict 반환 (v2.0 — 21개)."""
     checks = {
-        "기본_비밀번호": _check_default_password,
-        "Dockerfile": _check_dockerfile,
-        "테스트_파일": _check_tests,
-        "버전_핀닝": _check_requirements_pinned,
-        "gitignore_env": _check_gitignore,
-        "캐시_TTL": _check_cache_ttl,
-        "SQL_UNION차단": _check_sql_union_blocked,
-        "프로세스_관리": _check_systemd,
-        "모니터링": _check_monitoring,
-        "세션_만료": _check_session_timeout,
-        "PII_마스킹": _check_pii_context,
-        "HTTPS": _check_https,
-        "Oracle_타임아웃": _check_oracle_timeout,
+        # 기존 13개
+        "기본_비밀번호":     _check_default_password,
+        "Dockerfile":       _check_dockerfile,
+        "테스트_파일":       _check_tests,
+        "버전_핀닝":         _check_requirements_pinned,
+        "gitignore_env":    _check_gitignore,
+        "캐시_TTL":          _check_cache_ttl,
+        "SQL_UNION차단":     _check_sql_union_blocked,
+        "프로세스_관리":     _check_systemd,
+        "모니터링":          _check_monitoring,
+        "세션_만료":         _check_session_timeout,
+        "PII_마스킹":        _check_pii_context,
+        "HTTPS":             _check_https,
+        "Oracle_타임아웃":   _check_oracle_timeout,
+        # v2.0 추가 8개 (기존 static_sec 대체)
+        "Parameterized_Query": _check_parameterized_query,
+        "HMAC_비교":           _check_hmac,
+        "SecretStr_관리":      _check_secret_str_count,
+        "Oracle_VIEW":         _check_oracle_views,
+        "MIME_검증":           _check_mime_validation,
+        "로그_PII":            _check_log_pii_masking,
+        "역할_분리":           _check_admin_roles,
+        "CSRF":                _check_csrf,
     }
     return {k: fn() for k, fn in checks.items()}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  동적 KPI 점수 계산 (v2.0 — 기존 하드코딩 대체)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _compute_tech_debt(chk: Dict[str, Tuple[bool, str]]) -> int:
+    """기술부채 점수: 라이브 체크 실패 + TODO/FIXME 개수 기반."""
+    score = 100
+    penalties = {
+        "기본_비밀번호": 18, "SQL_UNION차단": 15, "테스트_파일": 15,
+        "Dockerfile": 10,   "프로세스_관리": 10, "HTTPS": 8,
+        "버전_핀닝": 5,      "세션_만료": 5,
+    }
+    for key, pen in penalties.items():
+        if not chk.get(key, (True,))[0]:
+            score -= pen
+    try:
+        todo = sum(
+            len(re.findall(r'#\s*(TODO|FIXME|HACK)', p.read_text(encoding="utf-8", errors="ignore"), re.I))
+            for p in _ROOT.rglob("*.py") if p.is_file()
+        )
+        if todo > 30:   score -= 8
+        elif todo > 10: score -= 4
+    except Exception:
+        pass
+    return max(10, score)
+
+
+def _compute_maintainability(chk: Dict[str, Tuple[bool, str]]) -> int:
+    """유지보수성 점수: sys.path 남용 + God 파일 + Service 레이어 여부."""
+    score = 100
+    try:
+        py_files = [p for p in _ROOT.rglob("*.py") if p.is_file()]
+        syspath_cnt = sum(
+            1 for p in py_files
+            if "sys.path.insert" in p.read_text(encoding="utf-8", errors="ignore")
+        )
+        if syspath_cnt > 20:   score -= 20
+        elif syspath_cnt > 5:  score -= 10
+
+        god_cnt = sum(
+            1 for p in py_files
+            if len(p.read_text(encoding="utf-8", errors="ignore").splitlines()) > 800
+        )
+        if god_cnt > 5:   score -= 15
+        elif god_cnt > 2: score -= 8
+
+        if not any((_ROOT / d).exists() for d in ("services", "service", "domain")):
+            score -= 12
+    except Exception:
+        pass
+    return max(20, score)
+
+
+def _compute_scalability(chk: Dict[str, Tuple[bool, str]]) -> int:
+    """확장성 점수: Docker·Redis·환경분리 여부 기반."""
+    score = 100
+    if not chk.get("Dockerfile", (False,))[0]:
+        score -= 20
+    # Redis 사용 여부
+    has_redis = False
+    for p in list((_ROOT / "core").rglob("*.py")) + [_ROOT / "requirements.txt"]:
+        if p.is_file():
+            try:
+                if "redis" in p.read_text(encoding="utf-8", errors="ignore").lower():
+                    has_redis = True
+                    break
+            except Exception:
+                pass
+    if not has_redis:
+        score -= 15
+    # 환경 분리 파일(.env.dev/.env.prod) 없으면 감점
+    if len(list(_ROOT.glob(".env.*"))) < 2:
+        score -= 10
+    score -= 10  # 단일 Streamlit 구조 고정 패널티
+    return max(15, score)
+
+
+# ── expander 화살표 텍스트 노출 방지 CSS 주입 ─────────────────────────────
+def _inject_tab_css() -> None:
+    """진단 탭 CSS: _arrow_right/_arrow_down 텍스트 숨김 + expander 스타일."""
+    st.markdown(
+        "<style>"
+        # stExpanderToggleIcon 의 텍스트만 0px — SVG 아이콘은 살림
+        "[data-testid='stExpanderToggleIcon']{"
+        "  font-size:0 !important; color:transparent !important;"
+        "}"
+        "[data-testid='stExpanderToggleIcon'] svg{"
+        "  font-size:14px !important; color:#64748B !important;"
+        "  width:16px; height:16px; display:inline-block !important;"
+        "}"
+        "[data-testid='stExpander'] details summary p{"
+        "  font-size:13px !important; font-weight:600 !important;"
+        "  color:#0F172A !important;"
+        "}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -335,7 +564,10 @@ def _sev(s: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 
 def _tab_diagnosis() -> None:
-    """보안·진단 탭 — CTO 관점 정밀 진단 보고서 (라이브 체크 기반)."""
+    """보안·진단 탭 — CTO 관점 정밀 진단 보고서 (라이브 체크 기반, v2.0)."""
+
+    # ── CSS 주입 (arrow 텍스트 노출 방지) ──────────────────────────────
+    _inject_tab_css()
 
     # ── 헤더 ────────────────────────────────────────────────────────────
     _h(
@@ -355,9 +587,12 @@ def _tab_diagnosis() -> None:
         f'</div>'
     )
 
-    # ── 라이브 체크 실행 ─────────────────────────────────────────────────
-    with st.spinner("코드베이스 진단 중..."):
+    # ── 라이브 체크 + 동적 점수 계산 ────────────────────────────────────
+    with st.spinner("코드베이스 진단 중... (21개 체크 + 동적 점수 계산)"):
         chk = _run_all_checks()
+        td_score    = _compute_tech_debt(chk)
+        maint_score = _compute_maintainability(chk)
+        scale_score = _compute_scalability(chk)
 
     passed_cnt = sum(1 for p, _ in chk.values() if p)
     total_cnt  = len(chk)
@@ -410,14 +645,14 @@ def _tab_diagnosis() -> None:
 
         test_score = 35 if not chk["테스트_파일"][0] else 75
 
-        # 5개 점수 카드
+        # 5개 점수 카드 (v2.0 — 전체 동적 계산)
         cols = st.columns(5, gap="small")
         scores = [
-            ("기술부채",  58,  C["warn"],   "기술부채 총점"),
-            ("유지보수성", 62, C["blue"],   "Service 레이어 부재 등"),
-            ("확장성",    55,  C["indigo"], "Redis·Docker 없음"),
-            ("안정성",    ops_score, C["danger"] if ops_score < 50 else C["warn"], "모니터링·재시작 기준"),
-            ("보안성",    sec_score, C["danger"] if sec_score < 55 else C["warn"], "라이브 체크 반영"),
+            ("기술부채",   td_score,    C["danger"] if td_score < 50 else C["warn"],    "라이브 체크 기반"),
+            ("유지보수성", maint_score, C["blue"]   if maint_score >= 60 else C["warn"], "파일구조 기반"),
+            ("확장성",     scale_score, C["indigo"]  if scale_score >= 55 else C["danger"], "Docker·Redis 기반"),
+            ("안정성",     ops_score,   C["danger"] if ops_score < 50 else C["warn"],    "모니터링·재시작 기준"),
+            ("보안성",     sec_score,   C["danger"] if sec_score < 55 else C["warn"],    "21개 체크 반영"),
         ]
         for col, (lbl, sc, cl, desc) in zip(cols, scores):
             with col:
@@ -556,24 +791,27 @@ def _tab_diagnosis() -> None:
                 _h(_check_row(label, passed, detail))
 
         with c2:
-            # 정적 항목 (코드 분석 결과)
-            static_sec = [
-                (True,  "SQL Parameterized Query",    "execute_query() 전체 bind variable 사용"),
-                (True,  "HMAC 비밀번호 비교",         "hmac.compare_digest() — 타이밍 공격 방어"),
-                (True,  "SecretStr API 키 관리",       "모든 API 키·비밀번호 SecretStr 처리"),
-                (True,  "Oracle VIEW 기반 접근",       "원본 테이블 직접 접근 차단"),
-                (False, "파일 업로드 MIME 검증",       "python-magic MIME 타입 검증 미적용"),
-                (False, "로그 PII 마스킹",             "query_audit.log SQL 파라미터 평문 기록"),
-                (False, "관리자 역할 분리",            "단일 비밀번호 — 권한 등급 없음"),
-                (False, "CSRF 방어",                   "X-Frame-Options 헤더 미설정"),
+            # v2.0 — static_sec 완전 라이브화 (실제 파일 체크 결과 사용)
+            sec_items_right = [
+                ("Parameterized_Query", "SQL Parameterized Query"),
+                ("HMAC_비교",           "HMAC 비밀번호 비교"),
+                ("SecretStr_관리",      "SecretStr API 키 관리"),
+                ("Oracle_VIEW",         "Oracle VIEW 기반 접근"),
+                ("MIME_검증",           "파일 업로드 MIME 검증"),
+                ("로그_PII",            "로그 PII 마스킹"),
+                ("역할_분리",           "관리자 역할 분리"),
+                ("CSRF",                "CSRF 방어"),
             ]
-            for passed, label, detail in static_sec:
+            for key, label in sec_items_right:
+                passed, detail = chk.get(key, (False, "미체크"))
                 _h(_check_row(label, passed, detail))
 
         gap(8)
-        passed_sec = sum(1 for k, _ in sec_items_left if chk.get(k, (False,))[0]) + \
-                     sum(1 for p, _, _ in static_sec if p)
-        total_sec = len(sec_items_left) + len(static_sec)
+        passed_sec = (
+            sum(1 for k, _ in sec_items_left  if chk.get(k, (False,))[0]) +
+            sum(1 for k, _ in sec_items_right if chk.get(k, (False,))[0])
+        )
+        total_sec = len(sec_items_left) + len(sec_items_right)
         _h(
             f'<div style="text-align:right;font-size:12px;color:{C["t3"]};">'
             f'보안 체크 통과: <b style="color:{C["ok"] if passed_sec >= 10 else C["danger"]};">'
@@ -749,21 +987,23 @@ def _tab_diagnosis() -> None:
     with st.expander("💳 기술부채 상세 평가", expanded=False):
         _h(_section_card("기술부채 정량 평가", "항목별 점수 + 실무 영향 설명", C["indigo"]))
 
+        # v2.0 — 전체 5개 항목 동적 점수 사용
         debt_items = [
-            ("기술부채 총점",  58, C["warn"],
-             "Critical 이슈 4개, CI/CD·테스트·Docker 전무. 운영 중 사고 발생 시 대응 체계 없음."),
-            ("유지보수성",     62, C["blue"],
-             "모듈 분리 양호, 그러나 sys.path 조작 40곳, 하위 호환 별칭 100+곳. "
-             "신입 개발자 수정 포인트 파악에 30분+ 소요."),
-            ("확장성",         55, C["indigo"],
-             "단일 서버 Streamlit 한계. 동시 사용자 50명+ 시 CPU 포화. "
-             "Redis 없어 다중 서버 배포 시 캐시 공유 불가."),
-            ("안정성",         ops_score, C["danger"] if ops_score < 50 else C["warn"],
-             "테스트 0%, Docker 없음, 모니터링 없음, 자동 재시작 없음. "
-             "장애 시 수동 대응 체계만 존재."),
-            ("보안성",         sec_score, C["danger"] if sec_score < 55 else C["warn"],
-             "PII 마스킹·HMAC·SecretStr 패턴 우수하나, "
-             "SQL Injection 방어 불완전, 기본 비밀번호, 세션 만료 없음."),
+            ("기술부채 총점",  td_score,    C["danger"] if td_score < 50 else C["warn"],
+             "Critical 이슈 미통과 개수·TODO/FIXME 건수 기반 동적 계산. "
+             "CI/CD·테스트·Docker 도입 시 점수 상승."),
+            ("유지보수성",     maint_score, C["blue"] if maint_score >= 60 else C["warn"],
+             "sys.path.insert 남용 파일 수·God 파일(800줄+) 수·Service 레이어 여부 기반. "
+             "pip install -e . 패키지화 및 서비스 레이어 도입 시 점수 상승."),
+            ("확장성",         scale_score, C["indigo"] if scale_score >= 55 else C["danger"],
+             "Docker·Redis·환경 분리 파일(.env.dev/.env.prod) 여부 기반. "
+             "컨테이너화·Redis 도입 시 점수 상승."),
+            ("안정성",         ops_score,   C["danger"] if ops_score < 50 else C["warn"],
+             "Dockerfile·프로세스관리·모니터링 체크 결과 기반. "
+             "systemd + UptimeRobot 구성 시 점수 상승."),
+            ("보안성",         sec_score,   C["danger"] if sec_score < 55 else C["warn"],
+             "21개 라이브 보안 체크 결과 기반. "
+             "기본 비밀번호 제거·SQL UNION 차단·HTTPS 구성 시 점수 상승."),
         ]
 
         for label, score, col, desc in debt_items:
