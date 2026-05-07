@@ -1,6 +1,14 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.3  (2026-05-07)
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.4  (2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v5.4 변경 — 2026-05-07]
+  · 📚 매뉴얼 탭 추가: docs/ 폴더 문서 인라인 뷰어 + 다운로드
+    - admin_tab_manual.py 연결
+    - 주요 매뉴얼(md/docx 쌍) 인라인 렌더링
+    - 하위 폴더 라이브러리 뷰어
+  · 운영 현황 — 활성 세션 수 KPI 카드 추가
+    - 5분 TTL JSON 기반 다중 세션 감지
+
 [v5.3 변경 — 2026-05-07]
   · 🔐 보안·진단 탭 추가: CTO 관점 정밀 진단 보고서 (13개 라이브 체크)
     - 실시간 코드베이스 파일 분석 → 현황/점수 동적 계산
@@ -54,6 +62,8 @@ from ui.design import (
 
 # ── 보안·진단 탭 (v5.3 추가) ────────────────────────────────────────────
 from ui.admin_tab_diagnosis import _tab_diagnosis
+# ── 매뉴얼 뷰어 탭 (v5.4 추가) ─────────────────────────────────────────
+from ui.admin_tab_manual import _tab_manual
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
@@ -292,6 +302,40 @@ def _oracle_status() -> Tuple[bool, str]:
         return False, str(e)
 
 
+# ── 활성 세션 추적 ────────────────────────────────────────────────────────
+_SESS_FILE = _ROOT / "data_cache" / ".adm_sessions.json"
+_SESS_TTL  = 300  # 5분 비활성 시 만료
+
+
+def _register_session() -> int:
+    """현재 관리자 세션 등록 후 활성 세션 수 반환 (5분 TTL).
+    Streamlit 세션별 UUID 를 JSON 파일에 기록 — 다중 탭/브라우저 감지용.
+    """
+    import uuid
+    if "_adm_sid" not in st.session_state:
+        st.session_state["_adm_sid"] = str(uuid.uuid4())
+    sid = st.session_state["_adm_sid"]
+
+    try:
+        sessions: Dict[str, float] = {}
+        if _SESS_FILE.exists():
+            try:
+                sessions = json.loads(_SESS_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        now = time.time()
+        sessions[sid] = now
+        # TTL 초과 세션 제거
+        sessions = {k: v for k, v in sessions.items() if now - v < _SESS_TTL}
+
+        _SESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SESS_FILE.write_text(json.dumps(sessions), encoding="utf-8")
+        return len(sessions)
+    except Exception:
+        return 1
+
+
 def _vector_store_stats() -> Dict[str, Any]:
     vs = _ROOT / "vector_store"
     result: Dict[str, Any] = {}
@@ -506,6 +550,7 @@ def _set_chatbot_cfg(cfg: Dict[str, Any]) -> None:
 def _tab_ops() -> None:
     sys_s     = _sys_stats()
     oracle_ok, oracle_msg = _oracle_status()
+    active_sessions = _register_session()
 
     topbar()
 
@@ -533,12 +578,14 @@ def _tab_ops() -> None:
     o_dot   = f'<span class="adm-dot {"adm-dot-ok" if oracle_ok else "adm-dot-err"}"></span>'
     o_lbl   = "정상" if oracle_ok else "오류"
 
+    sess_color = C["ok"] if active_sessions == 1 else C["warn"] if active_sessions <= 3 else C["danger"]
     kpis_html = [
         _adm_kpi("Oracle DB",    f'{o_dot}{o_lbl}',       "","Oracle 연결 " + (oracle_msg[:30] if oracle_msg else "정상"), o_color),
         _adm_kpi("CPU 사용률",   _pct_str(cpu),            "", _hint("현재 프로세서 부하"),        _pct_color(cpu, 60, 80), cpu),
         _adm_kpi("메모리",        _pct_str(mem),            "", _hint(f'{sys_s["mem_used_gb"]} / {sys_s["mem_total_gb"]} GB' if sys_s["mem_total_gb"] else ""), _pct_color(mem), mem),
         _adm_kpi("디스크",        _pct_str(disk),           "", _hint(f'여유 {sys_s["disk_free_gb"]} GB' if sys_s["disk_free_gb"] else ""), _pct_color(disk, 75, 90), disk),
         _adm_kpi("앱 메모리",    f'{pmb:.0f}' if pmb else "—", "MB", _hint("admin_app 프로세스"), C["indigo"]),
+        _adm_kpi("활성 세션",    str(active_sessions),     "개", f"5분내 활동 · TTL {_SESS_TTL//60}분", sess_color),
     ]
 
     cols = st.columns(len(kpis_html), gap="small")
@@ -1675,19 +1722,20 @@ def _tab_settings() -> None:
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
 
-    # [v5.3] 보안·진단 탭(t9) 추가 — admin_tab_diagnosis._tab_diagnosis() 연결
-    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
+    # [v5.4] 매뉴얼 탭(t10) 추가 — docs/ 폴더 뷰어 + 다운로드
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
         "🖥️ 운영 현황",   "📋 로그 뷰어",  "🗄️ 벡터DB 관리",
         "📄 문서 관리",   "⚙️ 시스템 정보",
         "🤖 챗봇 관리",   "📊 모니터링",   "🔧 환경설정",
-        "🔐 보안·진단",
+        "🔐 보안·진단",   "📚 매뉴얼",
     ])
-    with t1: _tab_ops()
-    with t2: _tab_logs()
-    with t3: _tab_vectordb()
-    with t4: _tab_docs()
-    with t5: _tab_sysinfo()
-    with t6: _tab_chatbot()
-    with t7: _tab_monitoring()
-    with t8: _tab_settings()
-    with t9: _tab_diagnosis()   # [v5.3] CTO 관점 정밀 진단 (라이브 체크 13종)
+    with t1:  _tab_ops()
+    with t2:  _tab_logs()
+    with t3:  _tab_vectordb()
+    with t4:  _tab_docs()
+    with t5:  _tab_sysinfo()
+    with t6:  _tab_chatbot()
+    with t7:  _tab_monitoring()
+    with t8:  _tab_settings()
+    with t9:  _tab_diagnosis()   # [v5.3] CTO 관점 정밀 진단
+    with t10: _tab_manual()      # [v5.4] docs/ 매뉴얼 뷰어 + 다운로드
