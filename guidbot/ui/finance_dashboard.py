@@ -123,12 +123,17 @@ _PLOTLY_LAYOUT = PLOTLY_CFG      # 17곳 호출 — design.PLOTLY_CFG 로 위임
 from ui.finance import (         # noqa: E402
     _tab_realtime,
     _render_day_inweon,
-    _render_finance_llm_chat,    # defined; not currently called
+    _render_finance_llm_chat,    # defined; not currently called (legacy)
     _tab_revenue,                # defined; not currently wired
     _tab_analytics,
     _tab_monthly,
     _tab_region,
     _tab_card_match,
+    render_tab_chat,             # [2026-05-07] 탭별 AI 분석 채팅 위젯
+    build_ctx_realtime,
+    build_ctx_weekly,
+    build_ctx_monthly,
+    build_ctx_dept,
 )
 
 
@@ -276,16 +281,60 @@ def render_finance_dashboard() -> None:
         )
         _gap()
         _render_day_inweon(day_inweon)
+        # [2026-05-07] 실시간 현황 AI 채팅 — 외래·병동·퇴원 현황 기반 분석
+        render_tab_chat(
+            build_ctx_realtime(opd_kpi, dept_status, bed_detail, discharge_pipe, daily_dept_stat),
+            "realtime", "실시간 현황",
+            quick_questions=[
+                ("외래 혼잡도", "현재 외래 진료과별 대기 현황을 분석하고 혼잡한 진료과 조치 방안을 알려주세요."),
+                ("입퇴원 현황", "금일 입원·퇴원·재원 현황을 분석하고 병상 운영 효율을 평가해주세요."),
+                ("퇴원 파이프라인", "퇴원 파이프라인 현황을 분석하고 원활한 퇴원 처리를 위한 조치를 알려주세요."),
+                ("운영 요약", "오늘 원무 전체 운영 현황을 핵심 지표 위주로 3줄 요약해주세요."),
+            ],
+        )
 
     with t_weekly:
         # [2026-05-07] 쿼리를 _tab_analytics 내부로 이전 — 버튼 클릭 시에만 실행
         _tab_analytics()
+        # [2026-05-07] 주간추이 AI 채팅 — 조회 후 데이터 기반 분석
+        render_tab_chat(
+            build_ctx_weekly(),
+            "weekly", "주간추이분석",
+            quick_questions=[
+                ("7일 외래 추이", "최근 7일간 외래·입원·퇴원·재원 추이를 분석해주세요."),
+                ("혼잡 진료과", "이번 주 외래·입원 환자가 가장 많은 진료과 TOP3를 분석해주세요."),
+                ("재원일수 위험", "재원일수 분포에서 장기입원(15일 이상) 위험 진료과를 분석해주세요."),
+                ("주간 요약", "이번 주 원무 현황 전체를 핵심 지표 위주로 3줄 요약해주세요."),
+            ],
+        )
 
     with t_monthly:
         _tab_monthly()
+        # [2026-05-07] 월간추이 AI 채팅 — 2개월 비교 분석
+        render_tab_chat(
+            build_ctx_monthly(),
+            "monthly", "월간추이분석",
+            quick_questions=[
+                ("월간 비교", "선택한 두 달의 외래 방문자수를 진료과별로 비교 분석해주세요."),
+                ("신환 증감", "신환자수 변화가 가장 큰 진료과를 찾아 분석해주세요."),
+                ("진료과 트렌드", "방문자수 기준으로 주목할 만한 진료과 트렌드를 알려주세요."),
+                ("월간 요약", "두 달 비교 분석 결과를 핵심 포인트 위주로 3줄 요약해주세요."),
+            ],
+        )
 
     with t_region:
         _tab_region([], [])
+        # [2026-05-07] 지역별 통계 AI 채팅 (지역 데이터 미연결 시 일반 상담)
+        render_tab_chat(
+            {},
+            "region", "지역별 통계",
+            quick_questions=[
+                ("지역 분포", "병원 내원 환자의 지역별 분포 현황을 분석해주세요."),
+                ("유입 트렌드", "최근 지역별 환자 유입 트렌드 변화를 분석해주세요."),
+                ("주요 지역 TOP5", "환자 유입이 가장 많은 지역 TOP5를 분석해주세요."),
+                ("지역 요약", "지역별 통계 현황을 핵심 포인트 위주로 3줄 요약해주세요."),
+            ],
+        )
 
     with t_dept:
         if _HAS_DEPT_ANALYSIS:
@@ -321,9 +370,31 @@ def render_finance_dashboard() -> None:
                 f'<div style="font-size:12px;color:#9A3412;margin-top:6px;">ui/panels/dept_analysis.py 를 확인하세요.</div></div>',
                 unsafe_allow_html=True,
             )
+        # [2026-05-07] 진료과 분석 AI 채팅 — 조회 후 데이터 기반 분석
+        render_tab_chat(
+            build_ctx_dept(),
+            "dept", "진료과 분석",
+            quick_questions=[
+                ("방문자 비교", "진료과별 방문자수 현황을 비교 분석해주세요."),
+                ("신환 분석", "신환자 비율이 높거나 증가 중인 진료과를 분석해주세요."),
+                ("성장 진료과", "방문자수가 증가 추세인 진료과를 분석해주세요."),
+                ("진료과 요약", "진료과 분석 현황을 핵심 포인트 위주로 요약해주세요."),
+            ],
+        )
 
     with t_card:
         _tab_card_match()
+        # [2026-05-07] 카드 매칭 AI 채팅
+        render_tab_chat(
+            {},
+            "card", "카드 매칭",
+            quick_questions=[
+                ("미매칭 현황", "카드 매칭 미매칭 건수 현황과 주요 원인을 분석해주세요."),
+                ("카드사 분석", "카드사별 수납 현황을 분석해주세요."),
+                ("오류 유형", "주요 매칭 오류 유형과 처리 방안을 알려주세요."),
+                ("매칭 요약", "카드 매칭 현황을 3줄로 요약해주세요."),
+            ],
+        )
 
     # Auto-refresh
     if st.session_state.get('fn_auto', False):
