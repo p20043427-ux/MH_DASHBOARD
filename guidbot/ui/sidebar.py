@@ -150,41 +150,6 @@ _SIDEBAR_BTN_CSS = """
     text-decoration: none !important;
 }
 
-/* ── 바로가기 준비중 카드 (.sb-shortcut-card) ─────────────── */
-[data-testid="stSidebar"] .sb-shortcut-card {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-left: 3px solid rgba(255,255,255,0.25);
-    border-radius: 9px;
-    padding: 9px 13px;
-    margin-bottom: 5px;
-    opacity: 0.72;
-    cursor: default;
-}
-.sb-shortcut-name {
-    display: block;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.88);
-    letter-spacing: -0.1px;
-}
-.sb-shortcut-badge {
-    font-size: 9.5px;
-    color: rgba(255,255,255,0.40);
-    font-weight: 500;
-    background: rgba(255,255,255,0.10);
-    padding: 1px 5px;
-    border-radius: 99px;
-}
-.sb-shortcut-sub {
-    display: block;
-    font-size: 10.5px;
-    color: rgba(255,255,255,0.42);
-    margin-top: 2px;
-}
 </style>
 """
 
@@ -388,24 +353,24 @@ def _render_shortcuts() -> None:
             st.session_state[_edit_key] = False
             st.rerun()
 
-    # ── 진료 / 원무 / 간호 — sb-link 카드형 (관리자 대시보드 디자인 기준) ──
-    _SHORTCUT_ITEMS = [
-        ("진료",  "클리닉 정보 조회",  "#3B82F6"),
-        ("원무",  "수납·미수금 조회",  "#14B8A6"),
-        ("간호",  "병동 지침 검색",    "#8B5CF6"),
-    ]
-    _cards = "".join(
-        f'<div class="sb-shortcut-card" style="border-left-color:{accent};">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
-        f'<span class="sb-shortcut-name">{name}</span>'
-        f'<span class="sb-shortcut-badge">준비중</span>'
+    # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) ──────────────────────
+    _CELL_S = (
+        "flex:1;border:1px solid rgba(255,255,255,0.22);"
+        "border-radius:9px;padding:8px 4px;text-align:center;"
+        "background:rgba(255,255,255,0.10);"
+    )
+    _LBL_S = "display:block;font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.90);"
+    _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.45);margin-top:2px;"
+
+    _cells = "".join(
+        f'<div style="{_CELL_S}">'
+        f'<span style="{_LBL_S}">{lbl}</span>'
+        f'<span style="{_SUB_S}">준비중</span>'
         f'</div>'
-        f'<span class="sb-shortcut-sub">{sub}</span>'
-        f'</div>'
-        for name, sub, accent in _SHORTCUT_ITEMS
+        for lbl in ("진료", "원무", "간호")
     )
     st.markdown(
-        f'<div style="margin-top:6px;">{_cards}</div>',
+        f'<div style="display:flex;gap:5px;margin-top:6px;">{_cells}</div>',
         unsafe_allow_html=True,
     )
 
