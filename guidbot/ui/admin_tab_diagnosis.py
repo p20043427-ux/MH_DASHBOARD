@@ -1,5 +1,5 @@
 """
-ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.0, 2026-05-07)
+ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.1, 2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [v2.0 변경 — 2026-05-07]
   · 완전 라이브화: 기존 static_sec 8개 항목 → 실제 파일 체크 함수로 전환
@@ -9,6 +9,11 @@ ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.0, 2
   · 기술부채/유지보수성/확장성 점수도 동적 계산 함수로 변경
     - _compute_tech_debt / _compute_maintainability / _compute_scalability
   · expander 화살표 텍스트(_arrow_right/_arrow_down) 노출 수정 CSS 주입
+
+[v2.1 변경사항]
+  · 진단 실행 버튼 추가 — 탭 진입 시 자동 실행 → 버튼 클릭 시만 실행
+  · 결과 session_state 캐싱 — 재렌더링 시 재실행 없음
+  · Critical 이슈 섹션 — 해결 항목도 ✅ 해결됨으로 항상 표시
 
 [역할]
   CTO 관점 정밀 진단 보고서를 실시간 라이브 체크 기반으로 시각화.
@@ -589,12 +594,50 @@ def _tab_diagnosis() -> None:
         f'</div>'
     )
 
-    # ── 라이브 체크 + 동적 점수 계산 ────────────────────────────────────
-    with st.spinner("코드베이스 진단 중... (21개 체크 + 동적 점수 계산)"):
-        chk = _run_all_checks()
-        td_score    = _compute_tech_debt(chk)
-        maint_score = _compute_maintainability(chk)
-        scale_score = _compute_scalability(chk)
+    # ── 진단 실행 버튼 ──────────────────────────────────────────────────
+    btn_col, info_col = st.columns([1, 4])
+    with btn_col:
+        run_clicked = st.button(
+            "🔍 진단 실행", key="diag_run_btn",
+            type="primary", use_container_width=True,
+        )
+    with info_col:
+        last_run = st.session_state.get("diag_run_time", "")
+        if last_run:
+            _h(
+                f'<div style="padding:8px 0;font-size:12px;color:rgba(255,255,255,0.45);">'
+                f'마지막 실행: <b style="color:rgba(255,255,255,0.7);">{last_run}</b>'
+                f'&nbsp;·&nbsp; 재실행하면 현재 코드 상태로 갱신됩니다</div>'
+            )
+
+    # 버튼 클릭 시 체크 실행 후 session_state 저장
+    if run_clicked:
+        with st.spinner("코드베이스 진단 중... (21개 체크 + 동적 점수 계산)"):
+            _chk = _run_all_checks()
+            _td  = _compute_tech_debt(_chk)
+            _ma  = _compute_maintainability(_chk)
+            _sc  = _compute_scalability(_chk)
+        st.session_state["diag_chk"]      = _chk
+        st.session_state["diag_scores"]   = (_td, _ma, _sc)
+        st.session_state["diag_run_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 아직 실행 전이면 안내 표시 후 종료
+    if "diag_chk" not in st.session_state:
+        _h(
+            '<div style="background:rgba(255,255,255,0.04);'
+            'border:1px dashed rgba(255,255,255,0.15);'
+            'border-radius:12px;padding:40px 32px;text-align:center;margin-top:20px;">'
+            '<div style="font-size:36px;margin-bottom:12px;">🔍</div>'
+            '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.6);margin-bottom:6px;">'
+            '진단 실행 버튼을 눌러 코드베이스를 분석하세요</div>'
+            '<div style="font-size:12px;color:rgba(255,255,255,0.35);">'
+            '21개 라이브 체크 · 동적 점수 계산 · 보안·품질·기술부채 종합 평가</div>'
+            '</div>'
+        )
+        return
+
+    chk = st.session_state["diag_chk"]
+    td_score, maint_score, scale_score = st.session_state["diag_scores"]
 
     passed_cnt = sum(1 for p, _ in chk.values() if p)
     total_cnt  = len(chk)
@@ -754,22 +797,28 @@ def _tab_diagnosis() -> None:
             ),
         ]
 
-        any_shown = False
+        # 해결된 항목도 표시 — 통과: ✅ 해결됨, 미통과: 기존 이슈 카드
         for key, title, detail, sev, fix in issues:
-            passed, _ = chk.get(key, (True, ""))
-            if not passed:
+            passed, live_detail = chk.get(key, (True, ""))
+            if passed:
+                _h(
+                    f'<div style="background:rgba(16,185,129,0.07);'
+                    f'border:1px solid rgba(16,185,129,0.22);'
+                    f'border-radius:8px;padding:10px 14px;margin-bottom:8px;'
+                    f'display:flex;align-items:center;gap:10px;">'
+                    f'<span style="font-size:18px;flex-shrink:0;">✅</span>'
+                    f'<div>'
+                    f'<span style="font-size:13px;font-weight:700;color:#10b981;">{title}</span>'
+                    f'<span style="font-size:11px;font-weight:600;color:rgba(16,185,129,0.7);'
+                    f'background:rgba(16,185,129,0.12);padding:1px 7px;border-radius:10px;'
+                    f'margin-left:8px;">해결됨</span>'
+                    f'<div style="font-size:11px;color:rgba(255,255,255,0.38);margin-top:3px;">'
+                    f'{live_detail}</div>'
+                    f'</div>'
+                    f'</div>'
+                )
+            else:
                 _h(_issue_card(title, detail, sev, fix))
-                any_shown = True
-
-        if not any_shown:
-            _h(
-                f'<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;'
-                f'padding:16px;text-align:center;">'
-                f'<div style="font-size:20px;margin-bottom:6px;">🎉</div>'
-                f'<div style="font-size:13px;font-weight:700;color:#166534;">'
-                f'Critical 이슈 없음 — 주요 위험 항목 모두 통과</div>'
-                f'</div>'
-            )
 
     # ════════════════════════════════════════════════════════════════
     #  섹션 3 — 보안 점검 (OWASP 기준)
