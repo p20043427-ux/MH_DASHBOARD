@@ -1,5 +1,5 @@
 """
-ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v2.2, 2026-05-07)
+ui/admin_tab_diagnosis.py — 관리자 대시보드 보안·진단 탭 (v3.0, 2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [v2.0 변경 — 2026-05-07]
   · 완전 라이브화: 기존 static_sec 8개 항목 → 실제 파일 체크 함수로 전환
@@ -45,7 +45,8 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import subprocess
+from typing import Callable, Dict, List, Optional, Tuple
 
 import streamlit as st
 
@@ -348,6 +349,40 @@ def _check_csrf() -> Tuple[bool, str]:
     return False, "X-Frame-Options 미설정, .streamlit/config.toml 없음"
 
 
+def _check_env_file() -> Tuple[bool, str]:
+    """프로젝트 루트 .env 파일 존재 및 ADMIN_PASSWORD 설정 여부 확인."""
+    env_path = _ROOT / ".env"
+    if not env_path.exists():
+        return False, ".env 파일 없음 — 필수 환경변수 미설정 상태"
+    txt = env_path.read_text(encoding="utf-8", errors="ignore")
+    missing = [k for k in ("ADMIN_PASSWORD", "ORACLE_DSN") if k not in txt]
+    if missing:
+        return False, f".env 존재하나 미설정: {', '.join(missing)}"
+    return True, ".env 파일 존재 — ADMIN_PASSWORD·ORACLE_DSN 설정됨"
+
+
+def _check_hardcoded_ip() -> Tuple[bool, str]:
+    """Python 소스 내 하드코딩된 공인 IP 주소 탐지 (로컬 IP 제외)."""
+    _skip = {"127.0.0.1", "0.0.0.0", "255.255.255.255", "8.8.8.8", "8.8.4.4"}
+    found: List[str] = []
+    for p in _ROOT.rglob("*.py"):
+        if not p.is_file():
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            for ip in re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', txt):
+                # 로컬/사설 대역 제외
+                if (ip not in _skip
+                        and not ip.startswith(("10.", "172.", "192.168.", "127."))
+                        and not ip.endswith(".0")):
+                    found.append(f"{p.name}:{ip}")
+        except Exception:
+            continue
+    if not found:
+        return True, "하드코딩 공인 IP 없음"
+    return False, f"{len(found)}개 의심 IP 발견 — {found[0]}"
+
+
 def _run_all_checks() -> Dict[str, Tuple[bool, str]]:
     """모든 라이브 체크 실행 후 결과 dict 반환 (v2.0 — 21개)."""
     checks = {
@@ -377,8 +412,110 @@ def _run_all_checks() -> Dict[str, Tuple[bool, str]]:
         # v2.2 추가 3개
         "LLM_온도":            _check_llm_temperature,
         "쿼리_병렬화":         _check_parallel_queries,
+        # v3.0 추가 2개
+        "env_파일":            _check_env_file,
+        "하드코딩_IP":         _check_hardcoded_ip,
     }
     return {k: fn() for k, fn in checks.items()}
+
+
+# ── 체크 키 → 한국어 레이블 ────────────────────────────────────────────────
+_LABELS: Dict[str, str] = {
+    "기본_비밀번호":       "기본 비밀번호 하드코딩",
+    "Dockerfile":         "Docker 컨테이너화",
+    "테스트_파일":         "자동화 테스트 존재",
+    "버전_핀닝":           "패키지 버전 핀닝",
+    "gitignore_env":      ".gitignore .env 포함",
+    "캐시_TTL":            "캐시 TTL 분리",
+    "SQL_UNION차단":       "SQL UNION 차단",
+    "프로세스_관리":       "프로세스 관리(systemd)",
+    "모니터링":            "모니터링 시스템",
+    "세션_만료":           "관리자 세션 만료",
+    "PII_마스킹":          "PII 마스킹 처리",
+    "HTTPS":               "HTTPS/SSL 설정",
+    "Oracle_타임아웃":     "Oracle callTimeout",
+    "Parameterized_Query": "SQL 파라미터화 쿼리",
+    "HMAC_비교":           "HMAC 비밀번호 비교",
+    "SecretStr_관리":      "SecretStr API 키 관리",
+    "Oracle_VIEW":         "Oracle VIEW 기반 접근",
+    "MIME_검증":           "파일 업로드 MIME 검증",
+    "로그_PII":            "로그 PII 마스킹",
+    "역할_분리":           "관리자 역할 분리",
+    "CSRF":                "CSRF 방어 설정",
+    "LLM_온도":            "LLM temperature 설정",
+    "쿼리_병렬화":         "Oracle 쿼리 병렬화",
+    "env_파일":            ".env 파일 존재·설정",
+    "하드코딩_IP":         "소스코드 IP 하드코딩",
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  프로젝트 구조 동적 스캔 (v3.0 신규)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _scan_project() -> Dict:
+    """프로젝트 전체 파일 구조 스캔 — 코드 통계·TODO·Git 정보 수집."""
+    py_files = sorted([p for p in _ROOT.rglob("*.py") if p.is_file()])
+
+    total_lines = 0
+    todo_list: List[str] = []
+    fixme_list: List[str] = []
+    large_files: List[Tuple[str, int]] = []
+
+    for p in py_files:
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            lines = txt.splitlines()
+            n = len(lines)
+            total_lines += n
+            if n > 500:
+                large_files.append((str(p.relative_to(_ROOT)), n))
+            for ln, line in enumerate(lines, 1):
+                s = line.strip()
+                if re.match(r"#\s*TODO", s, re.I):
+                    todo_list.append(f"{p.name}:{ln}")
+                elif re.match(r"#\s*FIXME", s, re.I):
+                    fixme_list.append(f"{p.name}:{ln}")
+        except Exception:
+            continue
+
+    large_files.sort(key=lambda x: -x[1])
+
+    # Git 정보
+    git_info: Dict[str, str] = {}
+    for cmd, key in [
+        (["git", "log", "-1", "--format=%h %s (%ar)"], "last_commit"),
+        (["git", "rev-parse", "--abbrev-ref", "HEAD"],  "branch"),
+        (["git", "status", "--short"],                   "dirty"),
+    ]:
+        try:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True,
+                cwd=str(_ROOT), timeout=5,
+            )
+            if r.returncode == 0:
+                val = r.stdout.strip()
+                git_info[key] = str(len(val.splitlines())) if key == "dirty" else val
+        except Exception:
+            pass
+
+    # 주요 확장자 파일 수
+    ext_counts: Dict[str, int] = {}
+    for p in _ROOT.rglob("*"):
+        if p.is_file() and p.suffix:
+            k = p.suffix.lower()
+            ext_counts[k] = ext_counts.get(k, 0) + 1
+
+    return {
+        "py_count":   len(py_files),
+        "total_lines": total_lines,
+        "avg_lines":  total_lines // max(1, len(py_files)),
+        "large_files": large_files[:10],
+        "todo_list":  todo_list[:30],
+        "fixme_list": fixme_list[:15],
+        "git":        git_info,
+        "ext_counts": dict(sorted(ext_counts.items(), key=lambda x: -x[1])[:10]),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -644,16 +781,98 @@ def _tab_diagnosis() -> None:
                 f'&nbsp;·&nbsp; 재실행하면 현재 코드 상태로 갱신됩니다</div>'
             )
 
-    # 버튼 클릭 시 체크 실행 후 session_state 저장
+    # ── 진단 실행 — 스텝별 진행 표시 ──────────────────────────────────────
     if run_clicked:
-        with st.spinner("코드베이스 진단 중... (21개 체크 + 동적 점수 계산)"):
-            _chk = _run_all_checks()
-            _td  = _compute_tech_debt(_chk)
-            _ma  = _compute_maintainability(_chk)
-            _sc  = _compute_scalability(_chk)
+        # 전체 체크 목록 (순서 보장 — dict 이후 삽입 순서 유지)
+        _ordered: List[Tuple[str, Callable]] = [
+            ("기본_비밀번호",       _check_default_password),
+            ("Dockerfile",         _check_dockerfile),
+            ("테스트_파일",         _check_tests),
+            ("버전_핀닝",           _check_requirements_pinned),
+            ("gitignore_env",      _check_gitignore),
+            ("캐시_TTL",            _check_cache_ttl),
+            ("SQL_UNION차단",       _check_sql_union_blocked),
+            ("프로세스_관리",       _check_systemd),
+            ("모니터링",            _check_monitoring),
+            ("세션_만료",           _check_session_timeout),
+            ("PII_마스킹",          _check_pii_context),
+            ("HTTPS",               _check_https),
+            ("Oracle_타임아웃",     _check_oracle_timeout),
+            ("Parameterized_Query", _check_parameterized_query),
+            ("HMAC_비교",           _check_hmac),
+            ("SecretStr_관리",      _check_secret_str_count),
+            ("Oracle_VIEW",         _check_oracle_views),
+            ("MIME_검증",           _check_mime_validation),
+            ("로그_PII",            _check_log_pii_masking),
+            ("역할_분리",           _check_admin_roles),
+            ("CSRF",                _check_csrf),
+            ("LLM_온도",            _check_llm_temperature),
+            ("쿼리_병렬화",         _check_parallel_queries),
+            ("env_파일",            _check_env_file),
+            ("하드코딩_IP",         _check_hardcoded_ip),
+        ]
+        _total = len(_ordered)
+
+        # 진행 UI (완료 후 .empty() 로 정리)
+        _pb  = st.progress(0, text="진단 준비 중...")
+        _stt = st.empty()
+        _log = st.empty()
+
+        _chk: Dict[str, Tuple[bool, str]] = {}
+        _log_lines: List[str] = []
+
+        for _i, (_key, _fn) in enumerate(_ordered):
+            _label = _LABELS.get(_key, _key)
+            _pb.progress(_i / _total, text=f"⏳ {_label} ({_i + 1}/{_total})")
+            _stt.markdown(
+                f'<div style="font-size:11.5px;color:#64748B;padding:3px 0;">'
+                f'현재 점검: <b style="color:#334155;">{_label}</b></div>',
+                unsafe_allow_html=True,
+            )
+
+            _passed, _detail = _fn()
+            _chk[_key] = (_passed, _detail)
+
+            _icon = "✅" if _passed else "❌"
+            _color = "#166534" if _passed else "#9F1239"
+            _log_lines.append(
+                f'<div style="font-size:11px;color:{_color};padding:1px 0;">'
+                f'{_icon} <b>{_label}</b> — {_detail}</div>'
+            )
+            _log.markdown(
+                '<div style="background:#F8FAFC;border:1px solid #E2E8F0;'
+                'border-radius:8px;padding:8px 12px;margin-top:4px;">'
+                + "".join(_log_lines[-6:]) + "</div>",
+                unsafe_allow_html=True,
+            )
+
+        # 프로젝트 구조 스캔
+        _pb.progress(0.95, text="📁 프로젝트 구조 전체 스캔 중...")
+        _stt.markdown(
+            '<div style="font-size:11.5px;color:#64748B;">📁 파일 통계·TODO·Git 정보 수집 중...</div>',
+            unsafe_allow_html=True,
+        )
+        _scan = _scan_project()
+
+        # 점수 계산
+        _pb.progress(0.99, text="📊 종합 점수 계산 중...")
+        _td = _compute_tech_debt(_chk)
+        _ma = _compute_maintainability(_chk)
+        _sc = _compute_scalability(_chk)
+
+        _pass_n = sum(1 for p, _ in _chk.values() if p)
+        _pb.progress(1.0, text=f"✅ 진단 완료 — {_pass_n}/{_total}개 통과")
+
+        # session_state 저장
         st.session_state["diag_chk"]      = _chk
         st.session_state["diag_scores"]   = (_td, _ma, _sc)
+        st.session_state["diag_scan"]     = _scan
         st.session_state["diag_run_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 진행 UI 정리
+        _pb.empty()
+        _stt.empty()
+        _log.empty()
 
     # 아직 실행 전이면 안내 표시 후 종료
     if "diag_chk" not in st.session_state:
@@ -665,7 +884,7 @@ def _tab_diagnosis() -> None:
             '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.6);margin-bottom:6px;">'
             '진단 실행 버튼을 눌러 코드베이스를 분석하세요</div>'
             '<div style="font-size:12px;color:rgba(255,255,255,0.35);">'
-            '21개 라이브 체크 · 동적 점수 계산 · 보안·품질·기술부채 종합 평가</div>'
+            '25개 라이브 체크 · 프로젝트 구조 스캔 · 보안·품질·기술부채 종합 평가</div>'
             '</div>'
         )
         return
@@ -700,6 +919,104 @@ def _tab_diagnosis() -> None:
         )
 
     # ════════════════════════════════════════════════════════════════
+    #  섹션 0 — 프로젝트 구조 분석 (v3.0 신규)
+    # ════════════════════════════════════════════════════════════════
+    _scan = st.session_state.get("diag_scan", {})
+    if _scan:
+        with st.expander("📁 프로젝트 구조 분석", expanded=True):
+            _h(_section_card(
+                "동적 코드베이스 스캔",
+                "Python 파일·코드 라인·기술부채 지표·Git 상태 — 진단 실행 시 실시간 수집",
+                C["blue"],
+            ))
+
+            _py_cnt    = _scan.get("py_count", 0)
+            _tot_lines = _scan.get("total_lines", 0)
+            _avg_lines = _scan.get("avg_lines", 0)
+            _todo_cnt  = len(_scan.get("todo_list", []))
+            _fixme_cnt = len(_scan.get("fixme_list", []))
+            _git       = _scan.get("git", {})
+            _dirty     = int(_git.get("dirty", 0))
+
+            _sc0, _sc1, _sc2, _sc3 = st.columns(4, gap="small")
+            for _col, (_lbl, _val, _unit, _clr, _sub) in zip(
+                [_sc0, _sc1, _sc2, _sc3],
+                [
+                    ("Python 파일",  f"{_py_cnt}",           "개",  C["blue"],
+                     f"평균 {_avg_lines}줄/파일"),
+                    ("총 코드 라인", f"{_tot_lines:,}",       "줄",  C["indigo"],
+                     "주석·공백 포함"),
+                    ("TODO / FIXME", f"{_todo_cnt} / {_fixme_cnt}", "건", C["warn"],
+                     "기술부채 마커"),
+                    ("Git 브랜치",   _git.get("branch", "–"),  "",    C["ok"],
+                     f"미커밋 {_dirty}개" if _dirty else "작업트리 clean"),
+                ],
+            ):
+                with _col:
+                    _h(
+                        f'<div class="fn-kpi" style="border-top:3px solid {_clr};">'
+                        f'<div class="fn-kpi-label">{_lbl}</div>'
+                        f'<div style="display:flex;align-items:baseline;gap:4px;">'
+                        f'<span class="fn-kpi-value" style="color:{_clr};font-size:20px;">{_val}</span>'
+                        f'<span class="fn-kpi-unit">{_unit}</span>'
+                        f'</div>'
+                        f'<div class="fn-kpi-sub">{_sub}</div>'
+                        f'</div>'
+                    )
+
+            gap(8)
+
+            # 최근 커밋 + 미커밋 경고
+            if _git.get("last_commit"):
+                _h(
+                    f'<div style="background:#F0FDF4;border:1px solid #BBF7D0;'
+                    f'border-radius:6px;padding:8px 12px;margin-bottom:8px;">'
+                    f'<span style="font-size:11px;font-weight:600;color:#166534;">📦 최근 커밋: </span>'
+                    f'<span style="font-size:11px;color:#166534;">{_git["last_commit"]}</span>'
+                    f'</div>'
+                )
+            if _dirty > 0:
+                _h(
+                    f'<div style="background:#FFFBEB;border:1px solid #FDE68A;'
+                    f'border-radius:6px;padding:8px 12px;margin-bottom:8px;">'
+                    f'<span style="font-size:11px;font-weight:600;color:#92400E;">'
+                    f'⚠️ 미커밋 변경 {_dirty}개 — 진단 결과와 실제 배포 코드가 다를 수 있음</span>'
+                    f'</div>'
+                )
+
+            # 대형 파일 + TODO 목록
+            _large = _scan.get("large_files", [])
+            if _large or _todo_cnt:
+                _lc, _rc = st.columns(2, gap="medium")
+                with _lc:
+                    _h(
+                        f'<div style="font-size:12px;font-weight:700;color:#0F172A;margin-bottom:6px;">'
+                        f'📋 대형 파일 Top {min(5, len(_large))} (500줄 이상)</div>'
+                    )
+                    for _fname, _flines in _large[:5]:
+                        _fc = C["danger"] if _flines > 1000 else C["warn"]
+                        _h(
+                            f'<div style="display:flex;justify-content:space-between;'
+                            f'align-items:center;padding:4px 0;border-bottom:1px solid #F1F5F9;">'
+                            f'<span style="font-size:11px;color:#334155;">{_fname}</span>'
+                            f'<span style="font-size:11px;font-weight:700;color:{_fc};">'
+                            f'{_flines:,}줄</span>'
+                            f'</div>'
+                        )
+                with _rc:
+                    _h(
+                        f'<div style="font-size:12px;font-weight:700;color:#0F172A;margin-bottom:6px;">'
+                        f'📝 TODO / FIXME 샘플</div>'
+                    )
+                    for _item in (_scan.get("todo_list", [])[:3]
+                                  + _scan.get("fixme_list", [])[:2]):
+                        _h(
+                            f'<div style="font-size:11px;color:#64748B;'
+                            f'padding:3px 0;border-bottom:1px solid #F1F5F9;">'
+                            f'🔖 {_item}</div>'
+                        )
+
+    # ════════════════════════════════════════════════════════════════
     #  섹션 1 — 종합 점수 대시보드
     # ════════════════════════════════════════════════════════════════
     with st.expander("📊 종합 점수 대시보드", expanded=True):
@@ -731,7 +1048,7 @@ def _tab_diagnosis() -> None:
             ("유지보수성", maint_score, C["blue"]   if maint_score >= 60 else C["warn"], "파일구조 기반"),
             ("확장성",     scale_score, C["indigo"]  if scale_score >= 55 else C["danger"], "Docker·Redis 기반"),
             ("안정성",     ops_score,   C["danger"] if ops_score < 50 else C["warn"],    "모니터링·재시작 기준"),
-            ("보안성",     sec_score,   C["danger"] if sec_score < 55 else C["warn"],    "21개 체크 반영"),
+            ("보안성",     sec_score,   C["danger"] if sec_score < 55 else C["warn"],    "25개 체크 반영"),
         ]
         for col, (lbl, sc, cl, desc) in zip(cols, scores):
             with col:
@@ -756,7 +1073,7 @@ def _tab_diagnosis() -> None:
             f'<div style="background:#E2E8F0;border-radius:6px;height:10px;margin:10px auto;max-width:320px;">'
             f'<div style="width:{total_avg}%;height:10px;border-radius:6px;background:{total_col};"></div>'
             f'</div>'
-            f'<div style="font-size:12px;color:{C["t3"]};">라이브 체크 {passed_cnt}/{total_cnt} 통과 반영</div>'
+            f'<div style="font-size:12px;color:{C["t3"]};">라이브 체크 {passed_cnt}/{total_cnt} 통과 (25개 체크·프로젝트 스캔 반영)</div>'
             f'</div>'
         )
 
@@ -1311,7 +1628,7 @@ def _tab_diagnosis() -> None:
         f'총평 — 운영 투입 가능성 판정</div>'
         f'<div style="font-size:13px;color:{verdict_col};">{verdict_text}</div>'
         f'<div style="font-size:11.5px;color:#64748B;margin-top:8px;">'
-        f'라이브 체크 {passed_cnt}/{total_cnt} 통과 &nbsp;·&nbsp; '
+        f'라이브 체크 {passed_cnt}/{total_cnt} 통과 (25개) &nbsp;·&nbsp; '
         f'종합 점수 {total_avg}/100 ({grade}) &nbsp;·&nbsp; '
         f'{time.strftime("%Y-%m-%d %H:%M")} 기준 &nbsp;·&nbsp; '
         f'<a href="CTO_ANALYSIS_REPORT_20260507.md" style="color:{C["blue"]};">상세 보고서 MD 파일 참조</a>'
