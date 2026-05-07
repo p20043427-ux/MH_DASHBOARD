@@ -526,34 +526,35 @@ header[data-testid="stHeader"] {{
   background: transparent !important;
 }}
 
-/* 사이드바 버튼 — 반투명 어두운 배경 + 흰 테두리 (v9.5 수정)
-   columns 여부와 무관하게 항상 어두운 배경 강제 */
+/* 사이드바 버튼 — 관리자 대시보드 디자인 기준 명도 통일 */
 [data-testid="stSidebar"] .stButton > button {{
-  background: rgba(255,255,255,0.08) !important;
+  background: rgba(255,255,255,0.10) !important;
   border: 1px solid rgba(255,255,255,0.22) !important;
-  color: #FFFFFF !important;
-  border-radius: var(--r-md) !important;
-  padding: 0.4rem 0.6rem !important;
+  color: rgba(255,255,255,0.90) !important;
+  border-radius: 9px !important;
+  padding: 0.50rem 0.90rem !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
   transition: all var(--ease) !important;
   box-shadow: none !important;
 }}
 
-/* [v9.5] 버튼 내부 p/span 상속 설정 (텍스트 소멸 현상 해결) */
+/* 버튼 내부 p/span 상속 */
 [data-testid="stSidebar"] .stButton > button p,
 [data-testid="stSidebar"] .stButton > button span,
 [data-testid="stSidebar"] [data-testid="stColumn"] .stButton > button p,
 [data-testid="stSidebar"] [data-testid="stColumn"] .stButton > button span {{
   color: inherit !important;
-  font-size: var(--fs-sidebar) !important;
-  font-weight: 500 !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
   background: transparent !important;
 }}
 
 /* 사이드바 버튼 호버 */
 [data-testid="stSidebar"] .stButton > button:hover {{
-  background: rgba(255,255,255,0.16) !important;
-  border-color: rgba(255,255,255,0.40) !important;
-  color: #FFFFFF !important;
+  background: rgba(255,255,255,0.17) !important;
+  border-color: rgba(255,255,255,0.38) !important;
+  color: rgba(255,255,255,0.98) !important;
 }}
 
 /* type="primary" 버튼 (DB 업데이트 등) */

@@ -42,9 +42,10 @@ class DBHealth:
 _SIDEBAR_BTN_CSS = """
 <style>
 /* ══════════════════════════════════════════════════════════════
-   사이드바 버튼 통합 디자인 시스템 v2
+   사이드바 버튼 통합 디자인 시스템 v3
    · secondary / primary / a.sb-link-btn 동일 크기·폰트
    · 선택 상태(primary)만 파란 배경으로 구분
+   · [v3] 비선택 버튼 배경/텍스트 명도 강화 — 어두운 배경에서 가시성 확보
 ════════════════════════════════════════════════════════════════ */
 
 /* ── 공통 크기·폰트 (secondary + primary 모두) ─────────────── */
@@ -53,42 +54,42 @@ _SIDEBAR_BTN_CSS = """
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
     width: 100% !important;
     text-align: left !important;
-    padding: 0.44rem 0.82rem !important;
-    border-radius: 7px !important;
-    font-size: 12px !important;
+    padding: 0.52rem 0.90rem !important;
+    border-radius: 9px !important;
+    font-size: 12.5px !important;
     font-weight: 600 !important;
     line-height: 1.4 !important;
     box-shadow: none !important;
     transition: background 130ms ease, border-color 130ms ease, color 130ms ease !important;
 }
 
-/* ── secondary (비선택 기본) ──────────────────────────────── */
+/* ── secondary (비선택 기본) — 관리자 sb-link 카드 기준 명도 통일 ── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.13) !important;
-    color: rgba(255,255,255,0.78) !important;
+    background: rgba(255,255,255,0.10) !important;
+    border: 1px solid rgba(255,255,255,0.22) !important;
+    color: rgba(255,255,255,0.90) !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="secondary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(255,255,255,0.11) !important;
-    border-color: rgba(255,255,255,0.26) !important;
-    color: rgba(255,255,255,0.96) !important;
+    background: rgba(255,255,255,0.17) !important;
+    border-color: rgba(255,255,255,0.36) !important;
+    color: rgba(255,255,255,0.98) !important;
 }
 
 /* ── primary (선택·강조 — 파란 배경) ─────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
-    background: rgba(37,99,235,0.24) !important;
-    border: 1px solid rgba(37,99,235,0.52) !important;
-    color: rgba(255,255,255,0.97) !important;
+    background: rgba(37,99,235,0.32) !important;
+    border: 1px solid rgba(37,99,235,0.62) !important;
+    color: rgba(255,255,255,0.98) !important;
 }
 [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
-    background: rgba(37,99,235,0.36) !important;
-    border-color: rgba(37,99,235,0.68) !important;
+    background: rgba(37,99,235,0.46) !important;
+    border-color: rgba(37,99,235,0.78) !important;
 }
 
 /* ── focus / active 공통 초기화 ──────────────────────────── */
@@ -117,7 +118,7 @@ _SIDEBAR_BTN_CSS = """
 
 /* ── 버튼 컨테이너 간격 ──────────────────────────────────── */
 [data-testid="stSidebar"] div[data-testid="stButton"] {
-    margin-bottom: 0.20rem !important;
+    margin-bottom: 0.22rem !important;
 }
 [data-testid="stSidebar"] .sb-btn-wrap {
     margin-top: 0.1rem;
@@ -128,24 +129,61 @@ _SIDEBAR_BTN_CSS = """
     display: block;
     width: 100%;
     box-sizing: border-box;
-    padding: 0.44rem 0.82rem;
-    border-radius: 7px;
-    font-size: 12px;
+    padding: 9px 13px;
+    border-radius: 9px;
+    font-size: 12.5px;
     font-weight: 600;
     line-height: 1.4;
     text-decoration: none !important;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.13);
-    color: rgba(255,255,255,0.78) !important;
-    transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
-    margin-bottom: 0.20rem;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-left: 3px solid rgba(99,179,237,0.65);
+    color: rgba(255,255,255,0.90) !important;
+    transition: background 130ms ease, border-left-color 130ms ease;
+    margin-bottom: 0.22rem;
     cursor: pointer;
 }
 [data-testid="stSidebar"] a.sb-link-btn:hover {
-    background: rgba(255,255,255,0.11);
-    border-color: rgba(255,255,255,0.26);
-    color: rgba(255,255,255,0.96) !important;
+    background: rgba(255,255,255,0.17) !important;
+    border-left-color: rgba(99,179,237,0.90) !important;
+    color: rgba(255,255,255,0.98) !important;
     text-decoration: none !important;
+}
+
+/* ── 바로가기 준비중 카드 (.sb-shortcut-card) ─────────────── */
+[data-testid="stSidebar"] .sb-shortcut-card {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-left: 3px solid rgba(255,255,255,0.25);
+    border-radius: 9px;
+    padding: 9px 13px;
+    margin-bottom: 5px;
+    opacity: 0.72;
+    cursor: default;
+}
+.sb-shortcut-name {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.88);
+    letter-spacing: -0.1px;
+}
+.sb-shortcut-badge {
+    font-size: 9.5px;
+    color: rgba(255,255,255,0.40);
+    font-weight: 500;
+    background: rgba(255,255,255,0.10);
+    padding: 1px 5px;
+    border-radius: 99px;
+}
+.sb-shortcut-sub {
+    display: block;
+    font-size: 10.5px;
+    color: rgba(255,255,255,0.42);
+    margin-top: 2px;
 }
 </style>
 """
@@ -350,27 +388,24 @@ def _render_shortcuts() -> None:
             st.session_state[_edit_key] = False
             st.rerun()
 
-    # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) ──────────────────────
-    # 버튼과 동일 bg·border·폰트 사용
-    _CELL_S = (
-        "flex:1;border:1px solid rgba(255,255,255,0.13);"
-        "border-radius:7px;padding:7px 4px;text-align:center;"
-        "background:rgba(255,255,255,0.05);"
-    )
-    _LBL_S = "display:block;font-size:12px;font-weight:600;color:rgba(255,255,255,0.78);"
-    _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.38);margin-top:2px;"
-
-    _cells = "".join(
-        [
-            f'<div style="{_CELL_S}">'
-            f'<span style="{_LBL_S}">{lbl}</span>'
-            f'<span style="{_SUB_S}">준비중</span>'
-            f"</div>"
-            for lbl in ("진료", "원무", "간호")
-        ]
+    # ── 진료 / 원무 / 간호 — sb-link 카드형 (관리자 대시보드 디자인 기준) ──
+    _SHORTCUT_ITEMS = [
+        ("진료",  "클리닉 정보 조회",  "#3B82F6"),
+        ("원무",  "수납·미수금 조회",  "#14B8A6"),
+        ("간호",  "병동 지침 검색",    "#8B5CF6"),
+    ]
+    _cards = "".join(
+        f'<div class="sb-shortcut-card" style="border-left-color:{accent};">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+        f'<span class="sb-shortcut-name">{name}</span>'
+        f'<span class="sb-shortcut-badge">준비중</span>'
+        f'</div>'
+        f'<span class="sb-shortcut-sub">{sub}</span>'
+        f'</div>'
+        for name, sub, accent in _SHORTCUT_ITEMS
     )
     st.markdown(
-        f'<div style="display:flex;gap:4px;margin-top:5px;">{_cells}</div>',
+        f'<div style="margin-top:6px;">{_cards}</div>',
         unsafe_allow_html=True,
     )
 
