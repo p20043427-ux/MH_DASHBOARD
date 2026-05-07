@@ -278,13 +278,18 @@ def _phase_item(done: bool, text: str, sub: str = "") -> str:
     icon = "✅" if done else "⬜"
     col  = "#94A3B8" if not done else C["ok"]
     td   = "line-through;color:#94A3B8" if done else "none;color:#0F172A"
+    # f-string 안에 백슬래시 불가 → sub_html 사전 계산
+    sub_html = (
+        '<br><span style="font-size:11px;color:#94A3B8;">' + sub + '</span>'
+        if sub else ""
+    )
     return (
         f'<div style="display:flex;align-items:flex-start;gap:10px;'
         f'padding:5px 0;border-bottom:1px solid #F1F5F9;">'
         f'<span style="font-size:14px;flex-shrink:0;">{icon}</span>'
         f'<div>'
         f'<span style="font-size:12.5px;font-weight:600;text-decoration:{td};">{text}</span>'
-        f'{"<br><span style=\\"font-size:11px;color:#94A3B8;\\">" + sub + "</span>" if sub else ""}'
+        f'{sub_html}'
         f'</div>'
         f'</div>'
     )
