@@ -179,3 +179,5 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+guidbot/finance_app.py
+.claude/worktrees/cool-liskov-bb2dfc/
