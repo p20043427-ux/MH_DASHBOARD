@@ -526,36 +526,7 @@ header[data-testid="stHeader"] {{
   background: transparent !important;
 }}
 
-/* 사이드바 버튼 — 관리자 대시보드(admin_app.py) 기준 완전 통일 */
-[data-testid="stSidebar"] .stButton > button {{
-  background: rgba(255,255,255,0.08) !important;
-  border: 1px solid rgba(255,255,255,0.15) !important;
-  color: #fff !important;
-  border-radius: 8px !important;
-  padding: 8px 14px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  letter-spacing: -0.1px !important;
-  transition: background 150ms ease !important;
-  box-shadow: none !important;
-}}
-
-/* 버튼 내부 p/span 상속 */
-[data-testid="stSidebar"] .stButton > button p,
-[data-testid="stSidebar"] .stButton > button span,
-[data-testid="stSidebar"] [data-testid="stColumn"] .stButton > button p,
-[data-testid="stSidebar"] [data-testid="stColumn"] .stButton > button span {{
-  color: inherit !important;
-  font-size: inherit !important;
-  font-weight: inherit !important;
-  background: transparent !important;
-}}
-
-/* 사이드바 버튼 호버 */
-[data-testid="stSidebar"] .stButton > button:hover {{
-  background: rgba(255,255,255,0.15) !important;
-  border-color: rgba(255,255,255,0.25) !important;
-}}
+/* 사이드바 버튼 — 각 앱에서 개별 정의 (chatbot: sidebar.py, admin: admin_app.py) */
 
 /* type="primary" 버튼 (DB 업데이트 등) */
 [data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {{

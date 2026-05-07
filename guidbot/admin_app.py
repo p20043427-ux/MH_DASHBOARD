@@ -53,8 +53,21 @@ button, input, label, select, textarea {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Streamlit 기본 헤더 제거 */
-header[data-testid="stHeader"] { display: none !important; }
+/* 헤더 높이 0 — 공간 차지 없이 사이드바 토글은 유지 */
+header[data-testid="stHeader"] {
+  height: 0 !important; min-height: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important; padding: 0 !important;
+}
+/* 헤더 내 불필요 요소만 숨김 */
+[data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
+/* 사이드바 토글 버튼 항상 접근 가능 */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: flex !important; visibility: visible !important;
+  opacity: 1 !important; pointer-events: auto !important;
+}
 .main .block-container { padding: 0 !important; max-width: 100% !important; }
 
 /* ── 사이드바 배경 ──────────────────────────────────────────── */
