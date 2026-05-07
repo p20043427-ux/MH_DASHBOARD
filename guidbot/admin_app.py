@@ -1,6 +1,9 @@
 """
-admin_app.py  ─  좋은문화병원 관리자 대시보드 v3.0
+admin_app.py  ─  좋은문화병원 관리자 대시보드 v3.1  (2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v3.1 변경사항]
+  · 자동 백업 스케줄러 기동 추가 — 주 1회 weekly 백업, 최대 4개 보관
+
 [핵심 규칙]
   · font-family 는 절대 HTML style="" 속성 안에 쓰지 않는다.
     → 이중따옴표 충돌로 invalid HTML 발생, 텍스트 그대로 출력됨.
@@ -514,8 +517,26 @@ html, body { background:#0f172a !important; }
         st.markdown("</div>", unsafe_allow_html=True)  # adm-login-wrap 닫기
 
 
+@st.cache_resource
+def _start_auto_backup_once() -> bool:
+    """
+    앱 생명주기 동안 1회만 자동 백업 스케줄러를 기동합니다.
+    @st.cache_resource 로 Streamlit 재실행(rerun)에도 중복 기동 방지.
+    """
+    try:
+        from utils.auto_backup import start_auto_backup
+        start_auto_backup()
+        logger.info("[admin_app] 자동 백업 스케줄러 기동 완료")
+    except Exception as exc:
+        logger.warning(f"[admin_app] 자동 백업 스케줄러 기동 실패: {exc}")
+    return True
+
+
 def main() -> None:
-    logger.info("admin_app v3.0 시작 (포트 8504)")
+    logger.info("admin_app v3.1 시작 (포트 8504)")
+
+    # 자동 백업 스케줄러 — 앱 최초 실행 시 1회 기동
+    _start_auto_backup_once()
     authed = _sidebar()
 
     # ── 미인증: 사이드바 의존 없이 메인 영역에 로그인 폼 표시 (2026-04-22) ──
