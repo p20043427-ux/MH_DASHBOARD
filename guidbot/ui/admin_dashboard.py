@@ -177,10 +177,10 @@ _ADMIN_CSS: str = """
   font-size: 13px; color: #92400E; margin-bottom: 14px;
 }
 
-/* ── expander 아이콘 텍스트 노출 방지 ─── */
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 노출 방지 ─── */
+[data-testid="stExpanderToggleIcon"] { font-size: 0 !important; color: transparent !important; }
+[data-testid="stExpanderToggleIcon"] svg { font-size: 14px !important; color: #64748B !important; width: 16px; height: 16px; display: inline-block !important; }
 [data-testid="stExpander"] details summary p { font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important; }
-[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] span { display: none; }
-[data-testid="stExpander"] details summary svg { display: inline-block !important; }
 </style>
 """
 
