@@ -1,8 +1,12 @@
 """
-admin_app.py  ─  좋은문화병원 관리자 대시보드 v3.1  (2026-05-07)
+admin_app.py  ─  좋은문화병원 관리자 대시보드 v3.2  (2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [v3.1 변경사항]
   · 자동 백업 스케줄러 기동 추가 — 주 1회 weekly 백업, 최대 4개 보관
+
+[v3.2 변경사항]
+  · 관리자 세션 30분 만료 — 자동 로그아웃 + 남은 시간 표시
+  · 하드코딩된 기본 패스워드 제거 — ADMIN_PASSWORD 환경변수 필수화
 
 [핵심 규칙]
   · font-family 는 절대 HTML style="" 속성 안에 쓰지 않는다.
@@ -295,7 +299,21 @@ def _sidebar() -> bool:
         authed = st.session_state.get("adm_authed", False)
 
         # ── 인증 영역 ────────────────────────────────────────────
+        _SESSION_TIMEOUT = 1800  # 30분 세션 만료 (초)
+
         if authed:
+            # 세션 만료 확인 — 로그인 후 30분 초과 시 자동 로그아웃
+            login_ts = st.session_state.get("adm_login_ts", 0.0)
+            elapsed = time.time() - login_ts
+            if elapsed > _SESSION_TIMEOUT:
+                st.session_state["adm_authed"] = False
+                st.session_state.pop("adm_login_ts", None)
+                st.session_state.pop("adm_login_time", None)
+                logger.info("관리자 세션 만료 — 자동 로그아웃 (경과: %.0f초)", elapsed)
+                st.rerun()
+
+            remaining_min = max(0, int((_SESSION_TIMEOUT - elapsed) / 60))
+            remaining_sec = max(0, int((_SESSION_TIMEOUT - elapsed) % 60))
             login_t = st.session_state.get("adm_login_time", "")
             st.markdown(
                 '<div style="background:rgba(16,185,129,0.12);'
@@ -303,11 +321,14 @@ def _sidebar() -> bool:
                 'border-radius:8px;padding:10px 14px;margin-bottom:14px;">'
                 '<div style="font-size:12px;font-weight:700;color:#10b981;">✓ 관리자 인증 완료</div>'
                 f'<div style="font-size:11px;color:rgba(255,255,255,0.38);margin-top:2px;">{login_t}</div>'
+                f'<div style="font-size:11px;color:rgba(255,255,255,0.30);margin-top:3px;">'
+                f'세션 만료까지 {remaining_min}분 {remaining_sec:02d}초</div>'
                 '</div>',
                 unsafe_allow_html=True,
             )
             if st.button("로그아웃", key="adm_logout", use_container_width=True):
                 st.session_state["adm_authed"] = False
+                st.session_state.pop("adm_login_ts", None)
                 st.session_state.pop("adm_login_time", None)
                 logger.info("관리자 로그아웃")
                 st.rerun()
@@ -330,6 +351,7 @@ def _sidebar() -> bool:
                     try:
                         if settings.check_admin(pw):
                             st.session_state["adm_authed"] = True
+                            st.session_state["adm_login_ts"] = time.time()  # 세션 만료 기준 타임스탬프
                             st.session_state["adm_login_time"] = (
                                 "인증: " + datetime.now().strftime("%H:%M:%S")
                             )
@@ -519,6 +541,7 @@ html, body { background:#0f172a !important; }
                 try:
                     if settings.check_admin(pw):
                         st.session_state["adm_authed"] = True
+                        st.session_state["adm_login_ts"] = time.time()  # 세션 만료 기준 타임스탬프
                         st.session_state["adm_login_time"] = (
                             "인증: " + datetime.now().strftime("%H:%M:%S")
                         )
