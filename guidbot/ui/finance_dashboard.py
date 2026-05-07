@@ -1,6 +1,7 @@
 """
-ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.4
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ui/finance_dashboard.py  ─  원무 현황 대시보드 v2.5
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-07 v2.5] 주간추이분석 / 진료과 분석 탭 — 조회 버튼 클릭 시에만 쿼리 실행━━
 
 [6탭 구조]
   탭1 실시간 현황   — KPI / 일일현황 / 진료과 대기 / 키오스크 / 세부과집계표
@@ -277,16 +278,8 @@ def render_finance_dashboard() -> None:
         _render_day_inweon(day_inweon)
 
     with t_weekly:
-        opd_dept_trend_w  = _fq('opd_dept_trend',  _q)
-        ipd_dept_trend    = _fq('ipd_dept_trend',  _q)
-        los_dist_dept     = _fq('los_dist_dept')
-        daily_dept_stat_w = _fq('daily_dept_stat', _q)
-        _tab_analytics(
-            opd_dept_trend=opd_dept_trend_w,
-            los_dist_dept=los_dist_dept,
-            daily_dept_stat=daily_dept_stat_w,
-            ipd_dept_trend=ipd_dept_trend,
-        )
+        # [2026-05-07] 쿼리를 _tab_analytics 내부로 이전 — 버튼 클릭 시에만 실행
+        _tab_analytics()
 
     with t_monthly:
         _tab_monthly()
@@ -296,8 +289,29 @@ def render_finance_dashboard() -> None:
 
     with t_dept:
         if _HAS_DEPT_ANALYSIS:
-            monthly_opd_dept_d = _fq('monthly_opd_dept')
-            _render_dept_analysis(monthly_opd_dept_d)
+            # [2026-05-07] 조회 버튼 클릭 시에만 V_MONTHLY_OPD_DEPT 쿼리 실행
+            _DEPT_SK = 'fin_dept_data'
+            with st.form('fin_dept_form'):
+                st.caption('월별 진료과 외래 분석 — V_MONTHLY_OPD_DEPT')
+                _dept_submitted = st.form_submit_button(
+                    '🔍 조회', type='primary', use_container_width=True
+                )
+            if _dept_submitted:
+                with st.spinner('진료과 데이터 조회 중...'):
+                    st.session_state[_DEPT_SK] = _fq('monthly_opd_dept')
+            if _DEPT_SK not in st.session_state:
+                _gap(8)
+                st.markdown(
+                    f'<div style="text-align:center;padding:48px 24px;">'
+                    f'<div style="font-size:36px;margin-bottom:12px;">🔬</div>'
+                    f'<div style="font-size:14px;font-weight:600;color:{C["t2"]};">'
+                    f'조회 버튼을 눌러 진료과 분석 데이터를 불러오세요</div>'
+                    f'<div style="font-size:12px;margin-top:6px;color:{C["t4"]};">V_MONTHLY_OPD_DEPT</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                _render_dept_analysis(st.session_state[_DEPT_SK])
         else:
             _gap(16)
             st.markdown(

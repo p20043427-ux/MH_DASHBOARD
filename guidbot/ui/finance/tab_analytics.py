@@ -1,4 +1,6 @@
-"""ui/finance/tab_analytics.py — 주간추이분석 탭"""
+"""ui/finance/tab_analytics.py — 주간추이분석 탭
+[2026-05-07] 조회 버튼 클릭 시에만 Oracle 쿼리 실행 (Lazy Loading)
+"""
 
 from __future__ import annotations
 import time
@@ -55,17 +57,63 @@ _PLOTLY_LAYOUT = PLOTLY_CFG
 # ════════════════════════════════════════════════════════════════════
 # 탭 3 — 주간추이분석
 # ════════════════════════════════════════════════════════════════════
-def _tab_analytics(
-    opd_dept_trend: List[Dict],
-    los_dist_dept:  List[Dict],
-    daily_dept_stat: Optional[List[Dict]] = None,
-    ipd_dept_trend:  Optional[List[Dict]] = None,
-) -> None:
-    from collections import defaultdict as _ddc
+def _tab_analytics(*_, **__) -> None:
+    """주간추이분석 탭 — 조회 버튼 클릭 후 쿼리 실행.
 
-    daily_dept_stat = daily_dept_stat or []
-    ipd_dept_trend  = ipd_dept_trend  or []
-    los_dist_dept   = los_dist_dept   or []
+    [2026-05-07] 파라미터를 제거하고 내부에서 직접 _fq() 호출.
+    호출부(finance_dashboard.py)는 인자 없이 _tab_analytics() 로 변경.
+    """
+    import datetime as _dt
+    from collections import defaultdict as _ddc
+    from ui.panels._shared import _fq as _wfq
+
+    # ── 날짜 파라미터 — finance_dashboard 의 fn_use_custom_date 세션 상태를 공유
+    _is_custom = st.session_state.get('fn_use_custom_date', False)
+    if _is_custom:
+        _sel_d = st.session_state.get('fn_sel_date', _dt.date.today())
+        _wq = (_sel_d.strftime('%Y%m%d')
+               if isinstance(_sel_d, _dt.date)
+               else str(_sel_d).replace('-', '')[:8])
+    else:
+        _wq = ''
+
+    # ── [2026-05-07] 조회 폼 — 버튼 클릭 시에만 Oracle 쿼리 실행
+    _SK = 'fin_weekly_data'
+    with st.form('fin_weekly_form'):
+        _lbl = f'기준일: 지정일({_wq})' if _wq else '기준일: 오늘'
+        st.caption(_lbl)
+        _submitted = st.form_submit_button('🔍 조회', type='primary', use_container_width=True)
+
+    if _submitted:
+        with st.spinner('주간 데이터 조회 중...'):
+            st.session_state[_SK] = {
+                'opd_dept_trend':  _wfq('opd_dept_trend',  _wq),
+                'ipd_dept_trend':  _wfq('ipd_dept_trend',  _wq),
+                'los_dist_dept':   _wfq('los_dist_dept'),
+                'daily_dept_stat': _wfq('daily_dept_stat', _wq),
+            }
+
+    # ── 첫 조회 전 안내 화면
+    if _SK not in st.session_state:
+        _gap(8)
+        st.markdown(
+            f'<div style="text-align:center;padding:48px 24px;">'
+            f'<div style="font-size:36px;margin-bottom:12px;">📊</div>'
+            f'<div style="font-size:14px;font-weight:600;color:{C["t2"]};">'
+            f'조회 버튼을 눌러 주간 분석 데이터를 불러오세요</div>'
+            f'<div style="font-size:12px;margin-top:6px;color:{C["t4"]};">'
+            f'V_OPD_DEPT_TREND / V_IPD_DEPT_TREND / V_LOS_DIST_DEPT / V_DAILY_DEPT_STAT</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── 세션 상태에서 데이터 로드 후 렌더링
+    _d = st.session_state[_SK]
+    opd_dept_trend  = _d.get('opd_dept_trend',  []) or []
+    ipd_dept_trend  = _d.get('ipd_dept_trend',  []) or []
+    los_dist_dept   = _d.get('los_dist_dept',   []) or []
+    daily_dept_stat = _d.get('daily_dept_stat', []) or []
 
     # ── 분리 배너
     _gap()
