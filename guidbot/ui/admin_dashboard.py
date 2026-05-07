@@ -1,7 +1,17 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.0  (2026-04-22)
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.2  (2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[v5.0 변경 — 디자인 시스템 통일]
+[v5.2 변경 — 2026-05-07]
+  · 백업/복구 버그 수정: rag_db_path 없을 때 버튼 비활성화, depts/ 복원 후 보존
+  · 자동 백업 현황 표시: 마지막·다음 실행 시각, weekly 백업 목록 (주 1회·최대 4개)
+  · 부서별 문서 브라우저 추가: data_rag_working/depts/ 기준 PDF 목록
+  · 수동/자동 백업 구분 배지 추가
+
+[v5.1 변경 — 2026-05-07]
+  · 백업 테이블에 종류 컬럼(수동/자동) 추가
+  · _load_dept_file_list() 헬퍼 추가 — 부서별 PDF 목록
+
+[v5.0 변경 — 2026-04-22]
   · APP_CSS (design.py) 를 기반 CSS 로 채택 → 병동/원무 대시보드와 동일한 토큰
   · KPI 카드: dark kpi-card → fn-kpi (design.py 표준 — 흰 카드 + 컬러 top border)
   · 섹션 헤더: _sec_header() → section_header() from design.py
@@ -1039,8 +1049,39 @@ def _tab_vectordb() -> None:
         for b in bks[:10]:
             mtime = datetime.fromtimestamp(b.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             mb    = sum(f.stat().st_size for f in b.rglob("*") if f.is_file()) / 1024**2
-            rows_bk.append([b.name, mtime, f"{mb:.1f} MB"])
-        _html(_table(["백업명", "생성일시", "크기"], rows_bk, "12px"))
+            # weekly_ 자동 백업은 구분 표시
+            kind  = badge_html("자동", "blue") if b.name.startswith("weekly_") else badge_html("수동", "gray")
+            rows_bk.append([b.name, mtime, f"{mb:.1f} MB", kind])
+        _html(_table(["백업명", "생성일시", "크기", "종류"], rows_bk, "12px"))
+
+    # ── 자동 백업 스케줄 현황 ────────────────────────────────────────────
+    gap(12)
+    _html('<div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">자동 백업 스케줄 (주 1회 · 최대 4개 보관)</div>')
+    try:
+        from utils.auto_backup import get_auto_backup_scheduler
+        _sch = get_auto_backup_scheduler()
+        _w_bks = _sch.weekly_backups()
+
+        sc1, sc2, sc3 = st.columns(3, gap="small")
+        with sc1:
+            _html(_adm_kpi("마지막 자동 백업", _sch.last_backup_at(), "", "weekly_ 기준", C["teal"]))
+        with sc2:
+            _html(_adm_kpi("다음 예약 백업", _sch.next_backup_at(), "", "7일 간격", C["blue"]))
+        with sc3:
+            _running = badge_html("실행 중", "ok") if _sch.is_running() else badge_html("중지", "warn")
+            _html(_adm_kpi("스케줄러", f"{len(_w_bks)}/4개 보관", "",
+                            "스케줄러 " + ("실행 중" if _sch.is_running() else "중지됨"),
+                            C["ok"] if _sch.is_running() else C["warn"]))
+
+        if _w_bks:
+            gap(6)
+            rows_w = [[b["name"], b["created_at"], f'{b["size_mb"]} MB']
+                      for b in _w_bks]
+            _html(_table(["백업명 (자동)", "생성일시", "크기"], rows_w, "11.5px"))
+        else:
+            st.caption("자동 백업 없음 — 앱이 처음 실행되면 즉시 백업됩니다.")
+    except Exception as _e:
+        st.caption(f"자동 백업 스케줄러 상태 조회 불가: {_e}")
 
     # ══════════════════════════════════════════════════════════════════════
     # 섹션 4 — 문서 목록 브라우저

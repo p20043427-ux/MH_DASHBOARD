@@ -58,8 +58,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.search_modes import SearchMode
 from utils.logger import get_logger
 
-# 순환 import 방지를 위해 settings 를 함수 안에서 lazy import
-logger = get_logger(__name__)
+# settings 는 config 모듈만 참조하므로 순환 import 없음 — log_dir 전달 가능
+try:
+    from config.settings import settings as _s
+    logger = get_logger(__name__, log_dir=_s.log_dir)
+except Exception:
+    logger = get_logger(__name__)  # 설정 로드 실패 시 콘솔 출력만
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
