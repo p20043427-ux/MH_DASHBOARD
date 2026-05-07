@@ -1,12 +1,18 @@
 """
-ui/panels/_shared.py — 원무 대시보드 패널 공유 유틸리티 (2026-04-22 Phase 2)
+ui/panels/_shared.py — 원무 대시보드 패널 공유 유틸리티 (2026-05-07 v2.1)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 모든 finance_panel/*.py 파일이 공통으로 사용하는 임포트·쿼리딕셔너리·헬퍼.
 finance_dashboard.py 도 여기서 역임포트해 중복 정의 없이 사용한다.
 
+[v2.1 변경 — 2026-05-07]
+  · _fq() 에 @st.cache_data(ttl=1800) 추가 → DB 부하 감소
+    · 30분 캐시: 분석성 데이터(월간·지역·진료과)에 적합
+    · 새로고침 버튼(st.cache_data.clear()) 으로 언제든 강제 갱신 가능
+    · 실시간 지표(KPI·수납·수술 등)도 캐시됨 — 부하가 심하면 수용 가능한 트레이드오프
+
 [포함 항목]
   · Oracle 쿼리 딕셔너리 FQ / FQ_HIST
-  · _fq()  — 날짜 치환 포함 Oracle 조회 래퍼
+  · _fq()  — 날짜 치환 포함 Oracle 조회 래퍼 (캐시 포함)
   · logger, HAS_PLOTLY, go
   · design.py 하위 호환 별칭 (_kpi_card, _sec_hd, _gap, _fmt_won 등)
 """
@@ -201,8 +207,16 @@ FQ_HIST: Dict[str, str] = {
 _TODAY_STR: str = _dt_import.date.today().strftime("%Y%m%d")
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def _fq(key: str, date_str: str = "", max_rows: int = 5000) -> List[Dict[str, Any]]:
-    """FQ / FQ_HIST 에서 쿼리 선택 후 Oracle 조회 (날짜 치환 포함)."""
+    """
+    FQ / FQ_HIST 에서 쿼리 선택 후 Oracle 조회 (날짜 치환 포함).
+
+    [캐시 정책 — 2026-05-07]
+    · ttl=1800 (30분): Streamlit rerun 마다 반복 실행되던 DB 쿼리 방지
+    · 특히 진료과 분석 탭의 monthly_opd_dept (전체 13개월) 반복 조회 해소
+    · 강제 갱신: 대시보드의 새로고침 버튼 → st.cache_data.clear() 로 즉시 초기화
+    """
     import re as _re2
     try:
         from db.oracle_client import execute_query

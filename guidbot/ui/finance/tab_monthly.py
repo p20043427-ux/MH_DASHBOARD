@@ -1,4 +1,16 @@
-"""ui/finance/tab_monthly.py — 월간추이분석 탭 (V_MONTHLY_OPD_DEPT 기반)"""
+"""
+ui/finance/tab_monthly.py — 월간추이분석 탭 (V_MONTHLY_OPD_DEPT 기반) v1.1 (2026-05-07)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[쿼리 방식 — 중요]
+  · 월 드롭다운 목록: Python 계산, DB 조회 없음
+  · 실제 DB 쿼리: 🔍 조회 버튼 클릭 시에만 실행
+    → WHERE 기준년월 IN ('M1', 'M2') — 선택한 2개월만 조회 (전체 조회 아님)
+
+[v1.1 변경 — 2026-05-07]
+  · 쿼리 방식 주석 추가 (문서화)
+  · 전체 SELECT * 쿼리가 아님을 명시
+"""
 
 from __future__ import annotations
 import datetime as _dt_m
