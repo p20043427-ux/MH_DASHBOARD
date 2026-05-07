@@ -85,7 +85,7 @@ def _make_generate_config() -> genai_types.GenerateContentConfig:
     """Gemini 생성 설정 (thinking OFF, 토큰 제한)"""
     cfg: dict = {
         "max_output_tokens": settings.llm_max_output_tokens,
-        "temperature": 0.1,
+        "temperature": settings.llm_temperature,
     }
     if settings.llm_thinking_disabled:
         try:
