@@ -1,6 +1,11 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.2  (2026-05-07)
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.3  (2026-05-07)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v5.3 변경 — 2026-05-07]
+  · 🔐 보안·진단 탭 추가: CTO 관점 정밀 진단 보고서 (13개 라이브 체크)
+    - 실시간 코드베이스 파일 분석 → 현황/점수 동적 계산
+    - admin_tab_diagnosis.py 연결
+
 [v5.2 변경 — 2026-05-07]
   · 백업/복구 버그 수정: rag_db_path 없을 때 버튼 비활성화, depts/ 복원 후 보존
   · 자동 백업 현황 표시: 마지막·다음 실행 시각, weekly 백업 목록 (주 1회·최대 4개)
@@ -46,6 +51,9 @@ from ui.design import (
     section_header, gap, kpi_card as _design_kpi_card,
     badge_html, topbar,
 )
+
+# ── 보안·진단 탭 (v5.3 추가) ────────────────────────────────────────────
+from ui.admin_tab_diagnosis import _tab_diagnosis
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
@@ -1656,10 +1664,12 @@ def _tab_settings() -> None:
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+    # [v5.3] 보안·진단 탭(t9) 추가 — admin_tab_diagnosis._tab_diagnosis() 연결
+    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
         "🖥️ 운영 현황",   "📋 로그 뷰어",  "🗄️ 벡터DB 관리",
         "📄 문서 관리",   "⚙️ 시스템 정보",
         "🤖 챗봇 관리",   "📊 모니터링",   "🔧 환경설정",
+        "🔐 보안·진단",
     ])
     with t1: _tab_ops()
     with t2: _tab_logs()
@@ -1669,3 +1679,4 @@ def render_admin_dashboard() -> None:
     with t6: _tab_chatbot()
     with t7: _tab_monitoring()
     with t8: _tab_settings()
+    with t9: _tab_diagnosis()   # [v5.3] CTO 관점 정밀 진단 (라이브 체크 13종)
