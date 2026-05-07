@@ -421,20 +421,33 @@ def _compute_scalability(chk: Dict[str, Tuple[bool, str]]) -> int:
 
 # ── expander 화살표 텍스트 노출 방지 CSS 주입 ─────────────────────────────
 def _inject_tab_css() -> None:
-    """진단 탭 CSS: _arrow_right/_arrow_down 텍스트 숨김 + expander 스타일."""
+    """진단 탭 CSS: _arrow_right/_arrow_down 텍스트 완전 제거 + expander 스타일.
+    summary 전체 font-size:0 → stMarkdownContainer만 복원하는 방식으로 텍스트 노드 포함 제거.
+    """
     st.markdown(
         "<style>"
-        # stExpanderToggleIcon 의 텍스트만 0px — SVG 아이콘은 살림
-        "[data-testid='stExpanderToggleIcon']{"
+        # summary 전체를 font-size:0 으로 비가시화 (직접 text node 포함)
+        "[data-testid='stExpander'] details summary{"
         "  font-size:0 !important; color:transparent !important;"
         "}"
-        "[data-testid='stExpanderToggleIcon'] svg{"
-        "  font-size:14px !important; color:#64748B !important;"
-        "  width:16px; height:16px; display:inline-block !important;"
+        # stMarkdownContainer 내부만 원래 크기·색 복원
+        "[data-testid='stExpander'] details summary [data-testid='stMarkdownContainer']{"
+        "  font-size:initial !important; color:initial !important;"
         "}"
-        "[data-testid='stExpander'] details summary p{"
+        "[data-testid='stExpander'] details summary [data-testid='stMarkdownContainer'] p{"
         "  font-size:13px !important; font-weight:600 !important;"
-        "  color:#0F172A !important;"
+        "  color:#0F172A !important; margin:0 !important;"
+        "}"
+        # span/small 직접 숨김 (구 버전 Streamlit 대응)
+        "[data-testid='stExpander'] details summary > span,"
+        "[data-testid='stExpander'] details summary > small,"
+        "[data-testid='stExpanderToggleIcon'] span,"
+        "[data-testid='stExpanderToggleIcon'] small{display:none !important;}"
+        # SVG 화살표 크기 복원
+        "[data-testid='stExpander'] details summary svg{"
+        "  width:16px !important; height:16px !important;"
+        "  display:inline-block !important; flex-shrink:0 !important;"
+        "  color:#64748B !important;"
         "}"
         "</style>",
         unsafe_allow_html=True,

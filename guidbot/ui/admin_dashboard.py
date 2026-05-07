@@ -177,10 +177,19 @@ _ADMIN_CSS: str = """
   font-size: 13px; color: #92400E; margin-bottom: 14px;
 }
 
-/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 노출 방지 ─── */
-[data-testid="stExpanderToggleIcon"] { font-size: 0 !important; color: transparent !important; }
-[data-testid="stExpanderToggleIcon"] svg { font-size: 14px !important; color: #64748B !important; width: 16px; height: 16px; display: inline-block !important; }
-[data-testid="stExpander"] details summary p { font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important; }
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 완전 제거 ─── */
+/* summary 전체 font-size 0 → 직접 text node 포함 모든 텍스트 비가시화  */
+[data-testid="stExpander"] details summary { font-size: 0 !important; color: transparent !important; }
+/* 콘텐츠 영역(stMarkdownContainer)만 원래 크기로 복원 */
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] { font-size: initial !important; color: initial !important; }
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p { font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important; margin: 0 !important; }
+/* span/small 직접 숨김 (구 버전 Streamlit 대응) */
+[data-testid="stExpander"] details summary > span,
+[data-testid="stExpander"] details summary > small,
+[data-testid="stExpanderToggleIcon"] span,
+[data-testid="stExpanderToggleIcon"] small { display: none !important; }
+/* SVG 화살표 크기 복원 */
+[data-testid="stExpander"] details summary svg { width: 16px !important; height: 16px !important; display: inline-block !important; flex-shrink: 0 !important; color: #64748B !important; }
 </style>
 """
 
