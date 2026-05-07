@@ -682,6 +682,37 @@ def _load_dept_stats() -> list:
         return []
 
 
+def _load_dept_file_list() -> Dict[str, List[Dict]]:
+    """부서별 로컬 PDF 파일 목록. data_rag_working/depts/{부서}/ 기준."""
+    try:
+        from core.dept_vector_store import _DEPT_WORK, _ROOT_DEPT
+    except ImportError:
+        return {}
+
+    result: Dict[str, List[Dict]] = {}
+    if not _DEPT_WORK.exists():
+        return result
+
+    for dept_dir in sorted(_DEPT_WORK.iterdir()):
+        if not dept_dir.is_dir():
+            continue
+        dept = dept_dir.name
+        files = []
+        for pdf in sorted(dept_dir.glob("*.pdf")):
+            try:
+                st = pdf.stat()
+                files.append({
+                    "name":     pdf.name,
+                    "size_kb":  round(st.st_size / 1024, 1),
+                    "mtime":    datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d"),
+                })
+            except Exception:
+                files.append({"name": pdf.name, "size_kb": 0.0, "mtime": "—"})
+        result[dept] = files
+
+    return result
+
+
 def _run_dept_rebuild(dept_name: str, sync: bool = True) -> tuple[bool, str]:
     """부서 재구축 + 마스터 병합을 실행하고 (성공여부, 메시지) 반환."""
     try:
@@ -933,8 +964,12 @@ def _tab_vectordb() -> None:
     bb1, bb2 = st.columns(2, gap="medium")
     with bb1:
         _html('<div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">백업 생성</div>')
-        st.caption("현재 마스터 인덱스를 스냅샷으로 저장합니다.")
-        if st.button("지금 백업 생성", key="adm_backup2", use_container_width=True, type="primary"):
+        st.caption("현재 마스터 인덱스를 스냅샷으로 저장합니다. (depts 서브인덱스 제외)")
+        _vs_exists = settings.rag_db_path.exists() and (settings.rag_db_path / "index.faiss").exists()
+        if not _vs_exists:
+            st.warning("마스터 인덱스(index.faiss)가 없습니다. 먼저 벡터DB를 구축하세요.")
+        if st.button("지금 백업 생성", key="adm_backup2", use_container_width=True,
+                     type="primary", disabled=not _vs_exists):
             with st.spinner("백업 생성 중..."):
                 try:
                     import shutil as _sh
@@ -957,16 +992,46 @@ def _tab_vectordb() -> None:
                                     label_visibility="collapsed")
             if st.button("선택 백업으로 복구", key="adm_restore",
                          use_container_width=True, type="primary"):
-                try:
-                    import shutil as _sh2
-                    vs_path = settings.rag_db_path
-                    ets     = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
-                    _sh2.copytree(str(vs_path), str(bk_dir / ets))
-                    _sh2.rmtree(str(vs_path))
-                    _sh2.copytree(str(bk_dir / sel_bk), str(vs_path))
-                    st.success(f"복구 완료: {sel_bk}")
-                except Exception as e:
-                    st.error(f"복구 오류: {e}")
+                with st.spinner("복구 중..."):
+                    try:
+                        import shutil as _sh2
+                        vs_path   = settings.rag_db_path
+                        bk_src    = bk_dir / sel_bk
+                        ets       = datetime.now().strftime("restore_before_%Y%m%d_%H%M%S")
+
+                        # depts 폴더 임시 보존 (백업에 포함되지 않으므로 따로 관리)
+                        depts_tmp = None
+                        depts_dir = vs_path / "depts"
+                        if depts_dir.exists():
+                            import tempfile
+                            depts_tmp = Path(tempfile.mkdtemp()) / "depts"
+                            _sh2.copytree(str(depts_dir), str(depts_tmp))
+
+                        # 현재 DB를 "restore_before_" 백업으로 저장 (존재하는 경우만)
+                        if vs_path.exists():
+                            _sh2.copytree(str(vs_path), str(bk_dir / ets),
+                                          ignore=_sh2.ignore_patterns("depts"))
+                            _sh2.rmtree(str(vs_path))
+
+                        # 선택 백업 복원
+                        _sh2.copytree(str(bk_src), str(vs_path))
+
+                        # depts 복원
+                        if depts_tmp is not None and depts_tmp.exists():
+                            _sh2.copytree(str(depts_tmp), str(vs_path / "depts"))
+                            _sh2.rmtree(str(depts_tmp.parent))
+
+                        # RAGPipeline 리셋
+                        try:
+                            from core.rag_pipeline import reset_pipeline
+                            reset_pipeline()
+                        except Exception:
+                            pass
+
+                        st.success(f"복구 완료: {sel_bk}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"복구 오류: {e}")
 
     if bks:
         gap(8)
@@ -1042,6 +1107,67 @@ def _tab_vectordb() -> None:
                 rows_f = [[d["청크ID"], d["파일명"], d["페이지"], d["카테고리"], d["내용(미리보기)"]]
                           for d in faiss_docs[:50]]
                 _html(_table(["청크ID", "파일명", "페이지", "카테고리", "내용"], rows_f, "11.5px"))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 섹션 5 — 부서별 문서 브라우저
+    # ══════════════════════════════════════════════════════════════════════
+    gap(16)
+    st.divider()
+    section_header("부서별 문서 목록",
+                   "data_rag_working/depts/ 폴더 기준 · 각 부서에 업로드된 PDF 파일",
+                   C["violet"])
+
+    dept_files = _load_dept_file_list()
+    if not dept_files:
+        st.info("data_rag_working/depts/ 폴더가 없거나 비어 있습니다. 먼저 G드라이브 동기화 또는 부서 재구축을 실행하세요.")
+    else:
+        # 검색 필터
+        _df_kw = st.text_input(
+            "파일명 검색",
+            key="adm_dept_file_kw",
+            placeholder="파일명 일부 입력...",
+            label_visibility="collapsed",
+        )
+        _kw = _df_kw.strip().lower()
+
+        total_depts = len(dept_files)
+        total_files = sum(len(v) for v in dept_files.values())
+        st.caption(f"총 {total_depts}개 부서 · {total_files}개 PDF")
+
+        for dept_name, files in dept_files.items():
+            # 검색어 필터링
+            matched = [f for f in files if _kw in f["name"].lower()] if _kw else files
+            if _kw and not matched:
+                continue
+
+            dept_stat = next(
+                (ds for ds in dept_stats if ds.get("dept_name") == dept_name), {}
+            )
+            chunk_count = dept_stat.get("chunk_count", 0)
+            indexed     = dept_stat.get("indexed", False)
+            idx_badge   = badge_html("인덱스됨", "ok") if indexed else badge_html("미생성", "warn")
+            label = (
+                f"**{dept_name}**&nbsp;&nbsp;"
+                f'<span style="font-size:12px;color:#64748B;">'
+                f"{len(matched)}개 PDF"
+                + (f" · {chunk_count:,}청크" if chunk_count else "")
+                + f"</span>"
+            )
+            with st.expander(
+                f"{dept_name}  ({len(matched)}개 PDF"
+                + (f" · {chunk_count:,}청크" if chunk_count else "")
+                + ")",
+                expanded=False,
+            ):
+                _html(f'<div style="margin-bottom:6px;">{idx_badge}</div>')
+                if not matched:
+                    st.caption("PDF 파일 없음")
+                else:
+                    rows_f = [
+                        [f["name"], f"{f['size_kb']} KB", f["mtime"]]
+                        for f in matched
+                    ]
+                    _html(_table(["파일명", "크기", "수정일"], rows_f, "12px"))
 
 
 # ══════════════════════════════════════════════════════════════════════════
