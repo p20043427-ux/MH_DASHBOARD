@@ -309,6 +309,19 @@ div[data-testid="stRadio"] label > div:first-child {
 }
 .stPlotlyChart { margin: 0 !important; padding: 0 !important; }
 iframe.stPlotlyChart { border: none !important; }
+
+/* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 제거 — 전체 앱 공통 ── */
+[data-testid="stExpander"] details summary > span {
+  font-size: 0 !important; color: transparent !important;
+  user-select: none !important; overflow: hidden !important;
+}
+[data-testid="stExpander"] details summary > span svg {
+  font-size: initial !important; color: #64748B !important;
+  display: inline-block !important; width: 16px !important; height: 16px !important;
+}
+[data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {
+  font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important;
+}
 </style>
 """
 
