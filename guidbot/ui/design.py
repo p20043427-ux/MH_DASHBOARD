@@ -114,8 +114,9 @@ APP_CSS: str = """
   padding-left: .75rem !important;
   padding-right: .75rem !important;
 }
-[data-testid="stVerticalBlock"]  { gap: .45rem !important; }
-.element-container               { margin-bottom: 0 !important; }
+/* [2026-05-08] gap 축소 — 카드 간 여백 최적화 */
+[data-testid="stVerticalBlock"]  { gap: .35rem !important; }
+.element-container               { margin-bottom: 0 !important; padding-bottom: 0 !important; }
 [data-testid="stMarkdownContainer"]:empty { display: none !important; }
 
 /* ── 상단 그라데이션 바 ────────────────────────────────────────── */
@@ -126,40 +127,43 @@ APP_CSS: str = """
 }
 
 /* ── KPI 카드 ──────────────────────────────────────────────────── */
-/* KPI 행 내 컬럼 높이 균일 — stHorizontalBlock stretch */
-[data-testid="stHorizontalBlock"] {
-  align-items: stretch !important;
-}
-[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
-  height: 100% !important;
-}
-[data-testid="stColumn"] > div[data-testid="stVerticalBlock"]
-  > div.element-container > div[data-testid="stMarkdownContainer"] .fn-kpi {
-  height: 100% !important;
-}
+/* [2026-05-08] 전략 변경:
+   - 전역 align-items:stretch / height:100% 제거 (의도치 않은 빈 공간 원인)
+   - fn-kpi 고정 높이 128px → 6개 카드 완전 통일
+   - wd-row-chart 내부에서만 stretch 적용 (아래 시각화 섹션 참조)
+*/
 
+/* fn-kpi: 공통 스타일 (높이는 자동 — 각 대시보드 맥락에서 결정) */
 .fn-kpi {
   background: #fff;
   border: 1px solid #F0F4F8;
   border-radius: 12px;
-  padding: 13px 15px;
-  min-height: 118px;
-  height: 100%;          /* 같은 행 카드 높이 균일 */
+  padding: 12px 14px;
+  min-height: 90px;            /* 범용 최소 높이 */
+  height: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 3px 10px rgba(0,0,0,.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
   transition: box-shadow 120ms ease;
+  margin-bottom: 0;
 }
-.fn-kpi:hover          { box-shadow: 0 6px 18px rgba(0,0,0,.10); }
-.fn-kpi-icon           { font-size: 18px; margin-bottom: 3px; }
-.fn-kpi-label          { font-size: 10px; font-weight: 700; color: #64748B;
-                          text-transform: uppercase; letter-spacing: .12em; }
-.fn-kpi-value          { font-size: 30px; font-weight: 800; line-height: 1;
-                          font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
-.fn-kpi-unit           { font-size: 13px; color: #64748B; font-weight: 500; margin-left: 2px; }
-.fn-kpi-sub            { font-size: 11px; color: #94A3B8; margin-top: 3px; }
+.fn-kpi:hover { box-shadow: 0 5px 16px rgba(0,0,0,.09); }
+.fn-kpi-icon  { font-size: 18px; margin-bottom: 2px; }
+.fn-kpi-label { font-size: 10px; font-weight: 700; color: #64748B;
+                text-transform: uppercase; letter-spacing: .12em; line-height: 1.3; }
+.fn-kpi-value { font-size: 28px; font-weight: 800; line-height: 1;
+                font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.fn-kpi-unit  { font-size: 12px; color: #64748B; font-weight: 500; margin-left: 2px; }
+.fn-kpi-sub   { font-size: 10.5px; color: #94A3B8; line-height: 1.3; }
+
+/* wd-row-kpi: 병동 KPI 6개 카드 완전 고정 통일 (grid-auto-rows 효과) */
+.wd-row-kpi .fn-kpi {
+  height: 128px !important;   /* 모든 KPI 카드 동일 규격 — 반응형에서도 유지 */
+  min-height: 128px !important;
+  padding: 12px 14px !important;
+}
 
 /* ── 목표 진행률 바 ────────────────────────────────────────────── */
 .goal-bar-wrap { height: 5px; background: #F1F5F9; border-radius: 3px;
@@ -334,29 +338,32 @@ div[data-testid="stRadio"] label > div:first-child {
 iframe.stPlotlyChart { border: none !important; }
 
 /* ── 시각화 섹션 카드 높이 균일 ───────────────────────────────── */
-/* [2026-05-08] wd-row-chart / wd-row-kpi 공통 stretch 규칙 */
-.wd-row-chart [data-testid="stHorizontalBlock"],
-.wd-row-kpi   [data-testid="stHorizontalBlock"] {
+/* [2026-05-08] wd-row-chart 내부만 stretch — KPI 행은 고정 높이로 처리 */
+.wd-row-chart [data-testid="stHorizontalBlock"] {
   align-items: stretch !important;
 }
-.wd-row-chart [data-testid="stColumn"],
-.wd-row-kpi   [data-testid="stColumn"] {
+.wd-row-chart [data-testid="stColumn"] {
   display: flex !important;
   flex-direction: column !important;
 }
-.wd-row-chart [data-testid="stColumn"] > div[data-testid="stVerticalBlock"],
-.wd-row-kpi   [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+.wd-row-chart [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
   flex: 1 !important;
 }
 .wd-row-chart .wd-card {
   height: 100% !important;
   box-sizing: border-box !important;
 }
-/* KPI 행: 주간추이 카드가 KPI 컬럼 높이에 맞게 채워지도록 */
-.wd-row-kpi .wd-card {
-  height: 100% !important;
-  box-sizing: border-box !important;
+/* 데이터 없음 빈 상태 — 컨테이너가 차트 카드 높이에 맞게 자동 축소 */
+.wd-row-chart .wd-card .wd-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 60px;           /* 데이터 없을 때 최소 높이만 유지 */
+  color: #94A3B8;
 }
+/* wd-row-kpi: 주간추이/KPI 열은 자연 높이 (fn-kpi 고정 높이로 통일됨) */
 
 /* ── 섹션 헤더 행 — title(좌) + pill(우) 수평 정렬 고정 ─────── */
 /* render_section_header_inline 내부 2-컬럼 행의 수직 정렬 */
