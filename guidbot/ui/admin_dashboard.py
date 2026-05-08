@@ -137,12 +137,43 @@ _ADMIN_CSS: str = """
 .adm-svc-desc { font-size: 12px; color: #64748B; line-height: 1.55; margin-bottom: 14px; min-height: 36px; }
 .adm-svc-btn  {
   display: inline-flex; align-items: center; gap: 5px;
-  background: #1E40AF; color: #fff; text-decoration: none;
-  padding: 6px 14px; border-radius: 20px;
-  font-size: 12px; font-weight: 600; letter-spacing: -.1px;
+  background: #1E40AF; color: #ffffff !important; text-decoration: none !important;
+  padding: 7px 16px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; letter-spacing: -.1px;
   transition: background 120ms ease, transform 120ms ease;
+  border: none;
 }
-.adm-svc-btn:hover { background: #1D4ED8; color: #fff; transform: translateY(-1px); }
+.adm-svc-btn:hover {
+  background: #1D4ED8; color: #ffffff !important;
+  transform: translateY(-1px); text-decoration: none !important;
+}
+.adm-svc-btn-stop {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #DC2626; color: #ffffff !important; text-decoration: none !important;
+  padding: 7px 16px; border-radius: 20px;
+  font-size: 12px; font-weight: 700;
+}
+/* 서비스 상태 배지 */
+.svc-badge-on  {
+  display:inline-flex; align-items:center; gap:5px;
+  background:#DCFCE7; color:#166534;
+  border:1px solid #BBF7D0; border-radius:20px;
+  padding:3px 10px; font-size:11px; font-weight:700;
+  margin-bottom:12px;
+}
+.svc-badge-off {
+  display:inline-flex; align-items:center; gap:5px;
+  background:#FEF2F2; color:#991B1B;
+  border:1px solid #FECACA; border-radius:20px;
+  padding:3px 10px; font-size:11px; font-weight:700;
+  margin-bottom:12px;
+}
+.svc-port-tag {
+  display:inline-block; background:#F1F5F9; color:#475569;
+  border-radius:6px; padding:1px 7px;
+  font-size:10px; font-weight:700; font-family:monospace;
+  margin-left:6px;
+}
 
 /* ── 정보 카드 ─── */
 .adm-info-card {
@@ -334,6 +365,71 @@ def _register_session() -> int:
         return len(sessions)
     except Exception:
         return 1
+
+
+# ── 서비스 포트 체크 + 시작 ──────────────────────────────────────────────
+
+def _check_port(host: str, port: int, timeout: float = 0.8) -> bool:
+    """TCP 연결 시도로 포트 활성 여부 확인."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def _check_all_ports() -> Dict[str, bool]:
+    """4개 서비스 포트 상태 일괄 확인 (20초 캐시)."""
+    from urllib.parse import urlparse
+    urls = {
+        "dashboard": settings.dashboard_url,
+        "chatbot":   settings.chatbot_url,
+        "finance":   settings.finance_url,
+        "admin":     settings.admin_url,
+    }
+    result: Dict[str, bool] = {}
+    for key, url in urls.items():
+        try:
+            p    = urlparse(url)
+            host = p.hostname or "localhost"
+            port = p.port or 80
+            result[key] = _check_port(host, port)
+        except Exception:
+            result[key] = False
+    return result
+
+
+def _start_service(app_file: str, port: int) -> Tuple[bool, str]:
+    """Streamlit 앱을 백그라운드 독립 프로세스로 실행.
+    Windows: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    Linux/Mac: start_new_session=True
+    """
+    import subprocess
+    import sys as _sys
+    try:
+        cmd = [
+            _sys.executable, "-m", "streamlit", "run",
+            str(_ROOT / app_file),
+            f"--server.port={port}",
+            "--server.address=0.0.0.0",
+            "--server.headless=true",
+            "--server.runOnSave=false",
+            "--browser.gatherUsageStats=false",
+        ]
+        kwargs: Dict[str, Any] = {"cwd": str(_ROOT)}
+        if platform.system() == "Windows":
+            # DETACHED_PROCESS(0x8) + CREATE_NEW_PROCESS_GROUP(0x200)
+            kwargs["creationflags"] = 0x00000008 | 0x00000200
+        else:
+            kwargs["start_new_session"] = True
+        subprocess.Popen(cmd, **kwargs)
+        logger.info("[Admin] 서비스 시작: %s (포트 %d)", app_file, port)
+        return True, f"포트 {port} 서비스 기동 요청됨 (3~5초 후 접속 가능)"
+    except Exception as exc:
+        logger.error("[Admin] 서비스 시작 실패 %s:%d — %s", app_file, port, exc)
+        return False, str(exc)
 
 
 def _vector_store_stats() -> Dict[str, Any]:
@@ -548,23 +644,44 @@ def _set_chatbot_cfg(cfg: Dict[str, Any]) -> None:
 # ══════════════════════════════════════════════════════════════════════════
 
 def _tab_ops() -> None:
+    # ── 활성 세션 수는 render_admin_dashboard() 에서 이미 등록됨
+    # → session_state 에 기록된 카운트 읽기
+    active_sessions: int = 1
+    try:
+        sessions: Dict[str, float] = {}
+        if _SESS_FILE.exists():
+            sessions = json.loads(_SESS_FILE.read_text(encoding="utf-8"))
+        now = time.time()
+        active_sessions = sum(1 for v in sessions.values() if now - v < _SESS_TTL)
+        active_sessions = max(1, active_sessions)
+    except Exception:
+        pass
+
     sys_s     = _sys_stats()
     oracle_ok, oracle_msg = _oracle_status()
-    active_sessions = _register_session()
+    svc_status = _check_all_ports()   # 20초 캐시
 
     topbar()
 
-    # Hero
-    _html(
-        f'<div class="adm-hero">'
-        f'<div class="adm-hero-title">운영 현황</div>'
-        f'<div class="adm-hero-sub">'
-        f'좋은문화병원 AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
-        f'{datetime.now().strftime("%Y년 %m월 %d일  %H:%M")}'
-        f'</div></div>'
-    )
+    # ── Hero + 새로 고침 버튼 ────────────────────────────────────────────
+    hero_col, refresh_col = st.columns([9, 1])
+    with hero_col:
+        _html(
+            f'<div class="adm-hero">'
+            f'<div class="adm-hero-title">운영 현황</div>'
+            f'<div class="adm-hero-sub">'
+            f'좋은문화병원 AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
+            f'{datetime.now().strftime("%Y년 %m월 %d일  %H:%M:%S")}'
+            f'</div></div>'
+        )
+    with refresh_col:
+        st.markdown("<div style='padding-top:18px;'></div>", unsafe_allow_html=True)
+        if st.button("🔄", key="ops_refresh", help="새로 고침 (서비스 포트 재확인)",
+                     use_container_width=True):
+            _check_all_ports.clear()
+            st.rerun()
 
-    # KPI 카드 — fn-kpi (design.py 표준)
+    # ── KPI 카드 ─────────────────────────────────────────────────────────
     cpu  = sys_s["cpu_pct"]
     mem  = sys_s["mem_pct"]
     disk = sys_s["disk_pct"]
@@ -578,14 +695,27 @@ def _tab_ops() -> None:
     o_dot   = f'<span class="adm-dot {"adm-dot-ok" if oracle_ok else "adm-dot-err"}"></span>'
     o_lbl   = "정상" if oracle_ok else "오류"
 
-    sess_color = C["ok"] if active_sessions == 1 else C["warn"] if active_sessions <= 3 else C["danger"]
+    running_cnt = sum(1 for v in svc_status.values() if v)
+    svc_kpi_col = C["ok"] if running_cnt == 4 else C["warn"] if running_cnt >= 2 else C["danger"]
+    sess_color  = C["ok"] if active_sessions == 1 else C["warn"] if active_sessions <= 3 else C["danger"]
+
     kpis_html = [
-        _adm_kpi("Oracle DB",    f'{o_dot}{o_lbl}',       "","Oracle 연결 " + (oracle_msg[:30] if oracle_msg else "정상"), o_color),
-        _adm_kpi("CPU 사용률",   _pct_str(cpu),            "", _hint("현재 프로세서 부하"),        _pct_color(cpu, 60, 80), cpu),
-        _adm_kpi("메모리",        _pct_str(mem),            "", _hint(f'{sys_s["mem_used_gb"]} / {sys_s["mem_total_gb"]} GB' if sys_s["mem_total_gb"] else ""), _pct_color(mem), mem),
-        _adm_kpi("디스크",        _pct_str(disk),           "", _hint(f'여유 {sys_s["disk_free_gb"]} GB' if sys_s["disk_free_gb"] else ""), _pct_color(disk, 75, 90), disk),
-        _adm_kpi("앱 메모리",    f'{pmb:.0f}' if pmb else "—", "MB", _hint("admin_app 프로세스"), C["indigo"]),
-        _adm_kpi("활성 세션",    str(active_sessions),     "개", f"5분내 활동 · TTL {_SESS_TTL//60}분", sess_color),
+        _adm_kpi("Oracle DB",    f'{o_dot}{o_lbl}', "",
+                 "Oracle 연결 " + (oracle_msg[:28] if oracle_msg else "정상"), o_color),
+        _adm_kpi("CPU 사용률",   _pct_str(cpu), "",
+                 _hint("현재 프로세서 부하"), _pct_color(cpu, 60, 80), cpu),
+        _adm_kpi("메모리",       _pct_str(mem), "",
+                 _hint(f'{sys_s["mem_used_gb"]} / {sys_s["mem_total_gb"]} GB'
+                       if sys_s["mem_total_gb"] else ""), _pct_color(mem), mem),
+        _adm_kpi("디스크",       _pct_str(disk), "",
+                 _hint(f'여유 {sys_s["disk_free_gb"]} GB'
+                       if sys_s["disk_free_gb"] else ""), _pct_color(disk, 75, 90), disk),
+        _adm_kpi("앱 메모리",    f'{pmb:.0f}' if pmb else "—", "MB",
+                 _hint("admin_app 프로세스"), C["indigo"]),
+        _adm_kpi("서비스",       f"{running_cnt}/4", "개",
+                 "실행 중 (포트 응답 기준)", svc_kpi_col),
+        _adm_kpi("활성 세션",    str(active_sessions), "명",
+                 f"최근 {_SESS_TTL//60}분 이내 활동", sess_color),
     ]
 
     cols = st.columns(len(kpis_html), gap="small")
@@ -594,30 +724,71 @@ def _tab_ops() -> None:
 
     gap(20)
 
-    # 서비스 현황
-    section_header("서비스 현황", "실행 중인 앱 포트 및 접속 주소", C["blue"])
+    # ── 서비스 현황 카드 ─────────────────────────────────────────────────
+    running_cnt_total = sum(1 for v in svc_status.values() if v)
+    section_header(
+        "서비스 현황",
+        f"실행 중인 앱 포트 및 접속 주소  ·  {running_cnt_total}/4 서비스 실행 중  ·  20초 캐시",
+        C["blue"],
+    )
+
+    # (url, icon, name, desc, svc_key, app_file, port)
     svcs = [
-        (settings.dashboard_url, "🏥", "병동 대시보드",  "입퇴원 현황 · 병동 KPI · 환자 흐름 분석"),
-        (settings.chatbot_url,   "💬", "AI 챗봇",         "규정·지침 RAG 검색 · Gemini LLM 연동"),
-        (settings.finance_url,   "💼", "원무 대시보드",   "수납·미수금 · 외래 통계 · 지역 분석"),
-        (settings.admin_url,     "⚙️", "관리자 대시보드", "로그 · 벡터DB · 문서 관리  ★ 현재"),
+        (settings.dashboard_url, "🏥", "병동 대시보드",   "입퇴원 현황 · 병동 KPI · 환자 흐름 분석",
+         "dashboard", "dashboard_app.py", 8501),
+        (settings.chatbot_url,   "💬", "AI 챗봇",          "규정·지침 RAG 검색 · Gemini LLM 연동",
+         "chatbot",   "main.py",          8502),
+        (settings.finance_url,   "💼", "원무 대시보드",    "수납·미수금 · 외래 통계 · 지역 분석",
+         "finance",   "finance_app.py",   8503),
+        (settings.admin_url,     "⚙️", "관리자 대시보드",  "로그 · 벡터DB · 문서 관리  ★ 현재",
+         "admin",     "admin_app.py",     8504),
     ]
+
     sc = st.columns(4, gap="small")
-    for col, (url, icon, name, desc) in zip(sc, svcs):
-        col.markdown(
-            f'<div class="adm-svc-card">'
-            f'<div class="adm-svc-icon">{icon}</div>'
-            f'<div class="adm-svc-name">{name}</div>'
-            f'<div class="adm-svc-desc">{desc}</div>'
-            f'<a class="adm-svc-btn" href="{url}" target="_blank">접속 →</a>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    for col, (url, icon, name, desc, svc_key, app_file, port) in zip(sc, svcs):
+        running = svc_status.get(svc_key, False)
+        badge_cls  = "svc-badge-on"  if running else "svc-badge-off"
+        badge_txt  = "🟢 실행 중"   if running else "🔴 중지"
+
+        with col:
+            # 카드 HTML (상태 배지 + 포트 태그 포함)
+            col.markdown(
+                f'<div class="adm-svc-card">'
+                f'<div class="adm-svc-icon">{icon}</div>'
+                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                f'<span class="adm-svc-name">{name}</span>'
+                f'<span class="svc-port-tag">:{port}</span>'
+                f'</div>'
+                f'<div class="adm-svc-desc">{desc}</div>'
+                f'<div class="{badge_cls}">{badge_txt}</div>'
+                + (f'<a class="adm-svc-btn" href="{url}" target="_blank">접속 →</a>'
+                   if running else "")
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # 중지 상태 → 서비스 시작 버튼 (Streamlit 네이티브)
+            if not running:
+                if col.button(
+                    f"🚀 서비스 시작  :{port}",
+                    key=f"svc_start_{port}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    with st.spinner(f"{name} 시작 중..."):
+                        ok, msg = _start_service(app_file, port)
+                    if ok:
+                        st.success(f"✅ {msg}")
+                        time.sleep(4)          # 서비스 기동 대기
+                        _check_all_ports.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 시작 실패: {msg}")
 
     gap(20)
     st.divider()
 
-    # 시스템 상세
+    # ── 시스템 상세 ──────────────────────────────────────────────────────
     section_header("시스템 상세", "Oracle DB · 서버 환경")
     d1, d2 = st.columns(2, gap="medium")
     oc = C["ok"] if oracle_ok else C["danger"]
@@ -1721,6 +1892,9 @@ def _tab_settings() -> None:
 
 def render_admin_dashboard() -> None:
     st.markdown(get_admin_css(), unsafe_allow_html=True)
+
+    # 세션 등록 — 모든 탭 렌더 전에 호출해야 매 rerun 마다 timestamp 갱신
+    _register_session()
 
     # [v5.4] 매뉴얼 탭(t10) 추가 — docs/ 폴더 뷰어 + 다운로드
     t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
