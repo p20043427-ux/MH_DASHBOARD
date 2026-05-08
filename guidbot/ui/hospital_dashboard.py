@@ -663,7 +663,73 @@ def _render_ward() -> None:
                 delta=f"완료 {_adm_done}명",
             )
 
-        # [2026-05-08] LLM 채팅을 최하단으로 이동 — KPI 컬럼 높이 과다 → 주간추이 옆 빈 공간 원인
+        # ── [2026-05-08] 익일 병상 수용 현황 패널 ──────────────────────
+        # KPI 카드 2행 아래 빈 공간을 운영 핵심 지표로 채움
+        # _total_rest / _total_ndc_pre 는 _col_kpi 진입 전 이미 계산됨
+        _total_avail_p = _total_rest + _total_ndc_pre
+        _cap_pct_p     = round(_next_adm / max(_total_avail_p, 1) * 100)
+        _cap_c_p       = ("#EF4444" if _cap_pct_p >= 90
+                          else "#F59E0B" if _cap_pct_p >= 70 else "#16A34A")
+        _bar_fill      = min(100, _cap_pct_p)
+
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.markdown(
+            # 패널 컨테이너 — wd-card 와 동일 외형이되 padding 축소
+            f'<div style="background:#F8FAFC;border:1px solid #E8EDF2;border-radius:10px;'
+            f'padding:10px 14px;flex:1;min-height:0;">'
+
+            # ① 타이틀 행 + 수용률 %
+            f'<div style="display:flex;align-items:center;'
+            f'justify-content:space-between;margin-bottom:7px;">'
+            f'<span style="font-size:9.5px;font-weight:700;color:#64748B;'
+            f'text-transform:uppercase;letter-spacing:.10em;">익일 병상 수용 현황</span>'
+            f'<span style="font-size:18px;font-weight:800;color:{_cap_c_p};">'
+            f'{_cap_pct_p}<span style="font-size:11px;font-weight:600;'
+            f'color:{_cap_c_p};margin-left:1px;">%</span></span>'
+            f'</div>'
+
+            # ② 수용률 프로그레스 바
+            f'<div style="height:5px;background:#E2E8F0;border-radius:3px;'
+            f'margin-bottom:9px;overflow:hidden;">'
+            f'<div style="width:{_bar_fill}%;height:100%;background:{_cap_c_p};'
+            f'border-radius:3px;"></div>'
+            f'</div>'
+
+            # ③ 3개 통계 — 가용 | 잔여 | 퇴원예고
+            f'<div style="display:flex;gap:0;">'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">가용 병상</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_avail_p}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">병상</span>'
+            f'</div></div>'
+
+            f'<div style="width:1px;background:#E8EDF2;margin:2px 0;flex-shrink:0;"></div>'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">잔여 병상</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_rest}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">병상</span>'
+            f'</div></div>'
+
+            f'<div style="width:1px;background:#E8EDF2;margin:2px 0;flex-shrink:0;"></div>'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">퇴원 예고</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_ndc_pre}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">명</span>'
+            f'</div></div>'
+
+            f'</div>'  # /통계 row
+            f'</div>',  # /패널
+            unsafe_allow_html=True,
+        )
 
     # ════════════════════════════════════════════════════════════
     # [v2.2] 주간 추이 7일 — 차트 선택기 통합
