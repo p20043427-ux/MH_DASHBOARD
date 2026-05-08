@@ -654,23 +654,30 @@ def _render_ward() -> None:
             _today_op_total = sum(_ward_surg.values())
             _kpi_card("금일 수술", str(_today_op_total), "건", f"익일 예약 {_next_op}건", "#7C3AED")
         with _r2c3:
+            # fn-kpi 클래스 통일 — 다른 5개 카드와 높이·스타일 동일
             st.markdown(
-                f'<div class="kpi-card">'
-                f'<div class="kpi-label">익일 예약</div>'
-                f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 3px;">'
-                f'<span style="font-size:13px;color:#64748B;font-weight:500;">입원</span>'
+                f'<div class="fn-kpi" style="border-top:3px solid {C["indigo"]};">'
+                f'<div class="fn-kpi-label">익일 예약</div>'
+                f'<div style="display:flex;align-items:baseline;'
+                f'justify-content:space-between;margin:4px 0 2px;">'
+                f'<span style="font-size:12px;color:#64748B;font-weight:600;">입원</span>'
                 f'<div style="display:flex;align-items:baseline;gap:2px;">'
-                f'<span style="font-size:28px;font-weight:800;color:{C["blue"]};font-variant-numeric:tabular-nums;line-height:1;">{_next_adm}</span>'
-                f'<span style="font-size:13px;color:#64748B;">명</span></div></div>'
-                f'<div style="height:1px;background:#F1F5F9;margin:2px 0;"></div>'
-                f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:3px;">'
-                f'<span style="font-size:13px;color:#64748B;font-weight:500;">퇴원</span>'
+                f'<span class="fn-kpi-value" style="color:{C["blue"]};font-size:26px;">'
+                f'{_next_adm}</span>'
+                f'<span class="fn-kpi-unit">명</span>'
+                f'</div></div>'
+                f'<div style="height:1px;background:#F1F5F9;margin:1px 0;"></div>'
+                f'<div style="display:flex;align-items:baseline;'
+                f'justify-content:space-between;margin-top:2px;">'
+                f'<span style="font-size:12px;color:#64748B;font-weight:600;">퇴원</span>'
                 f'<div style="display:flex;align-items:baseline;gap:2px;">'
-                f'<span style="font-size:28px;font-weight:800;color:#475569;font-variant-numeric:tabular-nums;line-height:1;">{_next_disc}</span>'
-                f'<span style="font-size:13px;color:#64748B;">명</span></div></div>'
-                f'<div style="font-size:11px;color:#94A3B8;margin-top:4px;">'
-                f"금일예약 {_adm_total}명 (완료 {_adm_done} / 대기 {_adm_total - _adm_done})</div>"
-                f"</div>",
+                f'<span class="fn-kpi-value" style="color:#475569;font-size:26px;">'
+                f'{_next_disc}</span>'
+                f'<span class="fn-kpi-unit">명</span>'
+                f'</div></div>'
+                f'<div class="fn-kpi-sub" style="margin-top:4px;">'
+                f"금일예약 {_adm_total}명 (완료 {_adm_done} / 대기 {_adm_total - _adm_done})"
+                f'</div></div>',
                 unsafe_allow_html=True,
             )
 
@@ -777,7 +784,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 병동별 당일 현황 ─────────────────────────────────────
     with col_L:
-        st.markdown('<div class="wd-card">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="min-height:320px;">', unsafe_allow_html=True)
 
         # ── [v2.2] 섹션 헤더 + pill 선택기 ─────────────────────────────
         chart_type_ward = _chart_selector("ward_detail", "병동별 당일 현황")
@@ -896,7 +903,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 진료과별 재원 구성 ────────────────────────────────────
     with col_R:
-        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;min-height:320px;">', unsafe_allow_html=True)
 
         _gw_p2 = st.session_state.get("ward_selected", "전체")
 
@@ -926,7 +933,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 최근 7일 입원 주상병 분포 ─────────────────────────────
     with col_pie:
-        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;min-height:280px;">', unsafe_allow_html=True)
 
         chart_type_dx7 = _chart_selector("dx_7day", "최근 7일 입원 주상병 분포")
         _render_dx7_chart(dx_trend, chart_type_dx7)
@@ -935,7 +942,7 @@ def _render_ward() -> None:
 
     # ── [v2.2] 금일 vs 전일 입원 주상병 분포 ─────────────────────────
     with col_bar:
-        st.markdown('<div class="wd-card" style="padding:14px 16px;">', unsafe_allow_html=True)
+        st.markdown('<div class="wd-card" style="padding:14px 16px;min-height:280px;">', unsafe_allow_html=True)
 
         chart_type_compare = _chart_selector("dx_compare", "금일 vs 전일 입원 주상병 분포")
         _render_dx_compare_chart(dx_today, chart_type_compare)

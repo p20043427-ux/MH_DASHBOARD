@@ -245,62 +245,8 @@ def _inject_pill_css(section_key: str) -> None:
     # - input[type="radio"] 숨김 (원래 라디오 버튼 아이콘 제거)
     # - label 에 박스 스타일 적용 (테두리, 패딩, 배경)
     # - 선택된 항목(aria-checked 활용)에 파란 배경 적용
-    css = """
-    <style>
-    /* ── 차트 타입 선택기 pill 스타일 ── */
-
-    /* radio 위젯 wrapper 줄간격 축소 */
-    div[data-testid="stRadio"] > div {
-        gap: 4px !important;
-        flex-wrap: nowrap !important;
-    }
-
-    /* 개별 라디오 레이블 — pill 모양 */
-    div[data-testid="stRadio"] label {
-        display: inline-flex !important;
-        align-items: center !important;
-        padding: 3px 10px !important;
-        border-radius: 20px !important;
-        border: 1px solid #CBD5E1 !important;
-        background: #F8FAFC !important;
-        color: #475569 !important;
-        font-size: 11px !important;
-        font-weight: 500 !important;
-        cursor: pointer !important;
-        transition: all 0.15s ease !important;
-        white-space: nowrap !important;
-        line-height: 1.4 !important;
-        margin: 0 !important;
-    }
-
-    /* hover 효과 */
-    div[data-testid="stRadio"] label:hover {
-        background: #EFF6FF !important;
-        border-color: #93C5FD !important;
-        color: #1D4ED8 !important;
-    }
-
-    /* 선택된 항목 — 파란 pill */
-    div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),
-    div[data-testid="stRadio"] label[aria-checked="true"] {
-        background: #1E40AF !important;
-        border-color: #1E40AF !important;
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-    }
-
-    /* 라디오 원형 아이콘 숨김 */
-    div[data-testid="stRadio"] input[type="radio"] {
-        display: none !important;
-    }
-
-    /* radio 위젯 좌측 여백 제거 */
-    div[data-testid="stRadio"] {
-        padding: 0 !important;
-    }
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    # 전역 CSS(design.py APP_CSS)에서 pill 스타일 관리 — 여기서는 중복 주입 생략
+    # (design.py 의 div[data-testid="stRadio"] 룰셋으로 처리)
     _CSS_INJECTED.add(section_key)
 
 
@@ -397,8 +343,10 @@ def render_section_header_inline(
     except ValueError:
         idx = 0
 
+    # pill 컬럼 너비: 중첩 컬럼 환경에서도 버튼이 잘리지 않도록 충분히 확보
+    # 옵션 수 × 14 기준, 최소 42 / 최대 60 (%)
     _n_opts  = len(labels)
-    _pill_w  = min(45, max(25, _n_opts * 11))
+    _pill_w  = max(42, min(60, _n_opts * 14))
     _title_w = 100 - _pill_w
     _col_t, _col_p = st.columns([_title_w, _pill_w], gap="small")
 

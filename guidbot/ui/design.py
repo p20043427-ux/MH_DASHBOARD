@@ -126,12 +126,26 @@ APP_CSS: str = """
 }
 
 /* ── KPI 카드 ──────────────────────────────────────────────────── */
+/* KPI 행 내 컬럼 높이 균일 — stHorizontalBlock stretch */
+[data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+  height: 100% !important;
+}
+[data-testid="stColumn"] > div[data-testid="stVerticalBlock"]
+  > div.element-container > div[data-testid="stMarkdownContainer"] .fn-kpi {
+  height: 100% !important;
+}
+
 .fn-kpi {
   background: #fff;
   border: 1px solid #F0F4F8;
   border-radius: 12px;
   padding: 13px 15px;
   min-height: 118px;
+  height: 100%;          /* 같은 행 카드 높이 균일 */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -153,6 +167,7 @@ APP_CSS: str = """
 .goal-bar-fill { height: 100%; border-radius: 3px; }
 
 /* ── 섹션 카드 ─────────────────────────────────────────────────── */
+/* overflow: visible — 차트 선택 pill 버튼이 카드 경계에서 잘리지 않도록 */
 .wd-card {
   background: #FFFFFF;
   border: 1px solid #E8EDF2;
@@ -160,9 +175,11 @@ APP_CSS: str = """
   padding: 14px 16px;
   box-shadow: 0 1px 4px rgba(15,23,42,.06);
   transition: box-shadow 120ms ease;
-  overflow: hidden;
+  overflow: visible;
 }
 .wd-card:hover { box-shadow: 0 3px 12px rgba(15,23,42,.09); }
+/* 테이블 영역은 수평 스크롤 허용 */
+.wd-card > div[style*="overflow-x"] { overflow-x: auto; }
 
 /* ── 섹션 헤더 ─────────────────────────────────────────────────── */
 .wd-sec {
@@ -270,7 +287,7 @@ button[kind="primary"]:hover,
   box-shadow: 0 4px 12px rgba(30,64,175,.28) !important;
 }
 
-/* ── 라디오 버튼 (pill 형태) ───────────────────────────────────── */
+/* ── 라디오 버튼 (pill 형태) — 차트 선택기 전용 ─────────────────── */
 div[data-testid="stRadio"] { padding: 0 !important; margin: 0 !important; }
 div[data-testid="stRadio"] > div[data-testid="stWidgetLabel"],
 div[data-testid="stRadio"] > label:not([data-baseweb]),
@@ -279,17 +296,23 @@ div[data-testid="stRadio"] > p {
 }
 div[data-testid="stRadio"] > div {
   display: flex !important; flex-direction: row !important;
-  flex-wrap: nowrap !important; gap: 2px !important;
-  align-items: center !important; padding: 0 !important;
+  flex-wrap: wrap !important;     /* 좁은 영역에서 줄바꿈 허용 */
+  gap: 3px !important;
+  align-items: center !important;
+  justify-content: flex-end !important;  /* 우측 정렬 */
+  padding: 0 !important;
 }
 div[data-testid="stRadio"] label {
   display: inline-flex !important; align-items: center !important;
-  padding: 2px 8px !important; border-radius: 14px !important;
+  padding: 2px 7px !important;    /* 좌우 패딩 축소 */
+  border-radius: 14px !important;
   border: 1px solid #E2E8F0 !important;
   background: #FFFFFF !important; color: #64748B !important;
-  font-size: 10.5px !important; font-weight: 500 !important;
+  font-size: 10px !important;     /* 10.5px → 10px */
+  font-weight: 500 !important;
   cursor: pointer !important; white-space: nowrap !important;
   transition: background .1s, color .1s, border-color .1s !important;
+  line-height: 1.5 !important;
 }
 div[data-testid="stRadio"] label:hover {
   background: #F1F5F9 !important;
@@ -309,6 +332,32 @@ div[data-testid="stRadio"] label > div:first-child {
 }
 .stPlotlyChart { margin: 0 !important; padding: 0 !important; }
 iframe.stPlotlyChart { border: none !important; }
+
+/* ── 시각화 섹션 카드 높이 균일 ───────────────────────────────── */
+/* wd-row-chart 내 st.columns 의 각 컬럼이 동일 높이로 stretch */
+.wd-row-chart [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+.wd-row-chart [data-testid="stColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.wd-row-chart [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+  flex: 1 !important;
+}
+.wd-row-chart .wd-card {
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* ── 섹션 헤더 행 — title(좌) + pill(우) 수평 정렬 고정 ─────── */
+/* render_section_header_inline 내부 2-컬럼 행의 수직 정렬 */
+.wd-sec-inline [data-testid="stHorizontalBlock"] {
+  align-items: center !important;
+}
+.wd-sec-inline [data-testid="stRadio"] > div {
+  justify-content: flex-end !important;
+}
 
 /* ── expander 화살표 텍스트(_arrow_right/_arrow_down) 제거 — 전체 앱 공통 ── */
 [data-testid="stExpander"] details summary > span {
