@@ -153,26 +153,25 @@ _ADMIN_CSS: str = """
   padding: 7px 16px; border-radius: 20px;
   font-size: 12px; font-weight: 700;
 }
-/* 서비스 상태 배지 */
+/* 서비스 상태 배지 — 포트 태그 옆 인라인 표기 */
 .svc-badge-on  {
-  display:inline-flex; align-items:center; gap:5px;
+  display:inline-flex; align-items:center; gap:4px;
   background:#DCFCE7; color:#166534;
   border:1px solid #BBF7D0; border-radius:20px;
-  padding:3px 10px; font-size:11px; font-weight:700;
-  margin-bottom:12px;
+  padding:2px 8px; font-size:10px; font-weight:700;
+  vertical-align:middle; white-space:nowrap;
 }
 .svc-badge-off {
-  display:inline-flex; align-items:center; gap:5px;
+  display:inline-flex; align-items:center; gap:4px;
   background:#FEF2F2; color:#991B1B;
   border:1px solid #FECACA; border-radius:20px;
-  padding:3px 10px; font-size:11px; font-weight:700;
-  margin-bottom:12px;
+  padding:2px 8px; font-size:10px; font-weight:700;
+  vertical-align:middle; white-space:nowrap;
 }
 .svc-port-tag {
   display:inline-block; background:#F1F5F9; color:#475569;
   border-radius:6px; padding:1px 7px;
   font-size:10px; font-weight:700; font-family:monospace;
-  margin-left:6px;
 }
 
 /* ── 정보 카드 ─── */
@@ -746,29 +745,35 @@ def _tab_ops() -> None:
 
     sc = st.columns(4, gap="small")
     for col, (url, icon, name, desc, svc_key, app_file, port) in zip(sc, svcs):
-        running = svc_status.get(svc_key, False)
+        running    = svc_status.get(svc_key, False)
         badge_cls  = "svc-badge-on"  if running else "svc-badge-off"
-        badge_txt  = "🟢 실행 중"   if running else "🔴 중지"
+        badge_txt  = "● 실행 중"    if running else "● 중지"
 
         with col:
-            # 카드 HTML (상태 배지 + 포트 태그 포함)
+            # ── 카드 HTML: 포트 + 상태 배지 한 줄, 버튼은 카드 밖 네이티브 위젯 ──
             col.markdown(
                 f'<div class="adm-svc-card">'
                 f'<div class="adm-svc-icon">{icon}</div>'
-                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                # 서비스명 · 포트 · 상태 배지 한 줄
+                f'<div style="display:flex;align-items:center;'
+                f'gap:5px;flex-wrap:wrap;margin-bottom:6px;">'
                 f'<span class="adm-svc-name">{name}</span>'
                 f'<span class="svc-port-tag">:{port}</span>'
+                f'<span class="{badge_cls}">{badge_txt}</span>'
                 f'</div>'
                 f'<div class="adm-svc-desc">{desc}</div>'
-                f'<div class="{badge_cls}">{badge_txt}</div>'
-                + (f'<a class="adm-svc-btn" href="{url}" target="_blank">접속 →</a>'
-                   if running else "")
-                + f'</div>',
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
-            # 중지 상태 → 서비스 시작 버튼 (Streamlit 네이티브)
-            if not running:
+            # ── 버튼: 실행 중 → 접속, 중지 → 서비스 시작  (동일 너비) ──
+            if running:
+                col.link_button(
+                    "접속 →",
+                    url,
+                    use_container_width=True,
+                )
+            else:
                 if col.button(
                     f"🚀 서비스 시작  :{port}",
                     key=f"svc_start_{port}",
