@@ -926,11 +926,19 @@ def _save_env_value(key: str, value: str) -> bool:
 
 
 def _load_dept_stats() -> list:
-    """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다."""
+    """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다.
+    [2026-05-08] 예외 로그 추가 — 조회 실패 원인 추적용
+    """
     try:
         from core.dept_vector_store import DeptVectorStoreManager
-        return DeptVectorStoreManager().get_dept_stats()
-    except Exception:
+        stats = DeptVectorStoreManager().get_dept_stats()
+        # 인덱스 미생성 부서가 있을 때 로그로 알림
+        not_indexed = [s["dept_name"] for s in stats if not s.get("indexed")]
+        if not_indexed:
+            logger.debug(f"[_load_dept_stats] 인덱스 없는 부서 {len(not_indexed)}개: {not_indexed}")
+        return stats
+    except Exception as e:
+        logger.error(f"[_load_dept_stats] 부서 통계 로드 실패: {e!r}", exc_info=True)
         return []
 
 
@@ -1038,14 +1046,18 @@ def _tab_vectordb() -> None:
         if not dept_stats:
             st.info("부서 정보를 불러올 수 없습니다. G드라이브 연결 또는 data_rag_working/depts/ 를 확인하세요.")
         else:
+            # [2026-05-08] chunk_count=0 은 읽기 실패로 볼 수 있어 "?" 로 구분 표시
             rows_dept = []
             for ds in dept_stats:
                 name    = ds["dept_name"]
                 pdfs    = f'{ds["pdf_count"]}개' if ds["pdf_count"] > 0 else badge_html("없음", "warn")
-                chunks  = f'{ds["chunk_count"]:,}' if ds.get("chunk_count") else "—"
-                faiss   = f'{ds["faiss_mb"]} MB' if ds["indexed"] else "—"
+                _cc     = ds.get("chunk_count") or 0
+                chunks  = (f'{_cc:,}' if _cc > 0 else
+                           ("?" if ds.get("indexed") else "—"))
+                faiss   = (f'{ds["faiss_mb"]} MB' if ds.get("indexed") and ds.get("faiss_mb")
+                           else ("0 B" if ds.get("indexed") else "—"))
                 mtime   = ds.get("mtime", "—")
-                idx_bge = badge_html("인덱스됨", "ok") if ds["indexed"] else badge_html("미생성", "warn")
+                idx_bge = badge_html("인덱스됨", "ok") if ds.get("indexed") else badge_html("미생성", "warn")
                 src_bge = badge_html("G드라이브", "blue") if ds.get("src_exists") else badge_html("로컬", "gray")
                 rows_dept.append([f"<b>{name}</b>", pdfs, chunks, faiss, mtime, idx_bge, src_bge])
             _html(_table(["부서명", "PDF", "청크", "FAISS", "수정일", "상태", "소스"], rows_dept))

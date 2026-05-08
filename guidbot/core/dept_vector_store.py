@@ -205,13 +205,33 @@ class DeptVectorStoreManager:
                     "faiss_mb":  round(mb, 1),
                     "mtime":     mtime,
                 })
-                # 벡터 수 (빠르게 읽기 — ntotal만)
+                # [2026-05-08] 벡터 수 읽기: faiss.read_index → index.pkl fallback
                 try:
                     import faiss as _faiss
                     idx = _faiss.read_index(str(faiss_path))
                     all_depts[dept]["chunk_count"] = idx.ntotal
-                except Exception:
-                    pass  # faiss 패키지 없으면 스킵
+                except Exception as _fe:
+                    logger.debug(f"[get_dept_stats] faiss 직접 읽기 실패({dept}): {_fe!r}")
+                    # fallback: index.pkl 의 index_to_docstore_id 길이로 대체
+                    try:
+                        import pickle as _pk
+                        pkl_path = _DEPT_DB / dept / "index.pkl"
+                        if pkl_path.exists():
+                            with open(pkl_path, "rb") as _pf:
+                                _pkl_data = _pk.load(_pf)
+                            # LangChain FAISS: (docstore, index_to_docstore_id) 튜플
+                            if isinstance(_pkl_data, tuple) and len(_pkl_data) >= 2:
+                                _id_map = _pkl_data[1]
+                            else:
+                                _id_map = {}
+                            if isinstance(_id_map, dict):
+                                all_depts[dept]["chunk_count"] = len(_id_map)
+                                logger.debug(
+                                    f"[get_dept_stats] pkl fallback 성공({dept}): "
+                                    f"{len(_id_map):,}청크"
+                                )
+                    except Exception as _pe:
+                        logger.warning(f"[get_dept_stats] pkl fallback 실패({dept}): {_pe!r}")
 
         return sorted(all_depts.values(), key=lambda x: x["dept_name"])
 

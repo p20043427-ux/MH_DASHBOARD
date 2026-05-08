@@ -334,18 +334,26 @@ div[data-testid="stRadio"] label > div:first-child {
 iframe.stPlotlyChart { border: none !important; }
 
 /* ── 시각화 섹션 카드 높이 균일 ───────────────────────────────── */
-/* wd-row-chart 내 st.columns 의 각 컬럼이 동일 높이로 stretch */
-.wd-row-chart [data-testid="stHorizontalBlock"] {
+/* [2026-05-08] wd-row-chart / wd-row-kpi 공통 stretch 규칙 */
+.wd-row-chart [data-testid="stHorizontalBlock"],
+.wd-row-kpi   [data-testid="stHorizontalBlock"] {
   align-items: stretch !important;
 }
-.wd-row-chart [data-testid="stColumn"] {
+.wd-row-chart [data-testid="stColumn"],
+.wd-row-kpi   [data-testid="stColumn"] {
   display: flex !important;
   flex-direction: column !important;
 }
-.wd-row-chart [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+.wd-row-chart [data-testid="stColumn"] > div[data-testid="stVerticalBlock"],
+.wd-row-kpi   [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
   flex: 1 !important;
 }
 .wd-row-chart .wd-card {
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+/* KPI 행: 주간추이 카드가 KPI 컬럼 높이에 맞게 채워지도록 */
+.wd-row-kpi .wd-card {
   height: 100% !important;
   box-sizing: border-box !important;
 }

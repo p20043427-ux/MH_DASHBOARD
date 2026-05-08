@@ -681,48 +681,7 @@ def _render_ward() -> None:
                 unsafe_allow_html=True,
             )
 
-        # ── KPI 하단: 빠른질문 버튼 + AI 채팅 ──────────────────────
-        # KPI 카드를 보고 판단한 뒤 바로 클릭 → 주간추이와 높이 자동 정렬
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-        # 빠른질문 버튼 5개 — 얇은 구분선 + 라벨
-        st.markdown(
-            '<div style="border-top:1px solid #E2E8F0;padding-top:8px;margin-bottom:6px;">'
-            '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
-            'text-transform:uppercase;letter-spacing:.08em;">빠른 분석</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        _quick_qs2 = [
-            ("익일 가용",     "익일 입원 예약 대비 가용 병상 현황을 분석하고, 부족 위험이 있는 병동을 알려주세요."),
-            ("입퇴원 분석",   "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
-            ("입원 상병 추세","최근 7일 주요 입원 상병 추세를 분석하고 특이사항을 알려주세요."),
-            ("재원환자 분석", "병동별 재원 환자 현황을 분석하고 장기 재원 위험 병동을 알려주세요."),
-            ("운영 요약",     "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
-        ]
-        _qb_cols = st.columns(len(_quick_qs2), gap="small")
-        for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
-            with _qb_cols[_qi2]:
-                if st.button(
-                    _ql2, key=f"qs_kpi_{_qi2}",
-                    use_container_width=True, type="secondary",
-                    help=_qv2[:40] + "...",
-                ):
-                    _DASH_MON.log_action("quick_btn", label=_ql2)
-                    st.session_state["ward_chat_quick_input"] = _qv2
-                    st.rerun()
-
-        # AI 채팅 — KPI 컬럼 내 하단에 배치 (높이 자동 확장)
-        st.markdown(
-            '<div style="margin-top:8px;border:1px solid #E2E8F0;border-radius:10px;'
-            'padding:12px 14px;background:#FAFBFC;flex:1;">',
-            unsafe_allow_html=True,
-        )
-        _render_ward_llm_chat(
-            kpi=_kpi_for_llm, bed_occ=[],
-            bed_detail=bed_detail_f, op_stat=op_stat_f,
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+        # [2026-05-08] LLM 채팅을 최하단으로 이동 — KPI 컬럼 높이 과다 → 주간추이 옆 빈 공간 원인
 
     # ════════════════════════════════════════════════════════════
     # [v2.2] 주간 추이 7일 — 차트 선택기 통합
@@ -1038,7 +997,45 @@ def _render_ward() -> None:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ════════════════════════════════════════════════════════════
+    # [2026-05-08] Row 5: AI 분석 채팅 — 모든 시각화 아래 최하단 배치
+    # KPI 컬럼 내에 있던 채팅을 여기로 이동하여 옆 컬럼 빈 영역 제거
+    # ════════════════════════════════════════════════════════════
+    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="wd-card" style="padding:16px 18px;">', unsafe_allow_html=True)
 
+    # 빠른질문 버튼 5개 — 상단 구분선
+    st.markdown(
+        '<div style="border-bottom:1px solid #E2E8F0;padding-bottom:8px;margin-bottom:10px;">'
+        '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
+        'text-transform:uppercase;letter-spacing:.08em;">🤖 AI 빠른 분석</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    _quick_qs2 = [
+        ("익일 가용",     "익일 입원 예약 대비 가용 병상 현황을 분석하고, 부족 위험이 있는 병동을 알려주세요."),
+        ("입퇴원 분석",   "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
+        ("입원 상병 추세","최근 7일 주요 입원 상병 추세를 분석하고 특이사항을 알려주세요."),
+        ("재원환자 분석", "병동별 재원 환자 현황을 분석하고 장기 재원 위험 병동을 알려주세요."),
+        ("운영 요약",     "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
+    ]
+    _qb_cols = st.columns(len(_quick_qs2), gap="small")
+    for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
+        with _qb_cols[_qi2]:
+            if st.button(
+                _ql2, key=f"qs_kpi_{_qi2}",
+                use_container_width=True, type="secondary",
+                help=_qv2[:40] + "...",
+            ):
+                _DASH_MON.log_action("quick_btn", label=_ql2)
+                st.session_state["ward_chat_quick_input"] = _qv2
+                st.rerun()
+
+    _render_ward_llm_chat(
+        kpi=_kpi_for_llm, bed_occ=[],
+        bed_detail=bed_detail_f, op_stat=op_stat_f,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 
