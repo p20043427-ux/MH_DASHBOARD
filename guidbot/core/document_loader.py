@@ -33,7 +33,9 @@ PDF 파일
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -48,6 +50,11 @@ from utils.logger import get_logger
 from utils.text_cleaner import process as preprocess
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
+
+# pypdf 손상된 xref 경고 로거를 ERROR 수준으로 억제
+# ("Ignoring wrong pointing object" 등 복구 가능한 경고를 stdout/stderr 에 출력하지 않음)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+logging.getLogger("pypdf._reader").setLevel(logging.ERROR)
 
 # 조항 시작 패턴: "제1조", "제 1 조", "제1 조" 등 다양한 형태 처리
 _RE_ARTICLE_BOUNDARY = re.compile(r"(?=제\s*\d+\s*조)")
@@ -94,8 +101,15 @@ class LoadResult:
 # ──────────────────────────────────────────────────────────────────────
 
 def _extract_with_pypdf(pdf_path: Path) -> List[Document]:
-    """PyPDFLoader 로 PDF 에서 텍스트를 추출합니다."""
-    return PyPDFLoader(str(pdf_path)).load()
+    """
+    PyPDFLoader 로 PDF 에서 텍스트를 추출합니다.
+
+    pypdf 가 손상된 xref 테이블을 만나면 "Ignoring wrong pointing object"
+    경고를 대량 출력합니다. 이는 복구 가능한 경고이므로 억제합니다.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")          # pypdf PdfReadWarning 포함 전체 억제
+        return PyPDFLoader(str(pdf_path)).load()
 
 
 def _extract_with_pdfplumber(pdf_path: Path) -> List[Document]:
