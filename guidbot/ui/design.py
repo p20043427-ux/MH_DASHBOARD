@@ -159,10 +159,11 @@ APP_CSS: str = """
 .fn-kpi-sub   { font-size: 10.5px; color: #94A3B8; line-height: 1.3; }
 
 /* wd-row-kpi: 병동 KPI 6개 카드 완전 고정 통일 (grid-auto-rows 효과) */
+/* [2026-05-08] 카드 내부 상하 여유 확보 — 128px → 142px */
 .wd-row-kpi .fn-kpi {
-  height: 128px !important;   /* 모든 KPI 카드 동일 규격 — 반응형에서도 유지 */
-  min-height: 128px !important;
-  padding: 12px 14px !important;
+  height: 142px !important;
+  min-height: 142px !important;
+  padding: 14px 14px !important;
 }
 
 /* ── 목표 진행률 바 ────────────────────────────────────────────── */
@@ -300,7 +301,7 @@ div[data-testid="stRadio"] > p {
 }
 div[data-testid="stRadio"] > div {
   display: flex !important; flex-direction: row !important;
-  flex-wrap: wrap !important;     /* 좁은 영역에서 줄바꿈 허용 */
+  flex-wrap: nowrap !important;   /* [2026-05-08] 한 줄 강제 — 이모지 제거로 버튼 너비 감소 */
   gap: 3px !important;
   align-items: center !important;
   justify-content: flex-end !important;  /* 우측 정렬 */
@@ -363,7 +364,25 @@ iframe.stPlotlyChart { border: none !important; }
   min-height: 60px;           /* 데이터 없을 때 최소 높이만 유지 */
   color: #94A3B8;
 }
-/* wd-row-kpi: 주간추이/KPI 열은 자연 높이 (fn-kpi 고정 높이로 통일됨) */
+/* [2026-05-08] wd-row-kpi: KPI 열과 추이 카드 높이 일치 — stretch 복구
+   · fn-kpi 고정 142px 이므로 KPI 카드 자체는 팽창 없음
+   · .wd-row-kpi 안의 wd-card(주간추이)만 KPI 열 높이까지 자동 확장
+   · 셀렉터: fn-kpi 는 별도 클래스이므로 .wd-card 에만 height:100% 적용 */
+.wd-row-kpi [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+.wd-row-kpi [data-testid="stColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.wd-row-kpi [data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+  flex: 1 !important;
+}
+/* wd-card(주간추이 카드)만 높이 100% 채우기 — fn-kpi 는 142px 고정이므로 영향 없음 */
+.wd-row-kpi .wd-card {
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
 
 /* ── 섹션 헤더 행 — title(좌) + pill(우) 수평 정렬 고정 ─────── */
 /* render_section_header_inline 내부 2-컬럼 행의 수직 정렬 */

@@ -645,7 +645,8 @@ def _render_ward() -> None:
         with _r1c3:
             _kpi_card("금일 입원", str(admit_cnt), "명", f"전일 {_pa}명", C["blue"], delta=_ds(admit_cnt, _pa))
 
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        # [2026-05-08] KPI 1행↔2행 간격 확대 8px → 16px
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
         _r2c1, _r2c2, _r2c3 = st.columns(3, gap="small")
         with _r2c1:
@@ -672,7 +673,8 @@ def _render_ward() -> None:
                           else "#F59E0B" if _cap_pct_p >= 70 else "#16A34A")
         _bar_fill      = min(100, _cap_pct_p)
 
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        # [2026-05-08] KPI 2행↔수용현황 패널 간격 확대 6px → 14px
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
         st.markdown(
             # 패널 컨테이너 — wd-card 와 동일 외형이되 padding 축소
             f'<div style="background:#F8FAFC;border:1px solid #E8EDF2;border-radius:10px;'
