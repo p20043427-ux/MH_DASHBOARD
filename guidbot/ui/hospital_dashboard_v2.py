@@ -269,7 +269,7 @@ def _v2_kpi_strip(
     with c5:
         _kpi_card("금일 수술",     str(op_total),    "건",
                   f"익일 예약 {next_op}건",
-                  C["purple"])
+                  C["violet"])
     st.markdown('</div>', unsafe_allow_html=True)
     gap(12)
 
