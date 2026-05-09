@@ -44,7 +44,7 @@ if _ROOT not in _sys.path:
 
 from db.ward_repository import _qc
 from services.ward_service import (
-    _safe_int, _safe_float,
+    _safe_int, _safe_float, _norm_sex,
     _filter_by_ward, _filter_dx_ward, _trend_dedup,
 )
 from ui.design import C, APP_CSS, ward_kpi_card as _kpi_card, gap
@@ -853,7 +853,309 @@ def _tab_next_day(
 
 
 # ════════════════════════════════════════════════════════════════════
-#  탭 ⑥ — AI 분석 채팅
+#  탭 ⑥ — 병실 현황 + 병상 수배
+# ════════════════════════════════════════════════════════════════════
+
+def _tab_room_detail(ward_room_detail: List[Dict], admit_cands: List[Dict], g_ward: str) -> None:
+    """병실 현황 테이블 + 병상 수배 패널 (v1 기능 그대로 탭으로 이식)."""
+
+    if not ward_room_detail:
+        st.info("병실 현황 데이터가 없습니다. Oracle V_WARD_ROOM_DETAIL VIEW를 확인하세요.")
+        return
+
+    _rp_data = (
+        [r for r in ward_room_detail if r.get("병동명","") == g_ward]
+        if g_ward != "전체" else ward_room_detail
+    )
+
+    _STATUS_CLR = {
+        "재원":    ("#1D4ED8", "#DBEAFE"),
+        "퇴원예정":("#7C3AED", "#EDE9FE"),
+        "빈병상":  ("#16A34A", "#DCFCE7"),
+        "LOCK":    ("#DC2626", "#FEE2E2"),
+    }
+
+    # ── 요약 KPI 4개 ─────────────────────────────────────────────────
+    _rp_stay  = sum(1 for r in _rp_data if r.get("상태") == "재원")
+    _rp_dc    = sum(1 for r in _rp_data if r.get("상태") == "퇴원예정")
+    _rp_avail = sum(1 for r in _rp_data if r.get("상태") == "빈병상")
+    _rp_lock  = sum(1 for r in _rp_data if r.get("상태") == "LOCK")
+
+    _k1, _k2, _k3, _k4 = st.columns(4, gap="small")
+    for _col, _lbl, _val, _c in [
+        (_k1, "재원",    _rp_stay,  "#1D4ED8"),
+        (_k2, "퇴원예정", _rp_dc,   "#7C3AED"),
+        (_k3, "빈병상",  _rp_avail, "#16A34A"),
+        (_k4, "LOCK",    _rp_lock,  "#DC2626"),
+    ]:
+        _col.markdown(
+            f'<div class="fn-kpi" style="border-top:3px solid {_c};">'
+            f'<div class="fn-kpi-label">{_lbl}</div>'
+            f'<div class="fn-kpi-value" style="color:{_c};">{_val}'
+            f'<span class="fn-kpi-unit">개</span></div>'
+            f'<div class="fn-kpi-sub">병상 · 베드</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    gap(12)
+
+    # ── 상태 필터 + 2열 레이아웃 ─────────────────────────────────────
+    _f_col, _ = st.columns([6, 4])
+    with _f_col:
+        _status_opts = [
+            f"전체 ({len(_rp_data)})",
+            f"재원 ({_rp_stay})",
+            f"퇴원예정 ({_rp_dc})",
+            f"빈병상 ({_rp_avail})",
+            f"LOCK ({_rp_lock})",
+        ]
+        _status_sel = st.radio(
+            "상태 필터", _status_opts, horizontal=True,
+            key="v2_rp_status", label_visibility="collapsed",
+        )
+    _status_key = _status_sel.split(" (")[0].strip()
+    _rp_data_f  = _rp_data if _status_key == "전체" else [r for r in _rp_data if r.get("상태","") == _status_key]
+
+    col_tbl, col_asgn = st.columns([7, 3], gap="small")
+
+    # ── 병실 현황 테이블 ─────────────────────────────────────────────
+    with col_tbl:
+        st.markdown('<div class="wd-card" style="padding:0;overflow:hidden;">', unsafe_allow_html=True)
+        if not _rp_data_f:
+            st.markdown(
+                '<div style="padding:28px;text-align:center;color:#94A3B8;">'
+                '<div style="font-size:22px;margin-bottom:6px;">🏥</div>'
+                '<div style="font-size:13px;font-weight:600;">해당 상태의 병상 없음</div></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            from collections import OrderedDict as _OD
+
+            def _parse_room(no):
+                s = str(no).zfill(6)
+                return s[:2], s[2:4], s[4:6]
+
+            _room_groups = _OD()
+            for r in _rp_data_f:
+                _bno = r.get("병실번호","")
+                _wd, _rm, _bd = _parse_room(_bno)
+                _grp = r.get("병동명","") + "_" + _wd + _rm
+                _room_groups.setdefault(_grp, []).append((_bd, r))
+
+            _TH = ("padding:8px 10px;font-size:10.5px;font-weight:700;"
+                   "text-transform:uppercase;letter-spacing:.06em;"
+                   "color:#64748B;background:#F8FAFC;border-bottom:1.5px solid #E2E8F0;white-space:nowrap;")
+            _html = (
+                '<div style="overflow-x:auto;max-height:520px;overflow-y:auto;">'
+                '<table style="width:100%;border-collapse:collapse;">'
+                '<thead><tr>'
+                f'<th style="{_TH}text-align:left;min-width:70px;">병동</th>'
+                f'<th style="{_TH}text-align:center;">병실</th>'
+                f'<th style="{_TH}text-align:center;">베드</th>'
+                f'<th style="{_TH}text-align:center;">인실</th>'
+                f'<th style="{_TH}text-align:center;">등급</th>'
+                f'<th style="{_TH}text-align:right;">병실료</th>'
+                f'<th style="{_TH}text-align:center;">나이</th>'
+                f'<th style="{_TH}text-align:center;">성별</th>'
+                f'<th style="{_TH}text-align:left;">진료과</th>'
+                f'<th style="{_TH}text-align:center;">상태</th>'
+                f'<th style="{_TH}text-align:left;">LOCK</th>'
+                f'<th style="{_TH}text-align:left;min-width:110px;">병실메모</th>'
+                '</tr></thead><tbody>'
+            )
+
+            for _gi, (_grp_key, _beds) in enumerate(_room_groups.items()):
+                if _gi > 0:
+                    _html += '<tr><td colspan="12" style="padding:0;border-top:2px solid #E2E8F0;"></td></tr>'
+                for _bi, (_bed_cd, _r) in enumerate(_beds):
+                    _bg      = "#F0F7FF" if _gi % 2 == 0 else "#F8FAFC"
+                    _status  = _r.get("상태","빈병상")
+                    _sc, _sb = _STATUS_CLR.get(_status, ("#64748B","#F1F5F9"))
+                    _lock_cm = (_r.get("LOCK코멘트","") or "")
+                    _grade   = (_r.get("병실등급","") or "─")
+                    _dc_dt   = (_r.get("퇴원예정일","") or "")
+                    _dc_disp = ""
+                    if _dc_dt and len(str(_dc_dt)) >= 8:
+                        _dcs = str(_dc_dt)
+                        _dc_disp = f"{_dcs[4:6]}/{_dcs[6:8]}"
+                    elif _dc_dt:
+                        _dc_disp = str(_dc_dt)[:10]
+                    _memo    = (_r.get("병실메모","") or "").strip()
+                    _fee     = _r.get("병실료",0) or 0
+                    _fee_s   = f"{int(_fee):,}원" if _fee else "─"
+                    _age_s   = f"{int(_r.get('나이',0))}세" if _r.get("나이") else "─"
+                    _sex_s   = _r.get("성별","─") or "─"
+                    _dept_s  = _r.get("진료과","─") or "─"
+                    _sex_c   = "#1D4ED8" if _sex_s == "남" else "#BE185D" if _sex_s == "여" else "#94A3B8"
+                    _wd_td   = _r.get("병동명","") if _bi == 0 else ""
+                    _rm_td   = str(_beds[0][1].get("병실번호",""))[2:4] if _bi == 0 else ""
+                    _dc_html = (f'<div style="font-size:10px;color:#7C3AED;font-weight:600;margin-top:2px;">📅 {_dc_disp}</div>'
+                                if _status == "퇴원예정" and _dc_disp else "")
+                    _memo_c  = "#334155" if _memo else "#CBD5E1"
+                    _memo_bg = "#FFF7ED" if _memo else "transparent"
+                    _lock_d  = ("🔒 " + _lock_cm) if _lock_cm else "─"
+                    _td      = f"padding:7px 10px;background:{_bg};"
+                    _tdc     = f"{_td}text-align:center;"
+
+                    _html += (
+                        f"<tr>"
+                        f'<td style="{_td}font-weight:{"700;color:#0F172A" if _bi==0 else "400;color:#CBD5E1"};">{_wd_td}</td>'
+                        f'<td style="{_tdc}font-family:Consolas,monospace;font-weight:{"600;color:#334155" if _bi==0 else "400;color:#CBD5E1"};">{_rm_td}</td>'
+                        f'<td style="{_tdc}font-size:12px;color:#7C3AED;font-family:Consolas,monospace;font-weight:700;">{_bed_cd}</td>'
+                        f'<td style="{_tdc}font-size:12px;color:#475569;">{"" if _bi else _r.get("인실구분","")}</td>'
+                        f'<td style="{_tdc}font-size:12px;color:#64748B;">{"" if _bi else _grade}</td>'
+                        f'<td style="{_td}text-align:right;font-size:12px;font-family:Consolas,monospace;">{"" if _bi else _fee_s}</td>'
+                        f'<td style="{_tdc}font-size:12px;font-family:Consolas,monospace;">{_age_s}</td>'
+                        f'<td style="{_tdc}font-size:12px;font-weight:700;color:{_sex_c};">{_sex_s}</td>'
+                        f'<td style="{_td}font-size:12px;color:#475569;">{_dept_s}</td>'
+                        f'<td style="{_tdc}vertical-align:middle;">'
+                        f'<span style="background:{_sb};color:{_sc};border-radius:5px;padding:2px 7px;font-size:11px;font-weight:700;">{_status}</span>'
+                        f'{_dc_html}</td>'
+                        f'<td style="{_td}font-size:11px;color:#F59E0B;">{_lock_d}</td>'
+                        f'<td style="{_td}font-size:12px;background:{_memo_bg};color:{_memo_c};max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{"📝 " + _memo if _memo else "─"}</td>'
+                        f"</tr>"
+                    )
+
+            _html += "</tbody></table></div>"
+            st.markdown(_html, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── 병상 수배 패널 ────────────────────────────────────────────────
+    with col_asgn:
+        st.markdown(
+            '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px;">'
+            '<div style="font-size:11.5px;font-weight:700;color:#1E40AF;'
+            'text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;'
+            'padding-bottom:8px;border-bottom:1px solid #E2E8F0;">🔍 병상 수배</div>',
+            unsafe_allow_html=True,
+        )
+
+        _asgn_wards = ["전체"] + sorted({r.get("병동명","") for r in ward_room_detail if r.get("병동명","")})
+        _asgn_ward_sel = st.selectbox("병동", _asgn_wards,
+            index=_asgn_wards.index(g_ward) if g_ward in _asgn_wards else 0,
+            key="v2_asgn_ward")
+        _asgn_room_sel = st.selectbox("인실", ["전체","1인실","2인실","3인실","4인실"], key="v2_asgn_room")
+        _asgn_sex_sel  = st.radio("성별", ["전체","남","여"], horizontal=True, key="v2_asgn_sex")
+
+        _dept_codes = sorted({
+            (r.get("진료과","") or "").strip()
+            for r in ward_room_detail
+            if r.get("진료과","") and r.get("상태") in ("재원","퇴원예정")
+        })
+        _dept_opts = ["전체"] + [d for d in _dept_codes if d]
+        if _asgn_room_sel == "1인실":
+            st.markdown('<div style="font-size:10.5px;color:#059669;background:#DCFCE7;border-radius:5px;padding:4px 8px;margin-bottom:4px;">✅ 1인실은 진료과 무관 배정 가능</div>', unsafe_allow_html=True)
+            _asgn_dept_sel = "전체"
+        else:
+            _asgn_dept_sel = st.selectbox("진료과", _dept_opts, key="v2_asgn_dept",
+                help="재원 환자 기준 영문코드 (예: IM=내과, GS=외과)")
+
+        if admit_cands:
+            with st.expander(f"📋 예약 환자 불러오기 ({len(admit_cands)}명)", expanded=False):
+                _pt_opts = ["— 선택 안 함 —"] + [
+                    f"{r.get('진료과명','?')} | {'남' if r.get('성별','M')=='M' else '여'} | {r.get('나이','?')}세"
+                    for r in admit_cands
+                ]
+                _pt_sel = st.selectbox("환자", _pt_opts, key="v2_asgn_pt", label_visibility="collapsed")
+                if _pt_sel != "— 선택 안 함 —":
+                    _pt_r = admit_cands[_pt_opts.index(_pt_sel) - 1]
+                    _raw_dept = (_pt_r.get("진료과코드","") or _pt_r.get("진료과명","")).strip().upper()
+                    _asgn_sex_sel  = "남" if _pt_r.get("성별","M") == "M" else "여"
+                    _asgn_dept_sel = _raw_dept if _raw_dept else "전체"
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.button("🔍 가용 병상 검색", key="v2_asgn_search", use_container_width=True, type="primary"):
+            st.session_state.update({
+                "v2_asgn_result_ready": True,
+                "v2_asgn_dept_saved":   _asgn_dept_sel,
+                "v2_asgn_sex_saved":    _asgn_sex_sel,
+                "v2_asgn_room_saved":   _asgn_room_sel,
+                "v2_asgn_ward_saved":   _asgn_ward_sel,
+            })
+
+        if st.session_state.get("v2_asgn_result_ready"):
+            _sw  = st.session_state.get("v2_asgn_ward_saved","전체")
+            _sri = st.session_state.get("v2_asgn_room_saved","전체")
+            _ssx = st.session_state.get("v2_asgn_sex_saved","전체")
+            _sdp = ("전체" if _sri == "1인실"
+                    else st.session_state.get("v2_asgn_dept_saved","전체"))
+
+            _cands = [
+                r for r in ward_room_detail
+                if r.get("상태") == "빈병상"
+                and (_sw == "전체" or r.get("병동명","") == _sw)
+                and (_sri == "전체" or r.get("인실구분","") == _sri)
+            ]
+
+            # 성별 필터
+            if _ssx != "전체" and _sri != "1인실":
+                _opp = "F" if _ssx == "남" else "M"
+                _my  = "M" if _ssx == "남" else "F"
+                _src = [r for r in ward_room_detail if _sw == "전체" or r.get("병동명","") == _sw]
+                _blocked, _same = set(), set()
+                for _r in _src:
+                    if _r.get("상태") not in ("재원","퇴원예정"):
+                        continue
+                    _rk = str(_r.get("병실번호","")).zfill(6)[:4]
+                    _rs = _norm_sex(_r.get("성별",""))
+                    if _rs == _opp: _blocked.add(_rk)
+                    elif _rs == _my: _same.add(_rk)
+                _cands = sorted(
+                    [r for r in _cands if str(r.get("병실번호","")).zfill(6)[:4] not in _blocked],
+                    key=lambda r: (0 if str(r.get("병실번호","")).zfill(6)[:4] in _same else 1,
+                                   r.get("병실번호","")),
+                )
+
+            # 진료과 정렬
+            if _sdp and _sdp != "전체":
+                _dept_rooms = {
+                    str(r.get("병실번호","")).zfill(6)[:4]
+                    for r in ward_room_detail
+                    if (r.get("진료과","") or "").strip().upper() == _sdp.upper()
+                    and r.get("상태") in ("재원","퇴원예정")
+                }
+                _cands = sorted(_cands, key=lambda r: (
+                    0 if str(r.get("병실번호","")).zfill(6)[:4] in _dept_rooms else 1,
+                    r.get("병실번호",""),
+                ))
+            else:
+                _cands = sorted(_cands, key=lambda r: r.get("병실번호",""))
+
+            st.markdown(
+                f'<div style="margin-top:10px;padding:10px;background:#fff;'
+                f'border:1px solid #E2E8F0;border-radius:8px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:6px;">'
+                f'가용 병상 {len(_cands)}개</div>',
+                unsafe_allow_html=True,
+            )
+            if _cands:
+                _parts = []
+                for _cr in _cands[:15]:
+                    _cbno = str(_cr.get("병실번호","")).zfill(6)
+                    _cfee = _cr.get("병실료",0) or 0
+                    _parts.append(
+                        f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                        f'padding:6px 8px;border-bottom:1px solid #F1F5F9;">'
+                        f'<div><span style="font-size:13px;font-weight:700;color:#1E40AF;">{_cr.get("병동명","")}</span>'
+                        f'<span style="font-size:12px;color:#64748B;margin-left:6px;">병실 {_cbno[2:4]} · 베드 {_cbno[4:6]}</span></div>'
+                        f'<div style="display:flex;align-items:center;gap:5px;">'
+                        f'<span style="font-size:11px;color:#475569;">{_cr.get("인실구분","")}</span>'
+                        f'<span style="font-size:11px;color:#94A3B8;">{f"{int(_cfee):,}원" if _cfee else "─"}</span>'
+                        f'<span style="background:#DCFCE7;color:#16A34A;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">빈병상</span>'
+                        f'</div></div>'
+                    )
+                st.markdown("".join(_parts) + "</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    '<div style="padding:14px;text-align:center;color:#94A3B8;font-size:12px;">'
+                    '조건에 맞는 빈 병상이 없습니다</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+
+# ════════════════════════════════════════════════════════════════════
+#  탭 ⑦ — AI 분석 채팅
 # ════════════════════════════════════════════════════════════════════
 
 def _tab_ai(kpi_ctx: Dict, bed_detail_f: List[Dict], op_stat_f: List[Dict]) -> None:
@@ -900,6 +1202,11 @@ def render_ward_v2() -> None:
     dx_trend    = _qc("ward_dx_trend")
     yesterday   = _qc("ward_yesterday")
     admit_cands = _qc("admit_candidates")
+
+    # ── 병실현황: 탭 활성 여부 기반 조건부 로드 ──────────────────────
+    # session_state로 탭 방문 여부 추적 — 첫 진입 시 1회 로드 후 캐시 유지
+    _need_room = st.session_state.get("v2_room_tab_visited", False)
+    ward_room_detail = _qc("ward_room_detail") if _need_room else []
 
     # ── 병동 목록 / 선택 ──────────────────────────────────────────────
     _all_wards = ["전체"] + sorted({
@@ -965,12 +1272,13 @@ def render_ward_v2() -> None:
         "금일입원": admit_cnt, "금일퇴원": disc_cnt, "선택병동": _g_ward,
     }
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "🏢 병동별 현황",
         "🏥 진료과 재원",
         "📈 주간 추이",
         "🩺 주상병 분포",
         "📅 익일 예약",
+        "🚪 병실현황",
         "🤖 AI 분석",
     ])
 
@@ -1000,5 +1308,13 @@ def render_ward_v2() -> None:
         )
 
     with tab6:
+        # 탭 최초 진입 시 플래그 설정 → 다음 렌더에서 ward_room_detail 로드
+        if not st.session_state.get("v2_room_tab_visited", False):
+            st.session_state["v2_room_tab_visited"] = True
+            st.rerun()
+        gap(8)
+        _tab_room_detail(ward_room_detail, admit_cands, _g_ward)
+
+    with tab7:
         gap(8)
         _tab_ai(_kpi_ctx, bed_detail_f, op_stat_f)
