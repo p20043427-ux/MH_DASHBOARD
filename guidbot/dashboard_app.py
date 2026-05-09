@@ -26,6 +26,7 @@ import streamlit as st
 from config.settings import settings
 from ui.theme import UITheme as T
 from ui.hospital_dashboard import render_hospital_dashboard
+from ui.hospital_dashboard_v2 import render_ward_v2          # [2026-05-09] v2 신규
 from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
@@ -723,27 +724,42 @@ def main() -> None:
         st.session_state["dash_last_ts"] = time.strftime("%Y-%m-%d %H:%M")
 
     # ── 탭 구성 ─────────────────────────────────────────────────────
+    # [2026-05-09] v2 탭 추가 — 관리자/일반 모두 v1·v2 선택 가능
     if current_role == "admin":
-        # 관리자: 병동 대시보드 + 모니터링
-        tab_dash, tab_mon, tab_docs = st.tabs(
-            ["🏥 병동 대시보드", "📊 모니터링", "📚 벡터DB 문서"]
+        tab_v2, tab_dash, tab_mon, tab_docs = st.tabs(
+            ["🏥 병동 현황 v2", "🗂️ 병동 현황 v1", "📊 모니터링", "📚 벡터DB 문서"]
+        )
+    else:
+        tab_v2, tab_dash = st.tabs(
+            ["🏥 병동 현황 v2", "🗂️ 병동 현황 v1"]
         )
 
-        with tab_dash:
-            try:
-                render_hospital_dashboard(tab="ward")
-            except Exception as e:
-                st.error(
-                    f"대시보드 로드 오류\n\n{e}\n\n"
-                    f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
-                )
-                logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
+    # ── v2 탭 ──────────────────────────────────────────────────────
+    with tab_v2:
+        try:
+            render_ward_v2()
+        except Exception as _e2:
+            st.error(
+                f"v2 대시보드 로드 오류\n\n{_e2}\n\n"
+                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
+            )
+            logger.error(f"render_ward_v2 오류: {_e2}", exc_info=True)
 
+    # ── v1 탭 ──────────────────────────────────────────────────────
+    with tab_dash:
+        try:
+            render_hospital_dashboard(tab="ward")
+        except Exception as e:
+            st.error(
+                f"대시보드 로드 오류\n\n{e}\n\n"
+                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
+            )
+            logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
+
+    if current_role == "admin":
         with tab_mon:
-            # ── 사용자 활동 모니터링 뷰어 ──────────────────────────
             try:
                 from ui.dashboard_log_viewer import render_dashboard_monitor
-
                 render_dashboard_monitor()
             except ImportError:
                 st.error(
@@ -756,17 +772,6 @@ def main() -> None:
 
         with tab_docs:
             _render_vdb_doc_list()
-
-    else:
-        # 일반 유저: 탭 없이 바로 병동 대시보드
-        try:
-            render_hospital_dashboard(tab="ward")
-        except Exception as e:
-            st.error(
-                f"대시보드 로드 오류\n\n{e}\n\n"
-                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
-            )
-            logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
