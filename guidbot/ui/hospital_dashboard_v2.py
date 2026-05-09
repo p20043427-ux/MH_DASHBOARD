@@ -899,21 +899,70 @@ def _tab_room_detail(ward_room_detail: List[Dict], admit_cands: List[Dict], g_wa
 
     gap(12)
 
-    # ── 상태 필터 + 2열 레이아웃 ─────────────────────────────────────
-    _f_col, _ = st.columns([6, 4])
-    with _f_col:
-        _status_opts = [
-            f"전체 ({len(_rp_data)})",
-            f"재원 ({_rp_stay})",
-            f"퇴원예정 ({_rp_dc})",
-            f"빈병상 ({_rp_avail})",
-            f"LOCK ({_rp_lock})",
-        ]
-        _status_sel = st.radio(
-            "상태 필터", _status_opts, horizontal=True,
-            key="v2_rp_status", label_visibility="collapsed",
+    # ── 상태 필터 — 커스텀 HTML 뱃지 + st.button (클릭 처리 전용) ────────
+    # [2026-05-09] st.radio 완전 교체:
+    #   · 시각: st.markdown HTML 뱃지 (각 상태 고유 색상, 활성/비활성 구분)
+    #   · 동작: st.button 한 줄 (label_visibility 대신 height:0 CSS로 숨김)
+    _SEL_KEY    = "v2_rp_status_sel"
+    _sel_status = st.session_state.get(_SEL_KEY, "전체")
+
+    # 상태별 (라벨, 건수, 활성BG, 활성텍스트, 비활성BG, 비활성Border, 비활성텍스트)
+    _FITEMS = [
+        ("전체",     len(_rp_data), "#1E293B", "#fff", "#F1F5F9", "#CBD5E1", "#475569"),
+        ("재원",     _rp_stay,      "#1D4ED8", "#fff", "#EFF6FF", "#BFDBFE", "#1D4ED8"),
+        ("퇴원예정", _rp_dc,        "#7C3AED", "#fff", "#F5F3FF", "#C4B5FD", "#7C3AED"),
+        ("빈병상",   _rp_avail,     "#16A34A", "#fff", "#F0FDF4", "#86EFAC", "#16A34A"),
+        ("LOCK",     _rp_lock,      "#DC2626", "#fff", "#FFF5F5", "#FCA5A5", "#DC2626"),
+    ]
+
+    # 시각 HTML — 클릭 이벤트 없음 (순수 디스플레이)
+    _pills = []
+    for _lbl, _cnt, _abg, _atx, _ibg, _ibd, _itx in _FITEMS:
+        _on = (_sel_status == _lbl)
+        _bg = _abg if _on else _ibg
+        _tx = _atx if _on else _itx
+        _bd = _abg if _on else _ibd
+        _sh = f"0 2px 10px {_abg}40" if _on else "none"
+        _fw = "700" if _on else "500"
+        _pills.append(
+            f'<span style="display:inline-flex;align-items:center;gap:4px;'
+            f'background:{_bg};color:{_tx};border:1.5px solid {_bd};'
+            f'border-radius:20px;padding:5px 13px;font-size:12px;font-weight:{_fw};'
+            f'box-shadow:{_sh};letter-spacing:-.2px;white-space:nowrap;">'
+            f'{_lbl}'
+            f'<span style="font-size:10.5px;font-weight:600;opacity:.8;">{_cnt}</span>'
+            f'</span>'
         )
-    _status_key = _status_sel.split(" (")[0].strip()
+    st.markdown(
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">'
+        + "".join(_pills) + '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 실제 클릭 감지용 st.button 한 줄 — 위 HTML과 동일 순서로 5개
+    # 버튼 자체는 CSS로 최소화하여 HTML 뱃지 바로 아래 얇은 클릭 영역만 남김
+    st.markdown("""<style>
+/* 병실현황 필터 버튼 — 클릭만 처리, 시각은 위 HTML 뱃지가 담당 */
+div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] > div > div > button[kind="secondary"]:first-child) {
+  margin-top: -4px !important;
+}
+</style>""", unsafe_allow_html=True)
+
+    _fb = st.columns(5, gap="small")
+    for _i, (_lbl, _cnt, *_) in enumerate(_FITEMS):
+        with _fb[_i]:
+            if st.button(
+                _lbl,
+                key=f"v2_sf_{_i}",
+                use_container_width=True,
+                type="primary" if _sel_status == _lbl else "secondary",
+                help=f"{_lbl} 보기 ({_cnt}건)",
+            ):
+                st.session_state[_SEL_KEY] = _lbl
+                st.rerun()
+
+    gap(6)
+    _status_key = _sel_status
     _rp_data_f  = _rp_data if _status_key == "전체" else [r for r in _rp_data if r.get("상태","") == _status_key]
 
     col_tbl, col_asgn = st.columns([7, 3], gap="small")
