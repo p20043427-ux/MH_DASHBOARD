@@ -42,6 +42,7 @@ _ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
 if _ROOT not in _sys.path:
     _sys.path.insert(0, _ROOT)
 
+from config.ui_labels import get_hospital_name
 from db.ward_repository import _qc
 from services.ward_service import (
     _safe_int, _safe_float, _norm_sex,
@@ -197,10 +198,12 @@ def _v2_header(oracle_ok: bool, ward: str, ward_list: List[str]) -> str:
     _ts  = time.strftime("%Y-%m-%d %H:%M")
     _dot = "#16A34A" if oracle_ok else "#F59E0B"
     _lbl = "Oracle 연결 정상" if oracle_ok else "Oracle 미연결"
+    # [2026-05-11] 병원명 — config/ui_labels.json 에서 동적 로드
+    _hosp = get_hospital_name()
 
     st.markdown(
         f'<div class="v2-hero">'
-        f'<div class="v2-hero-hosp">좋은문화병원</div>'
+        f'<div class="v2-hero-hosp">{_hosp}</div>'
         f'<div class="v2-hero-title">병동 현황 대시보드</div>'
         f'<div class="v2-hero-sub">'
         f'<span class="v2-oracle-dot" style="background:{_dot};'

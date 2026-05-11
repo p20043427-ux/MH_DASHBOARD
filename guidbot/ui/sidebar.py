@@ -11,6 +11,7 @@ from typing import List, Tuple
 import streamlit as st
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name, get_search_modes, get_shortcuts
 from ui.theme import UITheme as T
 from ui.components import section_label, status_indicator, info_grid
 from utils.logger import get_logger
@@ -18,14 +19,8 @@ from utils.exceptions import GuidbotError
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
-_SEARCH_MODES: list[dict] = [
-    {"id": "fast", "label": "빠른 검색", "meta": "3건 · 빠른 응답"},
-    {"id": "standard", "label": "표준 검색", "meta": "5건 · 균형 검색"},
-    {"id": "deep", "label": "심층 검색", "meta": "10건 · 정밀 분석"},
-    {"id": "separator", "label": "", "meta": ""},
-    {"id": "data_analysis", "label": "데이터 분석", "meta": "Oracle DB · 차트"},
-]
-
+# [2026-05-11] _SEARCH_MODES 하드코딩 제거 → config/ui_labels.json 에서 런타임 로드
+# 모듈 임포트 시점 기본값(fallback)은 get_search_modes() 가 반환하는 DEFAULTS 사용.
 _DASH_TABS: dict = {}
 _DEFAULT_SEARCH_MODE = "standard"
 
@@ -144,6 +139,8 @@ def _init_session_state() -> None:
 
 
 def _render_logo_header() -> None:
+    # [2026-05-11] 병원명 — config/ui_labels.json 에서 동적 로드
+    _hosp_name = get_hospital_name()
     st.markdown(
         f"""
         <div style="padding:0.6rem 0.5rem 0.45rem;display:flex;align-items:center;gap:0.65rem;">
@@ -160,7 +157,7 @@ def _render_logo_header() -> None:
             </div>
             <div>
                 <div style="font-size:0.82rem;font-weight:700;color:rgba(255,255,255,0.95);
-                    letter-spacing:-0.015em;line-height:1.2;">좋은문화병원</div>
+                    letter-spacing:-0.015em;line-height:1.2;">{_hosp_name}</div>
                 <div style="font-size:0.5rem;color:{T.A400};
                     letter-spacing:0.1em;text-transform:uppercase;margin-top:0.05rem;">AI Guide Bot</div>
             </div>
@@ -176,8 +173,8 @@ def _render_search_mode_selector() -> None:
     st.markdown('<div class="sb-btn-wrap">', unsafe_allow_html=True)
 
     _cur_role = st.session_state.get("role", "user")
-
-    for mode in _SEARCH_MODES:
+    # [2026-05-11] config/ui_labels.json 에서 검색 모드 목록 동적 로드
+    for mode in get_search_modes():
         mode_id = mode["id"]
         if mode_id in ("separator", "separator2"):
             st.markdown(
@@ -260,14 +257,18 @@ def _render_shortcuts() -> None:
         st.session_state["shortcut_note"] = _load_note()
     _note = st.session_state["shortcut_note"]
 
+    # [2026-05-11] 바로가기 버튼 레이블 — config/ui_labels.json 에서 동적 로드
+    _sh_labels = get_shortcuts()
+
     # ── 회람 문서 버튼 (sb-link-btn — 검색 모드 버튼과 동일 스타일) ──
     _DOCS_URL = settings.docs_url
     if not _DOCS_URL:
         _DOCS_URL = "https://docs.google.com/document/d/1WW05jXoSw65WY2vZYkqTxPSBWrv9anvSknWDGWZlj_k/edit"
+    _docs_lbl = _sh_labels.get("docs_label", "회람 문서")
     st.markdown(
         f'<a href="{_DOCS_URL}" target="_blank" rel="noopener" class="sb-link-btn">'
         f'<div style="display:flex;align-items:center;gap:4px;">'
-        f'<span style="flex:1;">회람 문서</span>'
+        f'<span style="flex:1;">{_docs_lbl}</span>'
         f'<span style="font-size:11px;opacity:0.50;">↗</span>'
         f'</div>'
         f'<div style="font-size:10px;color:rgba(255,255,255,0.42);margin-top:3px;'
@@ -334,6 +335,7 @@ def _render_shortcuts() -> None:
             st.rerun()
 
     # ── 진료 / 원무 / 간호 — 3열 그리드 (준비중) — admin 기준값 통일
+    # [2026-05-11] 버튼 레이블 동적 로딩
     _CELL_S = (
         "flex:1;border:1px solid rgba(255,255,255,0.15);"
         "border-radius:8px;padding:8px 4px;text-align:center;"
@@ -342,12 +344,17 @@ def _render_shortcuts() -> None:
     _LBL_S = "display:block;font-size:13px;font-weight:500;color:#fff;"
     _SUB_S = "display:block;font-size:9px;color:rgba(255,255,255,0.38);margin-top:2px;"
 
+    _grid_lbls = (
+        _sh_labels.get("clinic_label", "진료"),
+        _sh_labels.get("admin_label",  "원무"),
+        _sh_labels.get("nurse_label",  "간호"),
+    )
     _cells = "".join(
         f'<div style="{_CELL_S}">'
         f'<span style="{_LBL_S}">{lbl}</span>'
         f'<span style="{_SUB_S}">준비중</span>'
         f'</div>'
-        for lbl in ("진료", "원무", "간호")
+        for lbl in _grid_lbls
     )
     st.markdown(
         f'<div style="display:flex;gap:5px;margin-top:6px;">{_cells}</div>',

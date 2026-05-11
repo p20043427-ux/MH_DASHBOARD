@@ -49,6 +49,8 @@ _PR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
 if _PR not in sys.path:
     sys.path.insert(0, _PR)
 
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
+
 try:
     from utils.logger import get_logger as _gl
     from config.settings import settings as _s
@@ -181,7 +183,7 @@ def render_finance_dashboard() -> None:
             f'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
             f'<div style="width:3px;height:22px;background:{C["blue"]};border-radius:2px;"></div>'
             f'<div>'
-            f'<div style="font-size:9px;font-weight:700;color:{C["t4"]};text-transform:uppercase;letter-spacing:.15em;">좋은문화병원</div>'
+            f'<div style="font-size:9px;font-weight:700;color:{C["t4"]};text-transform:uppercase;letter-spacing:.15em;">{get_hospital_name()}</div>'
             f'<div style="font-size:17px;font-weight:800;color:{C["t1"]};letter-spacing:-.03em;">💼 원무 현황</div>'
             f'</div></div>',
             unsafe_allow_html=True,

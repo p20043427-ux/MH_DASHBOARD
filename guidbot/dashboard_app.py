@@ -24,6 +24,7 @@ from pathlib import Path
 import streamlit as st
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from ui.theme import UITheme as T
 from ui.hospital_dashboard import render_hospital_dashboard
 from ui.hospital_dashboard_v2 import render_ward_v2          # [2026-05-09] v2 신규
@@ -52,7 +53,7 @@ if sys.platform == "win32":
 # 페이지 설정
 # ══════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="병동 현황 대시보드 | 좋은문화병원",
+    page_title=f"병동 현황 대시보드 | {get_hospital_name()}",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -405,7 +406,7 @@ def _render_mini_sidebar() -> str:
             'margin-bottom:16px;">'
             '<span style="font-size:22px;">🏥</span>'
             "<div>"
-            '<div style="font-size:14px;font-weight:700;color:#FFFFFF;">좋은문화병원</div>'
+            f'<div style="font-size:14px;font-weight:700;color:#FFFFFF;">{get_hospital_name()}</div>'
             '<div style="font-size:10px;color:rgba(255,255,255,0.5);">병동 현황 대시보드</div>'
             "</div></div>",
             unsafe_allow_html=True,
@@ -689,7 +690,7 @@ def _render_mini_sidebar() -> str:
         st.markdown(
             '<div style="font-size:10px;color:rgba(255,255,255,0.25);'
             'text-align:center;padding-top:12px;">'
-            "병동 대시보드 v3.0<br>좋은문화병원 통계과"
+            f"병동 대시보드 v3.0<br>{get_hospital_name()} 통계과"
             "</div>",
             unsafe_allow_html=True,
         )

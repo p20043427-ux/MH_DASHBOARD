@@ -41,6 +41,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from ui.theme import UITheme as T
 from ui.finance_dashboard import render_finance_dashboard
 from utils.logger import get_logger
@@ -68,7 +69,7 @@ if sys.platform == "win32":
 # 페이지 설정
 # ══════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="원무 현황 대시보드 | 좋은문화병원",
+    page_title=f"원무 현황 대시보드 | {get_hospital_name()}",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -118,7 +119,7 @@ def _render_sidebar() -> str:
             'margin-bottom:16px;">'
             '<span style="font-size:22px;">💼</span>'
             "<div>"
-            '<div style="font-size:14px;font-weight:700;color:#FFFFFF;">좋은문화병원</div>'
+            f'<div style="font-size:14px;font-weight:700;color:#FFFFFF;">{get_hospital_name()}</div>'
             '<div style="font-size:10px;color:rgba(255,255,255,0.5);">원무 현황 대시보드</div>'
             "</div></div>",
             unsafe_allow_html=True,
@@ -262,7 +263,7 @@ def _render_sidebar() -> str:
         st.markdown(
             '<div style="font-size:10px;color:rgba(255,255,255,0.25);'
             'text-align:center;padding-top:12px;">'
-            "원무 대시보드 v1.0<br>좋은문화병원 통계과"
+            f"원무 대시보드 v1.0<br>{get_hospital_name()} 통계과"
             "</div>",
             unsafe_allow_html=True,
         )

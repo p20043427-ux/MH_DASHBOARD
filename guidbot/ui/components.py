@@ -30,6 +30,7 @@ from typing import Optional
 import streamlit as st
 
 from ui.theme import UITheme as T
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  v7.0 디자인 상수 (3단계 폰트 + 톤다운 팔레트)
@@ -90,7 +91,7 @@ def logo_header() -> None:
                 font-size:0.92rem;font-weight:700;
                 color:rgba(255,255,255,0.92);
                 letter-spacing:-0.01em;line-height:1.3;
-            ">좋은문화병원</div>
+            ">{get_hospital_name()}</div>
             <div style="
                 font-size:0.60rem;color:{T.A400};
                 letter-spacing:0.10em;text-transform:uppercase;
@@ -184,13 +185,13 @@ def page_header() -> None:
             ">
                 <span style="display:inline-block;width:13px;height:2px;
                     background:{T.A500};border-radius:1px;"></span>
-                좋은문화병원 · 내부 지식 관리 시스템
+                {get_hospital_name()} · 내부 지식 관리 시스템
             </div>
             <h1 style="
                 font-size:clamp(1.55rem,3.5vw,2.1rem);
                 font-weight:800;letter-spacing:-0.03em;
                 color:{_TX1};margin:0 0 0.1rem;line-height:1.15;
-            ">좋은문화병원 가이드봇</h1>
+            ">{get_hospital_name()} 가이드봇</h1>
             <div style="
                 width:34px;height:3px;
                 background:linear-gradient(90deg,{T.A500},{T.A400});

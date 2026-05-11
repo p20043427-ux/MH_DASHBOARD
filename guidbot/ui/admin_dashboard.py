@@ -51,6 +51,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import load_ui_labels, save_ui_labels, DEFAULTS as _UI_DEFAULTS, get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from utils.logger import get_logger
 
 # ── design.py 단일 소스 임포트 ─────────────────────────────────────────
@@ -669,7 +670,7 @@ def _tab_ops() -> None:
             f'<div class="adm-hero">'
             f'<div class="adm-hero-title">운영 현황</div>'
             f'<div class="adm-hero-sub">'
-            f'좋은문화병원 AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
+            f'{get_hospital_name()} AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
             f'{datetime.now().strftime("%Y년 %m월 %d일  %H:%M:%S")}'
             f'</div></div>'
         )
@@ -1768,7 +1769,123 @@ def _tab_monitoring() -> None:
 def _tab_settings() -> None:
     topbar()
     section_header("환경 설정", ".env 경로 / URL / 부서 링크 관리")
-    _html('<div class="adm-warn">⚠️ 저장 후 앱을 재시작해야 변경 사항이 반영됩니다.</div>')
+    _html('<div class="adm-warn">⚠️ .env 관련 항목은 저장 후 앱을 재시작해야 반영됩니다. 화면 표시 설정은 즉시 반영됩니다.</div>')
+
+    # ════════════════════════════════════════════════════════════════════
+    # [2026-05-11] 섹션 0: 화면 표시 설정 — 병원명 + 버튼 명칭
+    #   · config/ui_labels.json 에 저장 → 재시작 불필요, rerun 즉시 반영
+    # ════════════════════════════════════════════════════════════════════
+    section_header("화면 표시 설정", "병원명 · 사이드바 버튼 명칭 · 바로가기 레이블", C["teal"])
+
+    _ui = load_ui_labels()
+
+    with st.form("cfg_ui_labels", border=False):
+        # ── 병원명 ──────────────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:6px;">병원명</div>',
+            unsafe_allow_html=True,
+        )
+        _h_name = st.text_input(
+            "병원명",
+            value=_ui.get("hospital_name", "좋은문화병원"),
+            placeholder="좋은문화병원",
+            help="사이드바 로고 옆 · 병동 대시보드 v2 다크 헤더에 표시됩니다.",
+            label_visibility="collapsed",
+        )
+
+        gap(12)
+        st.divider()
+
+        # ── 검색 모드 버튼 명칭 ────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:4px;">검색 모드 버튼 명칭</div>'
+            '<div style="font-size:11px;color:#64748B;margin-bottom:10px;">'
+            '사이드바 검색 모드 선택 버튼 — 레이블 / 설명 텍스트</div>',
+            unsafe_allow_html=True,
+        )
+        _mode_labels: dict = {}
+        _mode_meta: dict   = {}
+        _sm_items = [m for m in _ui.get("search_modes", []) if m.get("id") != "separator"]
+        _n_items  = len(_sm_items)
+        _sm_cols  = st.columns(min(_n_items, 2), gap="medium")
+        for i, m in enumerate(_sm_items):
+            with _sm_cols[i % 2]:
+                st.markdown(
+                    f'<div style="font-size:10.5px;font-weight:600;color:#475569;'
+                    f'margin-bottom:3px;">모드: {m["id"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                _mc1, _mc2 = st.columns([1, 1], gap="small")
+                with _mc1:
+                    _mode_labels[m["id"]] = st.text_input(
+                        "버튼 레이블",
+                        value=m.get("label", ""),
+                        key=f"cfg_ml_{m['id']}",
+                        placeholder="예) 표준 검색",
+                    )
+                with _mc2:
+                    _mode_meta[m["id"]] = st.text_input(
+                        "설명 텍스트",
+                        value=m.get("meta", ""),
+                        key=f"cfg_mm_{m['id']}",
+                        placeholder="예) 5건 · 균형 검색",
+                    )
+
+        gap(12)
+        st.divider()
+
+        # ── 바로가기 버튼 명칭 ─────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:4px;">바로가기 버튼 명칭</div>'
+            '<div style="font-size:11px;color:#64748B;margin-bottom:10px;">'
+            '사이드바 "바로가기" 섹션 버튼 레이블</div>',
+            unsafe_allow_html=True,
+        )
+        _sh_cur  = _ui.get("shortcuts", _UI_DEFAULTS["shortcuts"])
+        _sh_c1, _sh_c2, _sh_c3, _sh_c4 = st.columns(4, gap="small")
+        with _sh_c1:
+            _d_lbl = st.text_input("회람 문서", value=_sh_cur.get("docs_label",   "회람 문서"), key="cfg_sh_docs")
+        with _sh_c2:
+            _c_lbl = st.text_input("진료",     value=_sh_cur.get("clinic_label", "진료"),     key="cfg_sh_clinic")
+        with _sh_c3:
+            _a_lbl = st.text_input("원무",     value=_sh_cur.get("admin_label",  "원무"),     key="cfg_sh_admin")
+        with _sh_c4:
+            _n_lbl = st.text_input("간호",     value=_sh_cur.get("nurse_label",  "간호"),     key="cfg_sh_nurse")
+
+        gap(8)
+        if st.form_submit_button("💾 화면 표시 설정 저장", type="primary"):
+            # 검색 모드 재구성 (separator 유지)
+            _new_modes = []
+            for m in _ui.get("search_modes", []):
+                if m.get("id") == "separator":
+                    _new_modes.append(m)
+                else:
+                    _nm = {
+                        "id":    m["id"],
+                        "label": _mode_labels.get(m["id"], m.get("label", "")),
+                        "meta":  _mode_meta.get(m["id"],   m.get("meta",  "")),
+                    }
+                    if m.get("admin_only"):
+                        _nm["admin_only"] = True
+                    _new_modes.append(_nm)
+            _new_data = {
+                "hospital_name": _h_name.strip() or "좋은문화병원",
+                "search_modes":  _new_modes,
+                "shortcuts": {
+                    "docs_label":   _d_lbl.strip() or "회람 문서",
+                    "clinic_label": _c_lbl.strip() or "진료",
+                    "admin_label":  _a_lbl.strip() or "원무",
+                    "nurse_label":  _n_lbl.strip() or "간호",
+                },
+            }
+            if save_ui_labels(_new_data):
+                st.success("✅ 저장 완료 — 화면이 새로고침되면 즉시 반영됩니다.")
+                st.cache_data.clear()
+            else:
+                st.error("❌ 저장 실패 — config/ui_labels.json 파일 권한을 확인하세요.")
 
     # ── 섹션 1: 경로 설정 ────────────────────────────────────────────────
     gap(16)

@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from ui.design import C, gap, section_header
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 
 
 def _h(html: str) -> None:
@@ -182,7 +183,7 @@ def _tab_manual() -> None:
         'pointer-events:none;"></div>'
         '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);'
         'letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px;">'
-        '좋은문화병원 AI 시스템</div>'
+        f'{get_hospital_name()} AI 시스템</div>'
         '<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">'
         '📚 매뉴얼 · 문서 뷰어</div>'
         '<div style="font-size:12px;color:rgba(255,255,255,0.45);">'

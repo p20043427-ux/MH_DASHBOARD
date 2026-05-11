@@ -54,6 +54,8 @@ _PROJECT_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
+
 # 병동 대시보드 사용자 로그 + 모니터링
 try:
     from utils.dashboard_monitor import get_dash_monitor as _get_dash_monitor
@@ -1604,7 +1606,7 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             f'<div style="width:3px;height:22px;background:{C["blue"]};border-radius:2px;"></div>'
             f'<div>'
             f'<div style="font-size:9px;font-weight:700;color:{C["t4"]};'
-            f'text-transform:uppercase;letter-spacing:.15em;">좋은문화병원</div>'
+            f'text-transform:uppercase;letter-spacing:.15em;">{get_hospital_name()}</div>'
             f'<div style="font-size:17px;font-weight:800;color:{C["t1"]};'
             f'letter-spacing:-0.03em;">{_tab_name}</div>'
             f'</div></div>',

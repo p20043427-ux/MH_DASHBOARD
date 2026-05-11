@@ -17,9 +17,11 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
+
 # ── 페이지 설정 ───────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="병동 현황 v2 | 좋은문화병원",
+    page_title=f"병동 현황 v2 | {get_hospital_name()}",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="collapsed",
