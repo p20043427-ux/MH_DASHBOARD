@@ -27,6 +27,7 @@ allow_dangerous_deserialization=True 를 설정하는 이유:
 from __future__ import annotations
 
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -39,6 +40,76 @@ from core.embeddings import get_embeddings_auto
 from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  [2026-05-11] FAISS 한글 경로 우회 헬퍼
+#  문제: faiss.write_index / faiss.read_index 는 내부적으로 C 의 fopen() 을 사용.
+#        Windows 에서 fopen() 은 ANSI(CP949) 인코딩만 처리하므로,
+#        한글이 포함된 경로(예: vector_store/depts/전산팀/)에서 다음 오류 발생:
+#          · "Illegal byte sequence"  — 한글 폴더명
+#          · "No such file or directory" — 괄호+한글 폴더명(_공통(루트))
+#  해결: 비ASCII 경로 감지 → tempfile(ASCII 경로) 경유 → shutil 복사
+# ────────────────────────────────────────────────────────────────────────────
+
+def _has_non_ascii(s: str) -> bool:
+    """문자열에 ASCII 범위를 벗어난 문자가 있으면 True."""
+    try:
+        s.encode("ascii")
+        return False
+    except UnicodeEncodeError:
+        return True
+
+
+def faiss_save_safe(vectorstore: FAISS, dest_path: Path) -> None:
+    """
+    FAISS 인덱스를 dest_path 에 저장합니다.
+
+    dest_path 에 한글 등 비ASCII 문자가 있으면:
+      1. 시스템 임시 디렉토리(ASCII 경로) 에 먼저 저장
+      2. index.faiss / index.pkl 을 dest_path 로 shutil.copy2
+    """
+    dest_path.mkdir(parents=True, exist_ok=True)
+    if not _has_non_ascii(str(dest_path)):
+        vectorstore.save_local(str(dest_path))
+        return
+
+    # 한글 경로 우회
+    with tempfile.TemporaryDirectory(prefix="faiss_save_") as tmp_dir:
+        tmp_out = Path(tmp_dir) / "out"
+        tmp_out.mkdir()
+        vectorstore.save_local(str(tmp_out))
+        for f in tmp_out.iterdir():
+            shutil.copy2(f, dest_path / f.name)
+    logger.debug(f"[faiss_save_safe] 비ASCII 경로 우회 저장 완료: {dest_path}")
+
+
+def faiss_load_safe(src_path: Path, embeddings) -> FAISS:
+    """
+    FAISS 인덱스를 src_path 에서 로드합니다.
+
+    src_path 에 한글 등 비ASCII 문자가 있으면:
+      1. index.faiss / index.pkl 을 시스템 임시 디렉토리(ASCII 경로) 로 복사
+      2. 임시 경로에서 FAISS.load_local 실행
+    """
+    if not _has_non_ascii(str(src_path)):
+        return FAISS.load_local(
+            str(src_path), embeddings,
+            allow_dangerous_deserialization=True,
+        )
+
+    # 한글 경로 우회
+    with tempfile.TemporaryDirectory(prefix="faiss_load_") as tmp_dir:
+        tmp_in = Path(tmp_dir) / "in"
+        tmp_in.mkdir()
+        for f in src_path.glob("index.*"):
+            shutil.copy2(f, tmp_in / f.name)
+        db = FAISS.load_local(
+            str(tmp_in), embeddings,
+            allow_dangerous_deserialization=True,
+        )
+    logger.debug(f"[faiss_load_safe] 비ASCII 경로 우회 로드 완료: {src_path}")
+    return db
 
 
 class VectorStoreManager:
@@ -126,11 +197,8 @@ class VectorStoreManager:
             return None
 
         try:
-            db = FAISS.load_local(
-                str(self._db_path),
-                self._embeddings,
-                allow_dangerous_deserialization=True,
-            )
+            # [2026-05-11] 한글 경로 우회: faiss_load_safe 사용
+            db = faiss_load_safe(self._db_path, self._embeddings)
             doc_count = db.index.ntotal
             logger.info(f"벡터 DB 로드 완료: {self._db_path} ({doc_count:,}개 벡터)")
             return db
@@ -293,9 +361,15 @@ class VectorStoreManager:
         return vectorstore  # type: ignore[return-value]
 
     def _save(self, vectorstore: FAISS) -> None:
-        """벡터 DB 파일을 저장합니다."""
+        """벡터 DB 파일을 저장합니다.
+
+        [2026-05-11] FAISS C fopen() 한글 경로 우회
+        faiss.write_index()는 내부적으로 C의 fopen()을 사용하며,
+        Windows에서 ANSI(CP949) 경로만 처리 가능 — 한글 디렉토리명에서 실패.
+        → faiss_save_safe() 를 통해 임시 ASCII 경로에 저장 후 shutil로 복사.
+        """
         self._db_path.mkdir(parents=True, exist_ok=True)
-        vectorstore.save_local(str(self._db_path))
+        faiss_save_safe(vectorstore, self._db_path)
         logger.info(f"벡터 DB 저장 완료: {self._db_path}")
 
     def _backup_existing(self) -> None:

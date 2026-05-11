@@ -53,7 +53,7 @@ from langchain_core.documents import Document
 from config.settings import settings
 from core.document_loader import load_and_split
 from core.embeddings import get_embeddings_auto
-from core.vector_store import VectorStoreManager
+from core.vector_store import VectorStoreManager, faiss_load_safe
 from utils.file_sync import sync_pdf_files, SyncResult
 from utils.logger import get_logger
 
@@ -206,9 +206,25 @@ class DeptVectorStoreManager:
                     "mtime":     mtime,
                 })
                 # [2026-05-08] 벡터 수 읽기: faiss.read_index → index.pkl fallback
+                # [2026-05-11] 한글 경로 우회: 비ASCII 경로면 임시 ASCII 경로로 복사 후 읽기
                 try:
                     import faiss as _faiss
-                    idx = _faiss.read_index(str(faiss_path))
+                    _fi_str = str(faiss_path)
+                    try:
+                        _fi_str.encode("ascii")
+                        _needs_tmp = False
+                    except UnicodeEncodeError:
+                        _needs_tmp = True
+
+                    if _needs_tmp:
+                        import tempfile as _tf
+                        with _tf.TemporaryDirectory(prefix="faiss_rd_") as _td:
+                            import shutil as _sh
+                            _tmp_f = Path(_td) / "index.faiss"
+                            _sh.copy2(faiss_path, _tmp_f)
+                            idx = _faiss.read_index(str(_tmp_f))
+                    else:
+                        idx = _faiss.read_index(_fi_str)
                     all_depts[dept]["chunk_count"] = idx.ntotal
                 except Exception as _fe:
                     logger.debug(f"[get_dept_stats] faiss 직접 읽기 실패({dept}): {_fe!r}")
@@ -428,10 +444,8 @@ class DeptVectorStoreManager:
             for dept in indexed:
                 dept_path = _DEPT_DB / dept
                 try:
-                    db = FAISS.load_local(
-                        str(dept_path), emb,
-                        allow_dangerous_deserialization=True,
-                    )
+                    # [2026-05-11] 한글 부서명 경로 우회: faiss_load_safe 사용
+                    db = faiss_load_safe(dept_path, emb)
                     if master is None:
                         master = db
                     else:
