@@ -1950,18 +1950,18 @@ def _tab_settings() -> None:
         (settings.cms_dir,           "cms_data",               "CMS 서비스 데이터"),
     ]
 
-    _fd_missing = [(_p, _r, _d) for _p, _r, _d in _REQUIRED_DIRS if not _p.exists()]
-    _fd_total   = len(_REQUIRED_DIRS)
-    _fd_ok_cnt  = _fd_total - len(_fd_missing)
+    # [2026-05-11] 현황 계산
+    _fd_total  = len(_REQUIRED_DIRS)
+    _fd_all_ok = all(_p.exists() for _p, _, _ in _REQUIRED_DIRS)
+    _fd_ok_cnt = sum(1 for _p, _, _ in _REQUIRED_DIRS if _p.exists())
 
     # ─ 요약 배너 ─
-    _fd_all_ok  = len(_fd_missing) == 0
     _fd_bg  = "rgba(22,163,74,0.08)"  if _fd_all_ok else "rgba(234,179,8,0.10)"
     _fd_bd  = "rgba(22,163,74,0.25)"  if _fd_all_ok else "rgba(234,179,8,0.30)"
     _fd_ico = "✅" if _fd_all_ok else "⚠️"
     _fd_msg = (f"모든 {_fd_total}개 폴더 정상"
                if _fd_all_ok else
-               f"{len(_fd_missing)}개 폴더 없음 ({_fd_ok_cnt}/{_fd_total} 존재)")
+               f"{_fd_total - _fd_ok_cnt}개 폴더 없음 ({_fd_ok_cnt}/{_fd_total} 존재)")
     _html(
         f'<div style="display:flex;align-items:center;gap:8px;'
         f'background:{_fd_bg};border:1px solid {_fd_bd};'
@@ -1971,26 +1971,59 @@ def _tab_settings() -> None:
         f'</div>'
     )
 
-    # ─ 폴더 목록 테이블 ─
-    _fd_rows = []
-    for _fd_path, _fd_rel, _fd_desc in _REQUIRED_DIRS:
+    # ─ 폴더별 행 — 상태 + 정보 + 개별 생성 버튼 ─────────────────────────
+    for _fd_idx, (_fd_path, _fd_rel, _fd_desc) in enumerate(_REQUIRED_DIRS):
         _fd_exists = _fd_path.exists()
-        _fd_bk = badge_html("존재", "ok") if _fd_exists else badge_html("없음", "warn")
-        _fd_rows.append([
-            _fd_bk,
-            f'<code style="font-size:10.5px;white-space:nowrap;">{_fd_rel}</code>',
-            f'<span style="font-size:11px;color:#64748B;">{_fd_desc}</span>',
-            f'<code style="font-size:9.5px;color:#94A3B8;word-break:break-all;">{_fd_path}</code>',
-        ])
-    _html(_table(["상태", "폴더명", "용도", "전체 경로"], _fd_rows, "11px"))
+        _col_info, _col_btn = st.columns([10, 2], gap="small")
 
+        with _col_info:
+            _fd_dot_color = "#16A34A" if _fd_exists else "#F59E0B"
+            _fd_lbl_color = "#1E293B" if _fd_exists else "#92400E"
+            _fd_bg_row    = "rgba(22,163,74,0.04)" if _fd_exists else "rgba(253,230,138,0.25)"
+            _fd_bd_row    = "rgba(22,163,74,0.15)" if _fd_exists else "rgba(245,158,11,0.30)"
+            _html(
+                f'<div style="display:flex;align-items:center;gap:8px;'
+                f'background:{_fd_bg_row};border:1px solid {_fd_bd_row};'
+                f'border-radius:6px;padding:7px 10px;margin-bottom:2px;">'
+                f'<span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;'
+                f'background:{_fd_dot_color};display:inline-block;"></span>'
+                f'<code style="font-size:11px;font-weight:700;color:{_fd_lbl_color};'
+                f'white-space:nowrap;">{_fd_rel}</code>'
+                f'<span style="font-size:10.5px;color:#64748B;margin-left:4px;">{_fd_desc}</span>'
+                f'<span style="margin-left:auto;font-size:9.5px;color:#94A3B8;'
+                f'word-break:break-all;">{_fd_path}</span>'
+                f'</div>'
+            )
+
+        with _col_btn:
+            if not _fd_exists:
+                if st.button(
+                    "📁 만들기",
+                    key=f"btn_mkdir_{_fd_idx}",
+                    use_container_width=True,
+                    help=f"mkdir -p {_fd_path}",
+                ):
+                    try:
+                        _fd_path.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"[폴더 생성] {_fd_path}")
+                        st.success(f"✅ 생성: {_fd_rel}")
+                        st.rerun()
+                    except Exception as _fd_e:
+                        logger.error(f"[폴더 생성 실패] {_fd_path}: {_fd_e}")
+                        st.error(f"❌ {_fd_rel}: {_fd_e}")
+            else:
+                # 존재하는 폴더는 빈 공간 (버튼 없음)
+                st.empty()
+
+    # ─ 일괄 생성 버튼 ─────────────────────────────────────────────────────
     gap(8)
-    if _fd_missing:
+    if not _fd_all_ok:
+        _fd_missing_cnt = _fd_total - _fd_ok_cnt
         if st.button(
-            f"📁 누락 폴더 {len(_fd_missing)}개 모두 생성",
+            f"📁 누락 폴더 {_fd_missing_cnt}개 모두 생성",
             type="primary",
-            key="btn_create_dirs",
-            help="없음 표시된 모든 폴더를 mkdir -p 로 생성합니다.",
+            key="btn_create_dirs_all",
+            help="없음 표시된 모든 폴더를 한 번에 생성합니다.",
         ):
             _fd_created, _fd_failed = [], []
             for _fd_path, _fd_rel, _ in _REQUIRED_DIRS:
@@ -2003,7 +2036,7 @@ def _tab_settings() -> None:
                         _fd_failed.append(f"{_fd_rel}: {_fd_e}")
                         logger.error(f"[폴더 생성 실패] {_fd_path}: {_fd_e}")
             if _fd_created:
-                st.success(f"✅ {len(_fd_created)}개 폴더 생성: " + "  ·  ".join(_fd_created))
+                st.success(f"✅ {len(_fd_created)}개 폴더 생성 완료: " + "  ·  ".join(_fd_created))
             if _fd_failed:
                 st.error("❌ 생성 실패\n" + "\n".join(_fd_failed))
             st.rerun()
