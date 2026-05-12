@@ -51,6 +51,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import load_ui_labels, save_ui_labels, DEFAULTS as _UI_DEFAULTS, get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from utils.logger import get_logger
 
 # ── design.py 단일 소스 임포트 ─────────────────────────────────────────
@@ -669,7 +670,7 @@ def _tab_ops() -> None:
             f'<div class="adm-hero">'
             f'<div class="adm-hero-title">운영 현황</div>'
             f'<div class="adm-hero-sub">'
-            f'좋은문화병원 AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
+            f'{get_hospital_name()} AI 시스템&nbsp;&nbsp;·&nbsp;&nbsp;'
             f'{datetime.now().strftime("%Y년 %m월 %d일  %H:%M:%S")}'
             f'</div></div>'
         )
@@ -926,11 +927,19 @@ def _save_env_value(key: str, value: str) -> bool:
 
 
 def _load_dept_stats() -> list:
-    """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다."""
+    """DeptVectorStoreManager.get_dept_stats() 를 안전하게 호출합니다.
+    [2026-05-08] 예외 로그 추가 — 조회 실패 원인 추적용
+    """
     try:
         from core.dept_vector_store import DeptVectorStoreManager
-        return DeptVectorStoreManager().get_dept_stats()
-    except Exception:
+        stats = DeptVectorStoreManager().get_dept_stats()
+        # 인덱스 미생성 부서가 있을 때 로그로 알림
+        not_indexed = [s["dept_name"] for s in stats if not s.get("indexed")]
+        if not_indexed:
+            logger.debug(f"[_load_dept_stats] 인덱스 없는 부서 {len(not_indexed)}개: {not_indexed}")
+        return stats
+    except Exception as e:
+        logger.error(f"[_load_dept_stats] 부서 통계 로드 실패: {e!r}", exc_info=True)
         return []
 
 
@@ -1038,14 +1047,18 @@ def _tab_vectordb() -> None:
         if not dept_stats:
             st.info("부서 정보를 불러올 수 없습니다. G드라이브 연결 또는 data_rag_working/depts/ 를 확인하세요.")
         else:
+            # [2026-05-08] chunk_count=0 은 읽기 실패로 볼 수 있어 "?" 로 구분 표시
             rows_dept = []
             for ds in dept_stats:
                 name    = ds["dept_name"]
                 pdfs    = f'{ds["pdf_count"]}개' if ds["pdf_count"] > 0 else badge_html("없음", "warn")
-                chunks  = f'{ds["chunk_count"]:,}' if ds.get("chunk_count") else "—"
-                faiss   = f'{ds["faiss_mb"]} MB' if ds["indexed"] else "—"
+                _cc     = ds.get("chunk_count") or 0
+                chunks  = (f'{_cc:,}' if _cc > 0 else
+                           ("?" if ds.get("indexed") else "—"))
+                faiss   = (f'{ds["faiss_mb"]} MB' if ds.get("indexed") and ds.get("faiss_mb")
+                           else ("0 B" if ds.get("indexed") else "—"))
                 mtime   = ds.get("mtime", "—")
-                idx_bge = badge_html("인덱스됨", "ok") if ds["indexed"] else badge_html("미생성", "warn")
+                idx_bge = badge_html("인덱스됨", "ok") if ds.get("indexed") else badge_html("미생성", "warn")
                 src_bge = badge_html("G드라이브", "blue") if ds.get("src_exists") else badge_html("로컬", "gray")
                 rows_dept.append([f"<b>{name}</b>", pdfs, chunks, faiss, mtime, idx_bge, src_bge])
             _html(_table(["부서명", "PDF", "청크", "FAISS", "수정일", "상태", "소스"], rows_dept))
@@ -1756,7 +1769,123 @@ def _tab_monitoring() -> None:
 def _tab_settings() -> None:
     topbar()
     section_header("환경 설정", ".env 경로 / URL / 부서 링크 관리")
-    _html('<div class="adm-warn">⚠️ 저장 후 앱을 재시작해야 변경 사항이 반영됩니다.</div>')
+    _html('<div class="adm-warn">⚠️ .env 관련 항목은 저장 후 앱을 재시작해야 반영됩니다. 화면 표시 설정은 즉시 반영됩니다.</div>')
+
+    # ════════════════════════════════════════════════════════════════════
+    # [2026-05-11] 섹션 0: 화면 표시 설정 — 병원명 + 버튼 명칭
+    #   · config/ui_labels.json 에 저장 → 재시작 불필요, rerun 즉시 반영
+    # ════════════════════════════════════════════════════════════════════
+    section_header("화면 표시 설정", "병원명 · 사이드바 버튼 명칭 · 바로가기 레이블", C["teal"])
+
+    _ui = load_ui_labels()
+
+    with st.form("cfg_ui_labels", border=False):
+        # ── 병원명 ──────────────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:6px;">병원명</div>',
+            unsafe_allow_html=True,
+        )
+        _h_name = st.text_input(
+            "병원명",
+            value=_ui.get("hospital_name", "좋은문화병원"),
+            placeholder="좋은문화병원",
+            help="사이드바 로고 옆 · 병동 대시보드 v2 다크 헤더에 표시됩니다.",
+            label_visibility="collapsed",
+        )
+
+        gap(12)
+        st.divider()
+
+        # ── 검색 모드 버튼 명칭 ────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:4px;">검색 모드 버튼 명칭</div>'
+            '<div style="font-size:11px;color:#64748B;margin-bottom:10px;">'
+            '사이드바 검색 모드 선택 버튼 — 레이블 / 설명 텍스트</div>',
+            unsafe_allow_html=True,
+        )
+        _mode_labels: dict = {}
+        _mode_meta: dict   = {}
+        _sm_items = [m for m in _ui.get("search_modes", []) if m.get("id") != "separator"]
+        _n_items  = len(_sm_items)
+        _sm_cols  = st.columns(min(_n_items, 2), gap="medium")
+        for i, m in enumerate(_sm_items):
+            with _sm_cols[i % 2]:
+                st.markdown(
+                    f'<div style="font-size:10.5px;font-weight:600;color:#475569;'
+                    f'margin-bottom:3px;">모드: {m["id"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                _mc1, _mc2 = st.columns([1, 1], gap="small")
+                with _mc1:
+                    _mode_labels[m["id"]] = st.text_input(
+                        "버튼 레이블",
+                        value=m.get("label", ""),
+                        key=f"cfg_ml_{m['id']}",
+                        placeholder="예) 표준 검색",
+                    )
+                with _mc2:
+                    _mode_meta[m["id"]] = st.text_input(
+                        "설명 텍스트",
+                        value=m.get("meta", ""),
+                        key=f"cfg_mm_{m['id']}",
+                        placeholder="예) 5건 · 균형 검색",
+                    )
+
+        gap(12)
+        st.divider()
+
+        # ── 바로가기 버튼 명칭 ─────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:11.5px;font-weight:700;color:#0F172A;'
+            'margin-bottom:4px;">바로가기 버튼 명칭</div>'
+            '<div style="font-size:11px;color:#64748B;margin-bottom:10px;">'
+            '사이드바 "바로가기" 섹션 버튼 레이블</div>',
+            unsafe_allow_html=True,
+        )
+        _sh_cur  = _ui.get("shortcuts", _UI_DEFAULTS["shortcuts"])
+        _sh_c1, _sh_c2, _sh_c3, _sh_c4 = st.columns(4, gap="small")
+        with _sh_c1:
+            _d_lbl = st.text_input("회람 문서", value=_sh_cur.get("docs_label",   "회람 문서"), key="cfg_sh_docs")
+        with _sh_c2:
+            _c_lbl = st.text_input("진료",     value=_sh_cur.get("clinic_label", "진료"),     key="cfg_sh_clinic")
+        with _sh_c3:
+            _a_lbl = st.text_input("원무",     value=_sh_cur.get("admin_label",  "원무"),     key="cfg_sh_admin")
+        with _sh_c4:
+            _n_lbl = st.text_input("간호",     value=_sh_cur.get("nurse_label",  "간호"),     key="cfg_sh_nurse")
+
+        gap(8)
+        if st.form_submit_button("💾 화면 표시 설정 저장", type="primary"):
+            # 검색 모드 재구성 (separator 유지)
+            _new_modes = []
+            for m in _ui.get("search_modes", []):
+                if m.get("id") == "separator":
+                    _new_modes.append(m)
+                else:
+                    _nm = {
+                        "id":    m["id"],
+                        "label": _mode_labels.get(m["id"], m.get("label", "")),
+                        "meta":  _mode_meta.get(m["id"],   m.get("meta",  "")),
+                    }
+                    if m.get("admin_only"):
+                        _nm["admin_only"] = True
+                    _new_modes.append(_nm)
+            _new_data = {
+                "hospital_name": _h_name.strip() or "좋은문화병원",
+                "search_modes":  _new_modes,
+                "shortcuts": {
+                    "docs_label":   _d_lbl.strip() or "회람 문서",
+                    "clinic_label": _c_lbl.strip() or "진료",
+                    "admin_label":  _a_lbl.strip() or "원무",
+                    "nurse_label":  _n_lbl.strip() or "간호",
+                },
+            }
+            if save_ui_labels(_new_data):
+                st.success("✅ 저장 완료 — 화면이 새로고침되면 즉시 반영됩니다.")
+                st.cache_data.clear()
+            else:
+                st.error("❌ 저장 실패 — config/ui_labels.json 파일 권한을 확인하세요.")
 
     # ── 섹션 1: 경로 설정 ────────────────────────────────────────────────
     gap(16)
@@ -1796,6 +1925,92 @@ def _tab_settings() -> None:
             f'<div style="font-size:11px;color:#64748B;margin-bottom:2px;">'
             f'{_b}&nbsp;<span style="font-weight:600;">{lbl}</span>&nbsp;'
             f'<code style="font-size:10px;">{_p}</code></div>'
+        )
+
+    # ── 섹션 ★: 필수 폴더 관리 ─────────────────────────────────────────
+    # [2026-05-11] 프로젝트 실행에 필요한 폴더 현황 조회 + 일괄 생성
+    gap(16)
+    st.divider()
+    section_header("필수 폴더 관리", "프로젝트 실행에 필요한 폴더 현황 · 없는 폴더 자동 생성", C["green"])
+
+    _REQUIRED_DIRS: list = [
+        (settings.local_cache_path,  "data_cache",             "HuggingFace 임베딩 모델 캐시"),
+        (settings.local_work_dir,    "data_rag_working",       "PDF 작업본 (G드라이브 동기화 또는 직접 업로드)"),
+        (settings.dept_work_dir,     "data_rag_working/depts", "부서별 PDF 작업 경로"),
+        (settings.rag_db_path,       "vector_store",           "FAISS 벡터 DB"),
+        (settings.dept_db_path,      "vector_store/depts",     "부서별 FAISS 인덱스"),
+        (settings.schema_db_path,    "vector_store/schema_db", "DB 스키마 인덱스"),
+        (settings.query_db_path,     "vector_store/query_db",  "쿼리 예제 인덱스"),
+        (settings.doc_db_path,       "vector_store/doc_db",    "개발 문서 인덱스"),
+        (settings.backup_dir,        "vector_store_backup",    "벡터DB 자동 백업"),
+        (settings.docs_dir,          "docs",                   "문서 루트 폴더"),
+        (settings.db_docs_dir,       "docs/db_manuals",        "DB 명세서 PDF"),
+        (settings.markdown_dir,      "docs/markdown",          "PDF→Markdown 변환 캐시"),
+        (settings.log_dir,           "logs",                   "모듈별 일별 로그"),
+        (settings.cms_dir,           "cms_data",               "CMS 서비스 데이터"),
+    ]
+
+    _fd_missing = [(_p, _r, _d) for _p, _r, _d in _REQUIRED_DIRS if not _p.exists()]
+    _fd_total   = len(_REQUIRED_DIRS)
+    _fd_ok_cnt  = _fd_total - len(_fd_missing)
+
+    # ─ 요약 배너 ─
+    _fd_all_ok  = len(_fd_missing) == 0
+    _fd_bg  = "rgba(22,163,74,0.08)"  if _fd_all_ok else "rgba(234,179,8,0.10)"
+    _fd_bd  = "rgba(22,163,74,0.25)"  if _fd_all_ok else "rgba(234,179,8,0.30)"
+    _fd_ico = "✅" if _fd_all_ok else "⚠️"
+    _fd_msg = (f"모든 {_fd_total}개 폴더 정상"
+               if _fd_all_ok else
+               f"{len(_fd_missing)}개 폴더 없음 ({_fd_ok_cnt}/{_fd_total} 존재)")
+    _html(
+        f'<div style="display:flex;align-items:center;gap:8px;'
+        f'background:{_fd_bg};border:1px solid {_fd_bd};'
+        f'border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
+        f'<span style="font-size:16px;">{_fd_ico}</span>'
+        f'<span style="font-size:12px;font-weight:600;color:#1E293B;">{_fd_msg}</span>'
+        f'</div>'
+    )
+
+    # ─ 폴더 목록 테이블 ─
+    _fd_rows = []
+    for _fd_path, _fd_rel, _fd_desc in _REQUIRED_DIRS:
+        _fd_exists = _fd_path.exists()
+        _fd_bk = badge_html("존재", "ok") if _fd_exists else badge_html("없음", "warn")
+        _fd_rows.append([
+            _fd_bk,
+            f'<code style="font-size:10.5px;white-space:nowrap;">{_fd_rel}</code>',
+            f'<span style="font-size:11px;color:#64748B;">{_fd_desc}</span>',
+            f'<code style="font-size:9.5px;color:#94A3B8;word-break:break-all;">{_fd_path}</code>',
+        ])
+    _html(_table(["상태", "폴더명", "용도", "전체 경로"], _fd_rows, "11px"))
+
+    gap(8)
+    if _fd_missing:
+        if st.button(
+            f"📁 누락 폴더 {len(_fd_missing)}개 모두 생성",
+            type="primary",
+            key="btn_create_dirs",
+            help="없음 표시된 모든 폴더를 mkdir -p 로 생성합니다.",
+        ):
+            _fd_created, _fd_failed = [], []
+            for _fd_path, _fd_rel, _ in _REQUIRED_DIRS:
+                if not _fd_path.exists():
+                    try:
+                        _fd_path.mkdir(parents=True, exist_ok=True)
+                        _fd_created.append(_fd_rel)
+                        logger.info(f"[폴더 생성] {_fd_path}")
+                    except Exception as _fd_e:
+                        _fd_failed.append(f"{_fd_rel}: {_fd_e}")
+                        logger.error(f"[폴더 생성 실패] {_fd_path}: {_fd_e}")
+            if _fd_created:
+                st.success(f"✅ {len(_fd_created)}개 폴더 생성: " + "  ·  ".join(_fd_created))
+            if _fd_failed:
+                st.error("❌ 생성 실패\n" + "\n".join(_fd_failed))
+            st.rerun()
+    else:
+        _html(
+            '<div style="font-size:12px;color:rgba(22,163,74,0.85);font-weight:600;'
+            'padding:6px 0;">📁 모든 필수 폴더가 이미 존재합니다.</div>'
         )
 
     # ── 섹션 2: 서비스 URL ───────────────────────────────────────────────

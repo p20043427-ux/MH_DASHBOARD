@@ -54,6 +54,8 @@ _PROJECT_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
+
 # 병동 대시보드 사용자 로그 + 모니터링
 try:
     from utils.dashboard_monitor import get_dash_monitor as _get_dash_monitor
@@ -645,7 +647,8 @@ def _render_ward() -> None:
         with _r1c3:
             _kpi_card("금일 입원", str(admit_cnt), "명", f"전일 {_pa}명", C["blue"], delta=_ds(admit_cnt, _pa))
 
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        # [2026-05-08] KPI 1행↔2행 간격 확대 8px → 16px
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
         _r2c1, _r2c2, _r2c3 = st.columns(3, gap="small")
         with _r2c1:
@@ -654,68 +657,83 @@ def _render_ward() -> None:
             _today_op_total = sum(_ward_surg.values())
             _kpi_card("금일 수술", str(_today_op_total), "건", f"익일 예약 {_next_op}건", "#7C3AED")
         with _r2c3:
-            st.markdown(
-                f'<div class="kpi-card">'
-                f'<div class="kpi-label">익일 예약</div>'
-                f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 3px;">'
-                f'<span style="font-size:13px;color:#64748B;font-weight:500;">입원</span>'
-                f'<div style="display:flex;align-items:baseline;gap:2px;">'
-                f'<span style="font-size:28px;font-weight:800;color:{C["blue"]};font-variant-numeric:tabular-nums;line-height:1;">{_next_adm}</span>'
-                f'<span style="font-size:13px;color:#64748B;">명</span></div></div>'
-                f'<div style="height:1px;background:#F1F5F9;margin:2px 0;"></div>'
-                f'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:3px;">'
-                f'<span style="font-size:13px;color:#64748B;font-weight:500;">퇴원</span>'
-                f'<div style="display:flex;align-items:baseline;gap:2px;">'
-                f'<span style="font-size:28px;font-weight:800;color:#475569;font-variant-numeric:tabular-nums;line-height:1;">{_next_disc}</span>'
-                f'<span style="font-size:13px;color:#64748B;">명</span></div></div>'
-                f'<div style="font-size:11px;color:#94A3B8;margin-top:4px;">'
-                f"금일예약 {_adm_total}명 (완료 {_adm_done} / 대기 {_adm_total - _adm_done})</div>"
-                f"</div>",
-                unsafe_allow_html=True,
+            # [2026-05-08] 표준 fn-kpi 포맷으로 통일 — 다른 5개 카드와 동일 3-item 구조
+            # 메인: 익일 입원 예약 수 / 서브: 퇴원·금일예약 요약 / delta: 완료 건수
+            _kpi_card(
+                "익일 예약", str(_next_adm), "명",
+                f"퇴원 {_next_disc}명  ·  금일예약 {_adm_total}명",
+                C["indigo"],
+                delta=f"완료 {_adm_done}명",
             )
 
-        # ── KPI 하단: 빠른질문 버튼 + AI 채팅 ──────────────────────
-        # KPI 카드를 보고 판단한 뒤 바로 클릭 → 주간추이와 높이 자동 정렬
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        # ── [2026-05-08] 익일 병상 수용 현황 패널 ──────────────────────
+        # KPI 카드 2행 아래 빈 공간을 운영 핵심 지표로 채움
+        # _total_rest / _total_ndc_pre 는 _col_kpi 진입 전 이미 계산됨
+        _total_avail_p = _total_rest + _total_ndc_pre
+        _cap_pct_p     = round(_next_adm / max(_total_avail_p, 1) * 100)
+        _cap_c_p       = ("#EF4444" if _cap_pct_p >= 90
+                          else "#F59E0B" if _cap_pct_p >= 70 else "#16A34A")
+        _bar_fill      = min(100, _cap_pct_p)
 
-        # 빠른질문 버튼 5개 — 얇은 구분선 + 라벨
+        # [2026-05-08] KPI 2행↔수용현황 패널 간격 확대 6px → 14px
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
         st.markdown(
-            '<div style="border-top:1px solid #E2E8F0;padding-top:8px;margin-bottom:6px;">'
-            '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
-            'text-transform:uppercase;letter-spacing:.08em;">빠른 분석</span>'
-            '</div>',
+            # 패널 컨테이너 — wd-card 와 동일 외형이되 padding 축소
+            f'<div style="background:#F8FAFC;border:1px solid #E8EDF2;border-radius:10px;'
+            f'padding:10px 14px;flex:1;min-height:0;">'
+
+            # ① 타이틀 행 + 수용률 %
+            f'<div style="display:flex;align-items:center;'
+            f'justify-content:space-between;margin-bottom:7px;">'
+            f'<span style="font-size:9.5px;font-weight:700;color:#64748B;'
+            f'text-transform:uppercase;letter-spacing:.10em;">익일 병상 수용 현황</span>'
+            f'<span style="font-size:18px;font-weight:800;color:{_cap_c_p};">'
+            f'{_cap_pct_p}<span style="font-size:11px;font-weight:600;'
+            f'color:{_cap_c_p};margin-left:1px;">%</span></span>'
+            f'</div>'
+
+            # ② 수용률 프로그레스 바
+            f'<div style="height:5px;background:#E2E8F0;border-radius:3px;'
+            f'margin-bottom:9px;overflow:hidden;">'
+            f'<div style="width:{_bar_fill}%;height:100%;background:{_cap_c_p};'
+            f'border-radius:3px;"></div>'
+            f'</div>'
+
+            # ③ 3개 통계 — 가용 | 잔여 | 퇴원예고
+            f'<div style="display:flex;gap:0;">'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">가용 병상</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_avail_p}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">병상</span>'
+            f'</div></div>'
+
+            f'<div style="width:1px;background:#E8EDF2;margin:2px 0;flex-shrink:0;"></div>'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">잔여 병상</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_rest}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">병상</span>'
+            f'</div></div>'
+
+            f'<div style="width:1px;background:#E8EDF2;margin:2px 0;flex-shrink:0;"></div>'
+
+            f'<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:8.5px;color:#94A3B8;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">퇴원 예고</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0F172A;line-height:1;">'
+            f'{_total_ndc_pre}'
+            f'<span style="font-size:10px;color:#64748B;font-weight:500;margin-left:1px;">명</span>'
+            f'</div></div>'
+
+            f'</div>'  # /통계 row
+            f'</div>',  # /패널
             unsafe_allow_html=True,
         )
-        _quick_qs2 = [
-            ("익일 가용",     "익일 입원 예약 대비 가용 병상 현황을 분석하고, 부족 위험이 있는 병동을 알려주세요."),
-            ("입퇴원 분석",   "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
-            ("입원 상병 추세","최근 7일 주요 입원 상병 추세를 분석하고 특이사항을 알려주세요."),
-            ("재원환자 분석", "병동별 재원 환자 현황을 분석하고 장기 재원 위험 병동을 알려주세요."),
-            ("운영 요약",     "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
-        ]
-        _qb_cols = st.columns(len(_quick_qs2), gap="small")
-        for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
-            with _qb_cols[_qi2]:
-                if st.button(
-                    _ql2, key=f"qs_kpi_{_qi2}",
-                    use_container_width=True, type="secondary",
-                    help=_qv2[:40] + "...",
-                ):
-                    _DASH_MON.log_action("quick_btn", label=_ql2)
-                    st.session_state["ward_chat_quick_input"] = _qv2
-                    st.rerun()
-
-        # AI 채팅 — KPI 컬럼 내 하단에 배치 (높이 자동 확장)
-        st.markdown(
-            '<div style="margin-top:8px;border:1px solid #E2E8F0;border-radius:10px;'
-            'padding:12px 14px;background:#FAFBFC;flex:1;">',
-            unsafe_allow_html=True,
-        )
-        _render_ward_llm_chat(
-            kpi=_kpi_for_llm, bed_occ=[],
-            bed_detail=bed_detail_f, op_stat=op_stat_f,
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════
     # [v2.2] 주간 추이 7일 — 차트 선택기 통합
@@ -742,11 +760,10 @@ def _render_ward() -> None:
             _render_trend_chart(_trend_7, chart_type_trend, occupied, occ_rate)
         else:
             st.markdown(
-                '<div style="display:flex;align-items:center;justify-content:center;'
-                'min-height:160px;color:#94A3B8;flex-direction:column;gap:8px;">'
-                '<div style="font-size:28px;">📊</div>'
-                '<div style="font-size:13px;font-weight:600;">추이 데이터 없음</div>'
-                f'<div style="font-size:11px;color:#64748B;">'
+                '<div class="wd-empty">'
+                '<div style="font-size:24px;">📊</div>'
+                '<div style="font-size:12px;font-weight:600;">추이 데이터 없음</div>'
+                f'<div style="font-size:11px;">'
                 + ("Oracle 미연결" if not st.session_state.get("oracle_ok", False) else "V_WARD_KPI_TREND 확인")
                 + "</div></div>",
                 unsafe_allow_html=True,
@@ -882,9 +899,9 @@ def _render_ward() -> None:
                 )
             else:
                 body = (
-                    '<div style="padding:40px 20px;text-align:center;color:#94A3B8;">'
-                    '<div style="font-size:24px;margin-bottom:8px;">🏥</div>'
-                    '<div style="font-size:13px;font-weight:600;color:#64748B;">병동 현황 데이터 없음</div></div>'
+                    '<div class="wd-empty">'
+                    '<div style="font-size:24px;">🏥</div>'
+                    '<div style="font-size:12px;font-weight:600;">병동 현황 데이터 없음</div></div>'
                 )
             st.markdown(body, unsafe_allow_html=True)
 
@@ -1031,7 +1048,45 @@ def _render_ward() -> None:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ════════════════════════════════════════════════════════════
+    # [2026-05-08] Row 5: AI 분석 채팅 — 모든 시각화 아래 최하단 배치
+    # KPI 컬럼 내에 있던 채팅을 여기로 이동하여 옆 컬럼 빈 영역 제거
+    # ════════════════════════════════════════════════════════════
+    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="wd-card" style="padding:16px 18px;">', unsafe_allow_html=True)
 
+    # 빠른질문 버튼 5개 — 상단 구분선
+    st.markdown(
+        '<div style="border-bottom:1px solid #E2E8F0;padding-bottom:8px;margin-bottom:10px;">'
+        '<span style="font-size:10px;font-weight:700;color:#94A3B8;'
+        'text-transform:uppercase;letter-spacing:.08em;">🤖 AI 빠른 분석</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    _quick_qs2 = [
+        ("익일 가용",     "익일 입원 예약 대비 가용 병상 현황을 분석하고, 부족 위험이 있는 병동을 알려주세요."),
+        ("입퇴원 분석",   "금일 입원과 퇴원 현황을 분석하고 전일 대비 변화를 설명해주세요."),
+        ("입원 상병 추세","최근 7일 주요 입원 상병 추세를 분석하고 특이사항을 알려주세요."),
+        ("재원환자 분석", "병동별 재원 환자 현황을 분석하고 장기 재원 위험 병동을 알려주세요."),
+        ("운영 요약",     "오늘 병동 전체 운영 현황을 3줄로 요약해주세요."),
+    ]
+    _qb_cols = st.columns(len(_quick_qs2), gap="small")
+    for _qi2, (_ql2, _qv2) in enumerate(_quick_qs2):
+        with _qb_cols[_qi2]:
+            if st.button(
+                _ql2, key=f"qs_kpi_{_qi2}",
+                use_container_width=True, type="secondary",
+                help=_qv2[:40] + "...",
+            ):
+                _DASH_MON.log_action("quick_btn", label=_ql2)
+                st.session_state["ward_chat_quick_input"] = _qv2
+                st.rerun()
+
+    _render_ward_llm_chat(
+        kpi=_kpi_for_llm, bed_occ=[],
+        bed_detail=bed_detail_f, op_stat=op_stat_f,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 
@@ -1551,7 +1606,7 @@ def render_hospital_dashboard(tab: str = "ward") -> None:
             f'<div style="width:3px;height:22px;background:{C["blue"]};border-radius:2px;"></div>'
             f'<div>'
             f'<div style="font-size:9px;font-weight:700;color:{C["t4"]};'
-            f'text-transform:uppercase;letter-spacing:.15em;">좋은문화병원</div>'
+            f'text-transform:uppercase;letter-spacing:.15em;">{get_hospital_name()}</div>'
             f'<div style="font-size:17px;font-weight:800;color:{C["t1"]};'
             f'letter-spacing:-0.03em;">{_tab_name}</div>'
             f'</div></div>',

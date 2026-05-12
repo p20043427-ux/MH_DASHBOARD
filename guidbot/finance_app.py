@@ -41,6 +41,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from ui.theme import UITheme as T
 from ui.finance_dashboard import render_finance_dashboard
 from utils.logger import get_logger
@@ -54,8 +55,10 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 if sys.platform == "win32":
     try:
         import ctypes
+
         ctypes.windll.kernel32.SetPriorityClass(
-            ctypes.windll.kernel32.GetCurrentProcess(), 0x00008000,
+            ctypes.windll.kernel32.GetCurrentProcess(),
+            0x00008000,
         )
         logger.info("Windows 프로세스 우선순위: ABOVE_NORMAL 설정 완료")
     except Exception as _e:
@@ -66,7 +69,7 @@ if sys.platform == "win32":
 # 페이지 설정
 # ══════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="원무 현황 대시보드 | 좋은문화병원",
+    page_title=f"원무 현황 대시보드 | {get_hospital_name()}",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -81,6 +84,7 @@ if st.query_params.get("health", "") == "1":
     _h: dict = {"status": "ok", "app": "finance_dashboard", "ts": time.time()}
     try:
         from db.oracle_client import test_connection
+
         _ok, _msg = test_connection()
         _h["oracle"] = _ok
         _h["oracle_msg"] = _msg
@@ -89,6 +93,7 @@ if st.query_params.get("health", "") == "1":
         _h["oracle_msg"] = str(_e)
     try:
         import psutil
+
         _p = psutil.Process()
         _h["memory_rss_mb"] = round(_p.memory_info().rss / 1024 / 1024, 1)
         _h["system_memory_pct"] = psutil.virtual_memory().percent
@@ -114,7 +119,7 @@ def _render_sidebar() -> str:
             'margin-bottom:16px;">'
             '<span style="font-size:22px;">💼</span>'
             "<div>"
-            '<div style="font-size:14px;font-weight:700;color:#FFFFFF;">좋은문화병원</div>'
+            f'<div style="font-size:14px;font-weight:700;color:#FFFFFF;">{get_hospital_name()}</div>'
             '<div style="font-size:10px;color:rgba(255,255,255,0.5);">원무 현황 대시보드</div>'
             "</div></div>",
             unsafe_allow_html=True,
@@ -125,16 +130,17 @@ def _render_sidebar() -> str:
             _ok = False
             try:
                 from db.oracle_client import test_connection
+
                 _ok, _ = test_connection()
             except Exception:
                 pass
             st.session_state["fin_oracle_ok"] = _ok
 
         _oracle_ok = st.session_state.get("fin_oracle_ok", False)
-        _oc_bg  = "rgba(22,163,74,0.15)"  if _oracle_ok else "rgba(245,158,11,0.15)"
-        _oc_bd  = "rgba(22,163,74,0.3)"   if _oracle_ok else "rgba(245,158,11,0.3)"
+        _oc_bg = "rgba(22,163,74,0.15)" if _oracle_ok else "rgba(245,158,11,0.15)"
+        _oc_bd = "rgba(22,163,74,0.3)" if _oracle_ok else "rgba(245,158,11,0.3)"
         _oc_dot = "#16A34A" if _oracle_ok else "#F59E0B"
-        _oc_lbl = "Oracle 연결 정상"      if _oracle_ok else "Oracle 미연결"
+        _oc_lbl = "Oracle 연결 정상" if _oracle_ok else "Oracle 미연결"
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:6px;'
             f"background:{_oc_bg};border:1px solid {_oc_bd};"
@@ -150,7 +156,7 @@ def _render_sidebar() -> str:
         _last_ts = st.session_state.get("fin_last_ts", time.strftime("%Y-%m-%d %H:%M"))
         st.markdown(
             f'<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:16px;">'
-            f'마지막 갱신: {_last_ts}</div>',
+            f"마지막 갱신: {_last_ts}</div>",
             unsafe_allow_html=True,
         )
 
@@ -187,22 +193,25 @@ def _render_sidebar() -> str:
         # 시스템 모니터링 (psutil)
         try:
             import psutil
-            _proc    = psutil.Process()
-            _mem_mb  = round(_proc.memory_info().rss / 1024 / 1024, 0)
+
+            _proc = psutil.Process()
+            _mem_mb = round(_proc.memory_info().rss / 1024 / 1024, 0)
             _sys_mem = psutil.virtual_memory()
             _cpu_pct = psutil.cpu_percent(interval=None)
             _mem_color = (
-                "#EF4444" if _sys_mem.percent > 85
-                else "#F59E0B" if _sys_mem.percent > 70
+                "#EF4444"
+                if _sys_mem.percent > 85
+                else "#F59E0B"
+                if _sys_mem.percent > 70
                 else "rgba(255,255,255,0.45)"
             )
             st.markdown(
                 f'<div style="font-size:10px;color:rgba(255,255,255,0.45);">'
                 f'<div style="margin-bottom:3px;">🖥️ CPU: {_cpu_pct:.0f}%</div>'
                 f'<div style="margin-bottom:3px;color:{_mem_color};">'
-                f'💾 RAM: {_sys_mem.percent:.0f}% '
-                f'({round(_sys_mem.available/1024**3,1)}GB 여유)</div>'
-                f'<div>📦 이 앱: {_mem_mb:.0f} MB</div>'
+                f"💾 RAM: {_sys_mem.percent:.0f}% "
+                f"({round(_sys_mem.available / 1024**3, 1)}GB 여유)</div>"
+                f"<div>📦 이 앱: {_mem_mb:.0f} MB</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -220,13 +229,16 @@ def _render_sidebar() -> str:
                     'color:#4ADE80;margin-bottom:8px;">✓ 관리자 인증 완료</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("로그아웃", key="fin_admin_logout", use_container_width=True):
+                if st.button(
+                    "로그아웃", key="fin_admin_logout", use_container_width=True
+                ):
                     st.session_state["fin_role"] = "user"
                     logger.info("원무 대시보드 관리자 로그아웃")
                     st.rerun()
             else:
                 _pw = st.text_input(
-                    "패스워드", type="password",
+                    "패스워드",
+                    type="password",
                     key="fin_admin_pw",
                     placeholder="관리자 패스워드 입력",
                     label_visibility="collapsed",
@@ -241,7 +253,7 @@ def _render_sidebar() -> str:
                             st.markdown(
                                 '<div style="font-size:11px;color:#EF4444;'
                                 'font-weight:600;margin-top:4px;">'
-                                '패스워드가 올바르지 않습니다</div>',
+                                "패스워드가 올바르지 않습니다</div>",
                                 unsafe_allow_html=True,
                             )
                     except Exception as _e:
@@ -251,7 +263,7 @@ def _render_sidebar() -> str:
         st.markdown(
             '<div style="font-size:10px;color:rgba(255,255,255,0.25);'
             'text-align:center;padding-top:12px;">'
-            "원무 대시보드 v1.0<br>좋은문화병원 통계과"
+            f"원무 대시보드 v1.0<br>{get_hospital_name()} 통계과"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -283,6 +295,7 @@ def main() -> None:
         with tab_mon:
             try:
                 from ui.dashboard_log_viewer import render_dashboard_monitor
+
                 render_dashboard_monitor()
             except ImportError:
                 st.error("`ui/dashboard_log_viewer.py` 를 확인하세요.")
@@ -297,4 +310,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main() 
+    main()

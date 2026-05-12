@@ -28,13 +28,14 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
 # ── 페이지 설정 ───────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="관리자 대시보드 | 좋은문화병원",
+    page_title=f"관리자 대시보드 | {get_hospital_name()}",
     page_icon="⚙️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -288,7 +289,7 @@ def _sidebar() -> bool:
             'margin-bottom:16px;">'
             '<div style="font-size:22px;margin-bottom:6px;">⚙️</div>'
             '<div style="font-size:15px;font-weight:700;'
-            'color:#fff;letter-spacing:-0.3px;line-height:1.2;">좋은문화병원</div>'
+            f'color:#fff;letter-spacing:-0.3px;line-height:1.2;">{get_hospital_name()}</div>'
             '<div style="font-size:11px;font-weight:500;'
             'color:rgba(255,255,255,0.38);letter-spacing:0.05em;'
             'text-transform:uppercase;margin-top:3px;">Admin Dashboard</div>'
@@ -432,7 +433,7 @@ def _sidebar() -> bool:
         st.markdown(
             '<div style="font-size:10px;color:rgba(255,255,255,0.18);'
             'text-align:center;padding-top:20px;">'
-            'Admin Dashboard v3.0 · 좋은문화병원'
+            f'Admin Dashboard v3.0 · {get_hospital_name()}'
             '</div>',
             unsafe_allow_html=True,
         )

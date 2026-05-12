@@ -1,0 +1,36 @@
+{
+  "hospital_name": "좋은문화병원",
+  "search_modes": [
+    {
+      "id": "fast",
+      "label": "빠른 검색",
+      "meta": "빠른 응답"
+    },
+    {
+      "id": "standard",
+      "label": "표준 검색",
+      "meta": "균형 검색"
+    },
+    {
+      "id": "deep",
+      "label": "심층 검색",
+      "meta": "정밀 분석"
+    },
+    {
+      "id": "separator",
+      "label": "",
+      "meta": ""
+    },
+    {
+      "id": "data_analysis",
+      "label": "데이터 분석",
+      "meta": "Oracle DB · 차트"
+    }
+  ],
+  "shortcuts": {
+    "docs_label": "회람 문서",
+    "clinic_label": "진료",
+    "admin_label": "원무",
+    "nurse_label": "간호"
+  }
+}

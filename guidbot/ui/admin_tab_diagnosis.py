@@ -56,6 +56,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from ui.design import C, gap, section_header
 
 # ── HTML 헬퍼 ─────────────────────────────────────────────────────────────
@@ -756,7 +757,7 @@ def _tab_diagnosis() -> None:
         f'pointer-events:none;"></div>'
         f'<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.45);'
         f'letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px;">'
-        f'좋은문화병원 AI 시스템</div>'
+        f'{get_hospital_name()} AI 시스템</div>'
         f'<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:6px;">'
         f'🔐 보안 · 품질 · 기술부채 진단</div>'
         f'<div style="font-size:12px;color:rgba(255,255,255,0.5);">'

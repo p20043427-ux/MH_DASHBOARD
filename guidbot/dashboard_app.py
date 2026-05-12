@@ -24,8 +24,10 @@ from pathlib import Path
 import streamlit as st
 
 from config.settings import settings
+from config.ui_labels import get_hospital_name  # [2026-05-11] 병원명 동적 로딩
 from ui.theme import UITheme as T
 from ui.hospital_dashboard import render_hospital_dashboard
+from ui.hospital_dashboard_v2 import render_ward_v2          # [2026-05-09] v2 신규
 from utils.logger import get_logger
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
@@ -51,7 +53,7 @@ if sys.platform == "win32":
 # 페이지 설정
 # ══════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="병동 현황 대시보드 | 좋은문화병원",
+    page_title=f"병동 현황 대시보드 | {get_hospital_name()}",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -404,7 +406,7 @@ def _render_mini_sidebar() -> str:
             'margin-bottom:16px;">'
             '<span style="font-size:22px;">🏥</span>'
             "<div>"
-            '<div style="font-size:14px;font-weight:700;color:#FFFFFF;">좋은문화병원</div>'
+            f'<div style="font-size:14px;font-weight:700;color:#FFFFFF;">{get_hospital_name()}</div>'
             '<div style="font-size:10px;color:rgba(255,255,255,0.5);">병동 현황 대시보드</div>'
             "</div></div>",
             unsafe_allow_html=True,
@@ -688,7 +690,7 @@ def _render_mini_sidebar() -> str:
         st.markdown(
             '<div style="font-size:10px;color:rgba(255,255,255,0.25);'
             'text-align:center;padding-top:12px;">'
-            "병동 대시보드 v3.0<br>좋은문화병원 통계과"
+            f"병동 대시보드 v3.0<br>{get_hospital_name()} 통계과"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -723,27 +725,42 @@ def main() -> None:
         st.session_state["dash_last_ts"] = time.strftime("%Y-%m-%d %H:%M")
 
     # ── 탭 구성 ─────────────────────────────────────────────────────
+    # [2026-05-09] v2 탭 추가 — 관리자/일반 모두 v1·v2 선택 가능
     if current_role == "admin":
-        # 관리자: 병동 대시보드 + 모니터링
-        tab_dash, tab_mon, tab_docs = st.tabs(
-            ["🏥 병동 대시보드", "📊 모니터링", "📚 벡터DB 문서"]
+        tab_v2, tab_dash, tab_mon, tab_docs = st.tabs(
+            ["🏥 병동 현황 v2", "🗂️ 병동 현황 v1", "📊 모니터링", "📚 벡터DB 문서"]
+        )
+    else:
+        tab_v2, tab_dash = st.tabs(
+            ["🏥 병동 현황 v2", "🗂️ 병동 현황 v1"]
         )
 
-        with tab_dash:
-            try:
-                render_hospital_dashboard(tab="ward")
-            except Exception as e:
-                st.error(
-                    f"대시보드 로드 오류\n\n{e}\n\n"
-                    f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
-                )
-                logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
+    # ── v2 탭 ──────────────────────────────────────────────────────
+    with tab_v2:
+        try:
+            render_ward_v2()
+        except Exception as _e2:
+            st.error(
+                f"v2 대시보드 로드 오류\n\n{_e2}\n\n"
+                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
+            )
+            logger.error(f"render_ward_v2 오류: {_e2}", exc_info=True)
 
+    # ── v1 탭 ──────────────────────────────────────────────────────
+    with tab_dash:
+        try:
+            render_hospital_dashboard(tab="ward")
+        except Exception as e:
+            st.error(
+                f"대시보드 로드 오류\n\n{e}\n\n"
+                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
+            )
+            logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
+
+    if current_role == "admin":
         with tab_mon:
-            # ── 사용자 활동 모니터링 뷰어 ──────────────────────────
             try:
                 from ui.dashboard_log_viewer import render_dashboard_monitor
-
                 render_dashboard_monitor()
             except ImportError:
                 st.error(
@@ -756,17 +773,6 @@ def main() -> None:
 
         with tab_docs:
             _render_vdb_doc_list()
-
-    else:
-        # 일반 유저: 탭 없이 바로 병동 대시보드
-        try:
-            render_hospital_dashboard(tab="ward")
-        except Exception as e:
-            st.error(
-                f"대시보드 로드 오류\n\n{e}\n\n"
-                f"Oracle 연결 상태를 확인하거나 관리자에게 문의하세요."
-            )
-            logger.error(f"dashboard_app 렌더 오류: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
