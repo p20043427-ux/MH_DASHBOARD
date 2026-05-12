@@ -718,6 +718,15 @@ class AppSettings(BaseSettings):
         ),
     )
 
+    ward_v2_url: str = Field(
+        default="http://localhost:8506/",
+        description=(
+            "병동 대시보드 v2 독립 실행 앱(ward_v2_app.py) 접속 URL. "
+            "관리자 운영현황 탭의 서비스 실행 버튼에 사용됩니다. "
+            ".env: WARD_V2_URL=http://192.1.1.231:8506/"
+        ),
+    )
+
     docs_url: str = Field(
         default="",
         description=(

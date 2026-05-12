@@ -388,6 +388,7 @@ def _check_all_ports() -> Dict[str, bool]:
         "chatbot":   settings.chatbot_url,
         "finance":   settings.finance_url,
         "admin":     settings.admin_url,
+        "ward_v2":   settings.ward_v2_url,
     }
     result: Dict[str, bool] = {}
     for key, url in urls.items():
@@ -733,15 +734,23 @@ def _tab_ops() -> None:
     )
 
     # (url, icon, name, desc, svc_key, app_file, port)
+    # [2026-05-11] 포트: 하드코딩 제거 → settings URL 에서 동적 추출
+    def _port_of(url: str, fallback: int) -> int:
+        try:
+            from urllib.parse import urlparse as _up
+            return _up(url).port or fallback
+        except Exception:
+            return fallback
+
     svcs = [
         (settings.dashboard_url, "🏥", "병동 대시보드",   "입퇴원 현황 · 병동 KPI · 환자 흐름 분석",
-         "dashboard", "dashboard_app.py", 8501),
-        (settings.chatbot_url,   "💬", "AI 챗봇",          "규정·지침 RAG 검색 · Gemini LLM 연동",
-         "chatbot",   "main.py",          8502),
-        (settings.finance_url,   "💼", "원무 대시보드",    "수납·미수금 · 외래 통계 · 지역 분석",
-         "finance",   "finance_app.py",   8503),
-        (settings.admin_url,     "⚙️", "관리자 대시보드",  "로그 · 벡터DB · 문서 관리  ★ 현재",
-         "admin",     "admin_app.py",     8504),
+         "dashboard", "dashboard_app.py", _port_of(settings.dashboard_url, 8501)),
+        (settings.chatbot_url,   "💬", "AI 챗봇",         "규정·지침 RAG 검색 · Gemini LLM 연동",
+         "chatbot",   "main.py",          _port_of(settings.chatbot_url,   8502)),
+        (settings.finance_url,   "💼", "원무 대시보드",   "수납·미수금 · 외래 통계 · 지역 분석",
+         "finance",   "finance_app.py",   _port_of(settings.finance_url,   8503)),
+        (settings.admin_url,     "⚙️", "관리자 대시보드", "로그 · 벡터DB · 문서 관리  ★ 현재",
+         "admin",     "admin_app.py",     _port_of(settings.admin_url,     8504)),
     ]
 
     sc = st.columns(4, gap="small")
@@ -2046,39 +2055,157 @@ def _tab_settings() -> None:
             'padding:6px 0;">📁 모든 필수 폴더가 이미 존재합니다.</div>'
         )
 
-    # ── 섹션 2: 서비스 URL ───────────────────────────────────────────────
+    # ── 섹션 2: 서비스 IP / 포트 설정 ──────────────────────────────────
+    # [2026-05-11] 서버 IP + 서비스별 포트 분리 입력 → URL 자동 조합 저장
     gap(16)
     st.divider()
-    section_header("서비스 URL", "앱 간 이동 링크 · Google 문서 바로가기", C["teal"])
+    section_header(
+        "서비스 IP / 포트 설정",
+        "서버 IP 한 번 입력 · 서비스별 포트 지정 → URL 자동 생성",
+        C["teal"],
+    )
 
-    with st.form("cfg_urls", border=False):
-        cu1, cu2 = st.columns(2, gap="medium")
-        with cu1:
-            _u_dash  = st.text_input("병동 대시보드 (DASHBOARD_URL)",
-                                     value=settings.dashboard_url,
-                                     placeholder="http://192.168.1.100:8501/")
-            _u_chat  = st.text_input("챗봇 (CHATBOT_URL)",
-                                     value=settings.chatbot_url,
-                                     placeholder="http://192.168.1.100:8502/")
-            _u_fin   = st.text_input("원무 대시보드 (FINANCE_URL)",
-                                     value=settings.finance_url,
-                                     placeholder="http://192.168.1.100:8503/")
-            _u_admin = st.text_input("관리자 (ADMIN_URL)",
-                                     value=settings.admin_url,
-                                     placeholder="http://192.168.1.100:8504/")
-        with cu2:
-            _u_docs   = st.text_input("회람 문서 URL (DOCS_URL)",
-                                      value=settings.docs_url or "",
-                                      placeholder="https://docs.google.com/document/d/...")
-            _u_gdrive = st.text_input("벡터DB 드라이브 URL (GDRIVE_VDB_FOLDER_URL)",
-                                      value=settings.gdrive_vdb_folder_url or "",
-                                      placeholder="https://drive.google.com/drive/folders/...")
-        if st.form_submit_button("URL 저장", type="primary"):
-            for _k, _v in [
-                ("DASHBOARD_URL", _u_dash), ("CHATBOT_URL", _u_chat),
-                ("FINANCE_URL",   _u_fin),  ("ADMIN_URL",   _u_admin),
-                ("DOCS_URL",      _u_docs), ("GDRIVE_VDB_FOLDER_URL", _u_gdrive),
-            ]:
+    # 현재 저장된 URL에서 IP / 프로토콜 / 포트 추출 헬퍼
+    def _parse_url(url: str):
+        from urllib.parse import urlparse as _up
+        try:
+            _p = _up(url)
+            return (
+                _p.scheme  or "http",
+                _p.hostname or "localhost",
+                _p.port    or 80,
+            )
+        except Exception:
+            return "http", "localhost", 80
+
+    # 기준 URL에서 공통 IP·프로토콜 추출 (dashboard_url 기준)
+    _ref_scheme, _ref_ip, _ = _parse_url(settings.dashboard_url)
+    _, _ip_chat,    _port_chat    = _parse_url(settings.chatbot_url)
+    _, _ip_fin,     _port_fin     = _parse_url(settings.finance_url)
+    _, _ip_admin,   _port_admin   = _parse_url(settings.admin_url)
+    _, _ip_v2,      _port_v2      = _parse_url(settings.ward_v2_url)
+    _, _ip_dash,    _port_dash    = _parse_url(settings.dashboard_url)
+
+    with st.form("cfg_service_network", border=False):
+        # ─ 공통 IP + 프로토콜 ─
+        _nc1, _nc2 = st.columns([5, 1], gap="medium")
+        with _nc1:
+            _svc_ip = st.text_input(
+                "🌐 서버 IP 주소",
+                value=_ref_ip,
+                placeholder="192.168.1.100",
+                help="모든 서비스가 동일 서버에서 실행될 때 공통 IP를 입력합니다.",
+            )
+        with _nc2:
+            _svc_proto = st.selectbox(
+                "프로토콜",
+                options=["http", "https"],
+                index=0 if _ref_scheme == "http" else 1,
+                help="내부망은 http, 외부 공개 시 https",
+            )
+
+        gap(10)
+
+        # ─ 서비스별 포트 입력 테이블 헤더 ─
+        _html(
+            '<div style="display:grid;grid-template-columns:2fr 2.5fr 1fr 3.5fr;'
+            'gap:6px;padding:6px 8px;background:#F1F5F9;border-radius:6px 6px 0 0;'
+            'border:1px solid #E2E8F0;border-bottom:none;margin-top:6px;">'
+            '<span style="font-size:11px;font-weight:700;color:#475569;">서비스</span>'
+            '<span style="font-size:11px;font-weight:700;color:#475569;">실행 파일</span>'
+            '<span style="font-size:11px;font-weight:700;color:#475569;">포트</span>'
+            '<span style="font-size:11px;font-weight:700;color:#475569;">현재 저장된 URL</span>'
+            '</div>'
+        )
+
+        # ─ 서비스 정의 ─
+        _SVC_DEFS = [
+            ("🏥", "병동 대시보드",   "dashboard_app.py", "DASHBOARD_URL", _port_dash, settings.dashboard_url),
+            ("💬", "AI 챗봇",        "main.py",           "CHATBOT_URL",   _port_chat, settings.chatbot_url),
+            ("💼", "원무 대시보드",   "finance_app.py",    "FINANCE_URL",   _port_fin,  settings.finance_url),
+            ("⚙️", "관리자",          "admin_app.py",      "ADMIN_URL",     _port_admin,settings.admin_url),
+            ("🏥", "병동 v2 (독립)",  "ward_v2_app.py",    "WARD_V2_URL",   _port_v2,   settings.ward_v2_url),
+        ]
+
+        _port_inputs: dict = {}
+        for _si, (_ico, _sname, _sfile, _senv, _scurport, _scururl) in enumerate(_SVC_DEFS):
+            _row_bg = "#FFFFFF" if _si % 2 == 0 else "#F8FAFC"
+            _sc1, _sc2, _sc3, _sc4 = st.columns([2, 2.5, 1, 3.5], gap="small")
+            with _sc1:
+                _html(
+                    f'<div style="background:{_row_bg};padding:8px 8px;'
+                    f'border-left:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;">'
+                    f'<span style="font-size:13px;">{_ico}</span>'
+                    f'<span style="font-size:11.5px;font-weight:600;color:#1E293B;'
+                    f'margin-left:5px;">{_sname}</span></div>'
+                )
+            with _sc2:
+                _html(
+                    f'<div style="background:{_row_bg};padding:8px 8px;'
+                    f'border-bottom:1px solid #E2E8F0;">'
+                    f'<code style="font-size:10.5px;color:#6366F1;">{_sfile}</code>'
+                    f'<br><span style="font-size:9.5px;color:#94A3B8;">{_senv}</span>'
+                    f'</div>'
+                )
+            with _sc3:
+                _port_inputs[_senv] = st.number_input(
+                    f"포트_{_senv}",
+                    min_value=1024,
+                    max_value=65535,
+                    value=_scurport,
+                    step=1,
+                    key=f"svc_port_{_senv}",
+                    label_visibility="collapsed",
+                )
+            with _sc4:
+                _html(
+                    f'<div style="background:{_row_bg};padding:8px 8px;'
+                    f'border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;">'
+                    f'<code style="font-size:9.5px;color:#64748B;">{_scururl}</code>'
+                    f'</div>'
+                )
+
+        gap(10)
+        _ns_saved = st.form_submit_button("🔗 서비스 URL 저장", type="primary")
+        if _ns_saved:
+            _ip_clean = (_svc_ip or "localhost").strip().rstrip("/")
+            _ok_list, _fail_list = [], []
+            for _ico, _sname, _sfile, _senv, _scurport, _scururl in _SVC_DEFS:
+                _new_port = _port_inputs[_senv]
+                _new_url  = f"{_svc_proto}://{_ip_clean}:{int(_new_port)}/"
+                if _save_env_value(_senv, _new_url):
+                    _ok_list.append(f"{_sname}: {_new_url}")
+                else:
+                    _fail_list.append(_sname)
+            if _ok_list:
+                st.success("✅ 저장 완료 — 앱 재시작 시 반영됩니다.\n\n" +
+                           "\n".join(f"  · {x}" for x in _ok_list))
+            if _fail_list:
+                st.error("❌ 저장 실패: " + ", ".join(_fail_list))
+            logger.info(f"[서비스 URL 저장] IP={_ip_clean}, 프로토콜={_svc_proto}")
+
+    # ─ Google 외부 링크 (Docs / Drive) — 별도 폼 ─
+    gap(12)
+    _html(
+        '<div style="font-size:11.5px;font-weight:700;color:#1E293B;'
+        'margin-bottom:8px;">🔗 외부 링크 (Google Docs / Drive)</div>'
+    )
+    with st.form("cfg_ext_links", border=False):
+        _el1, _el2 = st.columns(2, gap="medium")
+        with _el1:
+            _u_docs = st.text_input(
+                "회람 문서 URL (DOCS_URL)",
+                value=settings.docs_url or "",
+                placeholder="https://docs.google.com/document/d/...",
+            )
+        with _el2:
+            _u_gdrive = st.text_input(
+                "벡터DB 드라이브 URL (GDRIVE_VDB_FOLDER_URL)",
+                value=settings.gdrive_vdb_folder_url or "",
+                placeholder="https://drive.google.com/drive/folders/...",
+            )
+        if st.form_submit_button("링크 저장"):
+            for _k, _v in [("DOCS_URL", _u_docs), ("GDRIVE_VDB_FOLDER_URL", _u_gdrive)]:
                 _save_env_value(_k, _v.strip())
             st.success("저장 완료 — 앱 재시작 시 반영됩니다.")
 
