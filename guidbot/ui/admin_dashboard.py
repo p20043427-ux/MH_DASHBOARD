@@ -1927,6 +1927,92 @@ def _tab_settings() -> None:
             f'<code style="font-size:10px;">{_p}</code></div>'
         )
 
+    # ── 섹션 ★: 필수 폴더 관리 ─────────────────────────────────────────
+    # [2026-05-11] 프로젝트 실행에 필요한 폴더 현황 조회 + 일괄 생성
+    gap(16)
+    st.divider()
+    section_header("필수 폴더 관리", "프로젝트 실행에 필요한 폴더 현황 · 없는 폴더 자동 생성", C["green"])
+
+    _REQUIRED_DIRS: list = [
+        (settings.local_cache_path,  "data_cache",             "HuggingFace 임베딩 모델 캐시"),
+        (settings.local_work_dir,    "data_rag_working",       "PDF 작업본 (G드라이브 동기화 또는 직접 업로드)"),
+        (settings.dept_work_dir,     "data_rag_working/depts", "부서별 PDF 작업 경로"),
+        (settings.rag_db_path,       "vector_store",           "FAISS 벡터 DB"),
+        (settings.dept_db_path,      "vector_store/depts",     "부서별 FAISS 인덱스"),
+        (settings.schema_db_path,    "vector_store/schema_db", "DB 스키마 인덱스"),
+        (settings.query_db_path,     "vector_store/query_db",  "쿼리 예제 인덱스"),
+        (settings.doc_db_path,       "vector_store/doc_db",    "개발 문서 인덱스"),
+        (settings.backup_dir,        "vector_store_backup",    "벡터DB 자동 백업"),
+        (settings.docs_dir,          "docs",                   "문서 루트 폴더"),
+        (settings.db_docs_dir,       "docs/db_manuals",        "DB 명세서 PDF"),
+        (settings.markdown_dir,      "docs/markdown",          "PDF→Markdown 변환 캐시"),
+        (settings.log_dir,           "logs",                   "모듈별 일별 로그"),
+        (settings.cms_dir,           "cms_data",               "CMS 서비스 데이터"),
+    ]
+
+    _fd_missing = [(_p, _r, _d) for _p, _r, _d in _REQUIRED_DIRS if not _p.exists()]
+    _fd_total   = len(_REQUIRED_DIRS)
+    _fd_ok_cnt  = _fd_total - len(_fd_missing)
+
+    # ─ 요약 배너 ─
+    _fd_all_ok  = len(_fd_missing) == 0
+    _fd_bg  = "rgba(22,163,74,0.08)"  if _fd_all_ok else "rgba(234,179,8,0.10)"
+    _fd_bd  = "rgba(22,163,74,0.25)"  if _fd_all_ok else "rgba(234,179,8,0.30)"
+    _fd_ico = "✅" if _fd_all_ok else "⚠️"
+    _fd_msg = (f"모든 {_fd_total}개 폴더 정상"
+               if _fd_all_ok else
+               f"{len(_fd_missing)}개 폴더 없음 ({_fd_ok_cnt}/{_fd_total} 존재)")
+    _html(
+        f'<div style="display:flex;align-items:center;gap:8px;'
+        f'background:{_fd_bg};border:1px solid {_fd_bd};'
+        f'border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
+        f'<span style="font-size:16px;">{_fd_ico}</span>'
+        f'<span style="font-size:12px;font-weight:600;color:#1E293B;">{_fd_msg}</span>'
+        f'</div>'
+    )
+
+    # ─ 폴더 목록 테이블 ─
+    _fd_rows = []
+    for _fd_path, _fd_rel, _fd_desc in _REQUIRED_DIRS:
+        _fd_exists = _fd_path.exists()
+        _fd_bk = badge_html("존재", "ok") if _fd_exists else badge_html("없음", "warn")
+        _fd_rows.append([
+            _fd_bk,
+            f'<code style="font-size:10.5px;white-space:nowrap;">{_fd_rel}</code>',
+            f'<span style="font-size:11px;color:#64748B;">{_fd_desc}</span>',
+            f'<code style="font-size:9.5px;color:#94A3B8;word-break:break-all;">{_fd_path}</code>',
+        ])
+    _html(_table(["상태", "폴더명", "용도", "전체 경로"], _fd_rows, "11px"))
+
+    gap(8)
+    if _fd_missing:
+        if st.button(
+            f"📁 누락 폴더 {len(_fd_missing)}개 모두 생성",
+            type="primary",
+            key="btn_create_dirs",
+            help="없음 표시된 모든 폴더를 mkdir -p 로 생성합니다.",
+        ):
+            _fd_created, _fd_failed = [], []
+            for _fd_path, _fd_rel, _ in _REQUIRED_DIRS:
+                if not _fd_path.exists():
+                    try:
+                        _fd_path.mkdir(parents=True, exist_ok=True)
+                        _fd_created.append(_fd_rel)
+                        logger.info(f"[폴더 생성] {_fd_path}")
+                    except Exception as _fd_e:
+                        _fd_failed.append(f"{_fd_rel}: {_fd_e}")
+                        logger.error(f"[폴더 생성 실패] {_fd_path}: {_fd_e}")
+            if _fd_created:
+                st.success(f"✅ {len(_fd_created)}개 폴더 생성: " + "  ·  ".join(_fd_created))
+            if _fd_failed:
+                st.error("❌ 생성 실패\n" + "\n".join(_fd_failed))
+            st.rerun()
+    else:
+        _html(
+            '<div style="font-size:12px;color:rgba(22,163,74,0.85);font-weight:600;'
+            'padding:6px 0;">📁 모든 필수 폴더가 이미 존재합니다.</div>'
+        )
+
     # ── 섹션 2: 서비스 URL ───────────────────────────────────────────────
     gap(16)
     st.divider()

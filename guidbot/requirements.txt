@@ -1,6 +1,6 @@
 # ======================================================================
 # 가이드봇 (병원 규정 RAG 챗봇) — requirements.txt
-# 마지막 검토: 2026-04-28
+# 마지막 검토: 2026-05-11
 # Python: 3.10 ~ 3.12 권장  (3.13 미검증)
 #
 # [설치]
@@ -36,6 +36,7 @@ requests>=2.31.0              # 지도 GeoJSON HTTP 요청 (대한민국 시군�
 # -- LLM — Google Gemini -----------------------------------------------
 google-genai>=1.10.0          # Gemini API SDK (google.genai, google.genai.types)
                               # 1.10+ : 스트리밍·thinking 파라미터 안정화
+# ※ 구버전 google-generativeai 와 충돌 주의 — 둘 중 하나만 설치
 
 
 # -- RAG 파이프라인 — LangChain ----------------------------------------
@@ -56,8 +57,12 @@ rank-bm25>=0.2.2              # BM25 키워드 검색 (하이브리드 RAG)
 sentence-transformers>=3.0.0  # jhgan/ko-sroberta 임베딩 + CE 리랭킹
                               # bongsoo/kpf-cross-encoder-v1 등
 transformers>=4.40.0          # HuggingFace 모델 로더 (sentence-transformers 핵심 의존)
-                              # tokenizers / safetensors 는 이 패키지가 자동 설치
+tokenizers>=0.19.0            # HuggingFace 토크나이저 (transformers 의존, 명시 권장)
+huggingface-hub>=0.23.0       # 모델 다운로드·캐시 관리 (sentence-transformers 의존)
+safetensors>=0.4.3            # 안전한 텐서 포맷 로더 (transformers 의존, 명시 권장)
 scikit-learn>=1.4.0           # 코사인 유사도·정규화 (sentence-transformers 의존)
+accelerate>=0.30.0            # HuggingFace 모델 가속 로더
+                              # 일부 cross-encoder·임베딩 모델 로드 시 필수
 
 
 # -- 딥러닝 런타임 -----------------------------------------------------
@@ -75,6 +80,10 @@ numpy>=1.26.0                 # 벡터 연산, FAISS 인터페이스
 # -- PDF 처리 ----------------------------------------------------------
 pypdf>=4.0.0                  # PDF 텍스트 추출 (PyPDFLoader 기본 모드)
 pdfplumber>=0.10.0            # PDF 표 구조 보존 추출 (--use-markdown 모드)
+                              # 한국어 PDF 표·헤더 경계 청킹에 권장
+pypdfium2>=4.0.0              # Chromium PDFium 기반 PDF 추출
+                              # pdfplumber 실패 페이지 fallback
+                              # (core/pdf_to_markdown.py 에서 try/except 사용)
 
 
 # -- Oracle DB 연동 ----------------------------------------------------
