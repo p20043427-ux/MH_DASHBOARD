@@ -413,18 +413,31 @@ def _rebuild_rag_index() -> None:
     import sys
 
     # build_db.main() 을 직접 호출 (argparse Namespace 직접 생성)
+    # [2026-05-11] build_db v3.2~3.3 추가 속성 누락 오류 수정
     try:
-        from build_db import main as build_main, parse_args
+        from build_db import main as build_main
 
         ns = argparse.Namespace(
+            # ── 경로 ──────────────────────────────────────────
+            source_dir=settings.rag_source_path,
+            db_docs_dir=settings.db_docs_dir,
+            # ── 동기화·스키마 건너뜀 (UI 호출 시 G드라이브 미접속) ──
+            no_sync=True,
+            no_db_schema=True,
+            no_db_docs=False,
+            db_docs_only=False,
+            # ── v3.2 Markdown 청킹 옵션 ───────────────────────
+            use_markdown=False,
+            chunk_size=800,
+            overlap=150,
+            # ── v3.3 부서별 재구축 옵션 ───────────────────────
+            dept=None,
+            no_merge=False,
+            # ── 호환성 유지용 ─────────────────────────────────
             source="docs",
             force=False,
             verbose=False,
         )
-        # parse_args 시그니처에 맞게 필요 속성 추가
-        for attr in ["source", "force", "verbose"]:
-            if not hasattr(ns, attr):
-                setattr(ns, attr, None)
         build_main(ns)
     except TypeError:
         # argparse Namespace 불일치 시 — build_db 의 기본값으로 실행
