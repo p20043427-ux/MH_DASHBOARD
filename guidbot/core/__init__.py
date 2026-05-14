@@ -26,7 +26,27 @@ core 패키지 ─ RAG 파이프라인 핵심 모듈
 from core.retriever import RankedDocument
 from core.rag_pipeline import RAGPipeline, PipelineResult, get_pipeline
 from core.vector_store import VectorStoreManager
-from core.llm import get_llm_client
+
+# [2026-05-14] LLM 임포트 방어 처리 ─────────────────────────────────────
+# google-genai 패키지 미설치 시 LLM 로드 실패가 나머지 모듈 전체를 죽이는
+# 연쇄 실패(ModuleNotFoundError cascade)를 방지한다.
+# get_llm_client 가 실제로 호출될 때 ImportError 가 발생하도록 지연 처리.
+try:
+    from core.llm import get_llm_client
+except ImportError as _llm_import_err:          # google.genai 미설치 등
+    import warnings as _w
+    _w.warn(
+        f"[core] LLM 모듈 로드 실패 — LLM 기능을 사용할 수 없습니다. "
+        f"원인: {_llm_import_err}  |  해결: pip install 'google-genai>=1.10.0'",
+        ImportWarning,
+        stacklevel=2,
+    )
+    def get_llm_client(*_a, **_kw):             # noqa: E302 — 더미 함수
+        raise RuntimeError(
+            "google-genai 패키지가 설치되지 않아 LLM 기능을 사용할 수 없습니다. "
+            "pip install 'google-genai>=1.10.0' 를 실행하세요."
+        ) from _llm_import_err
+# ─────────────────────────────────────────────────────────────────────────
 
 __all__ = [
     "RankedDocument",

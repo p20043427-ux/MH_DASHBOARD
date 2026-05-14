@@ -76,6 +76,8 @@ from ui.design import (
 from ui.admin_tab_diagnosis import _tab_diagnosis
 # ── 매뉴얼 뷰어 탭 (v5.4 추가) ─────────────────────────────────────────
 from ui.admin_tab_manual import _tab_manual
+# ── RAG 튜닝·검증 탭 (v5.5 추가) [2026-05-14] ───────────────────────────
+from ui.admin_tab_rag_tuning import _tab_rag_tuning
 
 logger = get_logger(__name__, log_dir=settings.log_dir)
 
@@ -2741,12 +2743,12 @@ def render_admin_dashboard() -> None:
     # 세션 등록 — 모든 탭 렌더 전에 호출해야 매 rerun 마다 timestamp 갱신
     _register_session()
 
-    # [v5.4] 매뉴얼 탭(t10) 추가 — docs/ 폴더 뷰어 + 다운로드
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+    # [v5.5] RAG 튜닝 탭(t11) 추가 — 쿼리 테스트·이력·용어사전 [2026-05-14]
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
         "🖥️ 운영 현황",   "📋 로그 뷰어",  "🗄️ 벡터DB 관리",
         "📄 문서 관리",   "⚙️ 시스템 정보",
         "🤖 챗봇 관리",   "📊 모니터링",   "🔧 환경설정",
-        "🔐 보안·진단",   "📚 매뉴얼",
+        "🔐 보안·진단",   "📚 매뉴얼",    "🔍 RAG 튜닝",
     ])
     with t1:  _tab_ops()
     with t2:  _tab_logs()
@@ -2758,3 +2760,4 @@ def render_admin_dashboard() -> None:
     with t8:  _tab_settings()
     with t9:  _tab_diagnosis()   # [v5.3] CTO 관점 정밀 진단
     with t10: _tab_manual()      # [v5.4] docs/ 매뉴얼 뷰어 + 다운로드
+    with t11: _tab_rag_tuning()  # [v5.5] RAG 튜닝·검증·용어사전 [2026-05-14]
