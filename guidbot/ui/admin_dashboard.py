@@ -1,6 +1,15 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.4  (2026-05-07)
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.5  (2026-05-14)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v5.5 변경 — 2026-05-14]
+  · 로그 뷰어 v3: 앱별 카테고리 분류
+    - 탭: 💼 원무 대시보드 / 🏥 간호·병동 / 💬 챗봇 / ⚙️ 관리자 / 📁 파일 관리
+    - _LOG_APP_GROUPS: 카테고리↔모듈 매핑 상수 (중앙 관리)
+    - _render_log_browser(): 공통 뷰어 함수 (탭별 코드 중복 제거)
+    - 각 카테고리에 없는 모듈은 자동 필터링
+    - 세션스테이트 키 충돌 방지: kp(카테고리 인덱스) 기반 분리
+  · 로그 뷰어 v2 기능 유지 (엔트리 테이블·배지·페이지네이션·파일 관리)
+
 [v5.4 변경 — 2026-05-07]
   · 📚 매뉴얼 탭 추가: docs/ 폴더 문서 인라인 뷰어 + 다운로드
     - admin_tab_manual.py 연결
@@ -35,8 +44,10 @@ ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.4  (202
 
 from __future__ import annotations
 
+import html as _html_lib  # [2026-05-14] 로그뷰어 HTML 이스케이프
 import json
 import platform
+import re as _re_log        # [2026-05-14] 로그 엔트리 파싱 정규식
 import sys
 import time
 from datetime import datetime, timedelta
@@ -195,21 +206,94 @@ _ADMIN_CSS: str = """
 .adm-info-lbl { color: #64748B; font-weight: 400; flex-shrink: 0; }
 .adm-info-val { color: #0F172A; font-weight: 600; text-align: right; word-break: break-all; max-width: 62%; }
 
-/* ── 로그 박스 ─── */
-.adm-log {
-  background: #0F172A; border: 1px solid rgba(255,255,255,.07);
-  border-radius: 10px; padding: 14px 16px;
-  font-size: 11.5px; line-height: 1.75;
-  max-height: 520px; overflow-y: auto; overflow-x: auto;
+/* ── 로그 뷰어 v2 — 구조형 테이블 [2026-05-14] ─── */
+/* 엔트리 테이블 */
+.lv-scroll {
+  max-height: 560px; overflow-y: auto;
+  border: 1px solid #E2E8F0; border-radius: 10px;
 }
-.adm-log pre {
-  margin: 0; white-space: pre-wrap; word-break: break-all;
-  font-family: "IBM Plex Mono", Consolas, "Courier New", monospace !important;
+.lv-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px; table-layout: fixed;
 }
-.adm-le { color: #fc8181; }
-.adm-lw { color: #fcd34d; }
-.adm-li { color: #6ee7b7; }
-.adm-ld { color: rgba(148,163,184,.55); }
+.lv-th {
+  position: sticky; top: 0; z-index: 1;
+  background: #F8FAFC; color: #475569;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  padding: 8px 10px; text-align: left;
+  border-bottom: 2px solid #E2E8F0; white-space: nowrap;
+}
+.lv-td {
+  padding: 6px 10px; border-bottom: 1px solid #F1F5F9;
+  vertical-align: top; color: #1E293B;
+}
+.lv-row:hover td { background: #F8FAFC; }
+.lv-row-error  td { background: rgba(254,226,226,.30); }
+.lv-row-error:hover  td { background: rgba(254,226,226,.55); }
+.lv-row-warning td { background: rgba(255,251,235,.30); }
+.lv-row-warning:hover td { background: rgba(255,251,235,.55); }
+
+/* 열 너비 */
+.lv-th-time  { width: 13%; }
+.lv-th-level { width: 7%;  }
+.lv-th-src   { width: 15%; }
+.lv-th-func  { width: 13%; }
+.lv-th-msg   { width: auto; }
+
+/* 셀 스타일 */
+.lv-td-time { font-family: "IBM Plex Mono",monospace; font-size: 11.5px; color: #64748B; }
+.lv-td-src  { font-family: "IBM Plex Mono",monospace; font-size: 11px;   color: #3B82F6; word-break: break-all; }
+.lv-td-func { font-family: "IBM Plex Mono",monospace; font-size: 11px;   color: #8B5CF6; word-break: break-all; }
+.lv-td-msg  { word-break: break-word; line-height: 1.55; }
+.lv-msg-cont {
+  display: block; color: #64748B; font-size: 11px;
+  padding: 3px 0 0 10px; border-left: 2px solid #E2E8F0;
+  white-space: pre-wrap; font-family: "IBM Plex Mono",monospace;
+}
+
+/* 레벨 배지 */
+.lv-badge {
+  display: inline-block; padding: 2px 7px;
+  border-radius: 9999px; font-size: 10px; font-weight: 700;
+  letter-spacing: .04em; white-space: nowrap;
+}
+.lv-error   { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+.lv-warning { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+.lv-info    { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+.lv-debug   { background: #F1F5F9; color: #64748B; border: 1px solid #E2E8F0; }
+
+/* 파일 관리 테이블 */
+.lv-file-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lv-file-th {
+  background: #F8FAFC; color: #475569;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  padding: 8px 12px; text-align: left;
+  border-bottom: 2px solid #E2E8F0;
+}
+.lv-file-td { padding: 9px 12px; border-bottom: 1px solid #F1F5F9; vertical-align: middle; }
+.lv-file-row:hover td { background: #F8FAFC; }
+.lv-file-mod {
+  font-family: "IBM Plex Mono",monospace; font-size: 12px;
+  color: #1E40AF; font-weight: 600;
+}
+.lv-size-tag {
+  display: inline-block; background: #F1F5F9; color: #475569;
+  border-radius: 6px; padding: 1px 7px;
+  font-size: 11px; font-weight: 600; font-family: "IBM Plex Mono",monospace;
+}
+/* 보관 정책 패널 */
+.lv-policy-panel {
+  background: #F8FAFC; border: 1px solid #E2E8F0;
+  border-radius: 10px; padding: 16px 20px;
+}
+.lv-policy-title {
+  font-size: 13px; font-weight: 700; color: #0F172A; margin-bottom: 10px;
+}
+.lv-policy-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid #E2E8F0; font-size: 12.5px;
+}
+.lv-policy-row:last-child { border-bottom: none; }
 
 /* ── 경고 배너 ─── */
 .adm-warn {
@@ -551,16 +635,172 @@ def _read_log(module: str, date: Optional[str] = None) -> Optional[str]:
     return p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
 
 
-def _colorize(line: str) -> str:
-    esc = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    lo = line.upper()
-    if " ERROR "   in lo or lo.lstrip().startswith("ERROR"):
-        return f'<span class="adm-le">{esc}</span>'
-    if " WARNING " in lo or " WARN " in lo or lo.lstrip().startswith("WARNING"):
-        return f'<span class="adm-lw">{esc}</span>'
-    if " INFO "    in lo or lo.lstrip().startswith("INFO"):
-        return f'<span class="adm-li">{esc}</span>'
-    return f'<span class="adm-ld">{esc}</span>'
+# ── 로그 뷰어 v2 헬퍼 [2026-05-14] ─────────────────────────────────────────
+# 파일 포맷: [YYYY-MM-DD HH:MM:SS] LEVEL    | module | func:lineno | message
+
+_LOG_ENTRY_RE = _re_log.compile(
+    r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(\w+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(.*)$"
+)
+
+
+def _parse_log_entries(raw: str) -> List[Dict]:
+    """로그 원문 → 구조화된 엔트리 리스트 (time/level/source/func/message)."""
+    entries: List[Dict] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        m = _LOG_ENTRY_RE.match(line)
+        if m:
+            entries.append({
+                "time":    m.group(1),
+                "level":   m.group(2).strip().upper(),
+                "source":  m.group(3).strip(),
+                "func":    m.group(4).strip(),
+                "message": m.group(5).strip(),
+            })
+        elif entries:
+            # traceback · 연속 라인 → 마지막 엔트리에 붙임
+            entries[-1]["message"] += "\n" + line.rstrip()
+        else:
+            # 헤더 전 첫 줄
+            entries.append({"time": "", "level": "DEBUG", "source": "", "func": "", "message": line.strip()})
+    return entries
+
+
+def _log_file_stats() -> List[Dict]:
+    """logs/ 디렉토리의 모든 로그 파일 메타데이터 반환."""
+    ld = _log_dir()
+    if not ld.exists():
+        return []
+    result: List[Dict] = []
+    for f in sorted(ld.iterdir()):
+        if ".log" not in f.name:
+            continue
+        try:
+            s = f.stat()
+            if ".log." in f.name:
+                idx  = f.name.index(".log.")
+                mod  = f.name[:idx]
+                date = f.name[idx + 5:]
+            elif f.name.endswith(".log"):
+                mod  = f.name[:-4]
+                date = "최신"
+            else:
+                continue
+            result.append({
+                "module":   mod,
+                "filename": f.name,
+                "date":     date,
+                "size_kb":  round(s.st_size / 1024, 1),
+                "mtime":    datetime.fromtimestamp(s.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                "path":     f,
+            })
+        except Exception:
+            pass
+    return sorted(result, key=lambda x: (x["module"], x["date"]))
+
+
+def _lv_badge(level: str) -> str:
+    """레벨 배지 HTML."""
+    cls = {"ERROR": "lv-error", "WARNING": "lv-warning", "WARN": "lv-warning",
+           "INFO": "lv-info", "DEBUG": "lv-debug"}.get(level, "lv-debug")
+    lbl = "WARN" if level == "WARNING" else level[:5]
+    return f'<span class="lv-badge {cls}">{lbl}</span>'
+
+
+def _lv_row_cls(level: str) -> str:
+    """행 CSS 클래스."""
+    if level == "ERROR":                    return "lv-row lv-row-error"
+    if level in ("WARNING", "WARN"):        return "lv-row lv-row-warning"
+    return "lv-row"
+
+
+def _render_lv_table(entries: List[Dict]) -> str:
+    """로그 엔트리 리스트 → 구조형 HTML 테이블."""
+    if not entries:
+        return ('<p style="color:#64748B;font-size:13px;padding:20px 16px;">'
+                '표시할 로그 엔트리가 없습니다.</p>')
+    rows_html: List[str] = []
+    for e in entries:
+        lvl  = e["level"]
+        msg  = _html_lib.escape(e["message"])
+        # 멀티라인 메시지 — 첫 줄 + 나머지 접어서 표시
+        lines = msg.split("\n")
+        if len(lines) > 1:
+            rest     = "\n".join(lines[1:])
+            msg_html = (
+                f'{lines[0]}'
+                f'<span class="lv-msg-cont">{rest}</span>'
+            )
+        else:
+            msg_html = msg
+
+        rows_html.append(
+            f'<tr class="{_lv_row_cls(lvl)}">'
+            f'<td class="lv-td lv-td-time">{_html_lib.escape(e["time"])}</td>'
+            f'<td class="lv-td">{_lv_badge(lvl)}</td>'
+            f'<td class="lv-td lv-td-src">{_html_lib.escape(e["source"])}</td>'
+            f'<td class="lv-td lv-td-func">{_html_lib.escape(e["func"])}</td>'
+            f'<td class="lv-td lv-td-msg">{msg_html}</td>'
+            f'</tr>'
+        )
+    head = (
+        '<thead><tr>'
+        '<th class="lv-th lv-th-time">시각</th>'
+        '<th class="lv-th lv-th-level">레벨</th>'
+        '<th class="lv-th lv-th-src">소스 모듈</th>'
+        '<th class="lv-th lv-th-func">함수 : 줄</th>'
+        '<th class="lv-th lv-th-msg">메시지</th>'
+        '</tr></thead>'
+    )
+    body = '<tbody>' + ''.join(rows_html) + '</tbody>'
+    return f'<div class="lv-scroll"><table class="lv-table">{head}{body}</table></div>'
+
+
+def _render_file_table(files: List[Dict]) -> str:
+    """로그 파일 목록 → HTML 테이블."""
+    if not files:
+        return '<p style="color:#64748B;font-size:13px;padding:12px 0;">로그 파일이 없습니다.</p>'
+    total_kb = sum(f["size_kb"] for f in files)
+    total_str = f"{total_kb:.1f} KB" if total_kb < 1024 else f"{total_kb / 1024:.2f} MB"
+    rows: List[str] = []
+    for f in files:
+        kb  = f["size_kb"]
+        sz  = f"{kb:.1f} KB" if kb < 1024 else f"{kb / 1024:.2f} MB"
+        live_badge = (
+            ' <span style="background:#EFF6FF;color:#1D4ED8;font-size:10px;'
+            'padding:1px 6px;border-radius:20px;font-weight:700;">live</span>'
+            if f["date"] == "최신" else ""
+        )
+        rows.append(
+            f'<tr class="lv-file-row">'
+            f'<td class="lv-file-td"><span class="lv-file-mod">{_html_lib.escape(f["module"])}</span></td>'
+            f'<td class="lv-file-td" style="color:#64748B;font-size:12px;">'
+            f'{_html_lib.escape(f["date"])}{live_badge}</td>'
+            f'<td class="lv-file-td"><span class="lv-size-tag">{sz}</span></td>'
+            f'<td class="lv-file-td" style="color:#94A3B8;font-size:12px;">{_html_lib.escape(f["mtime"])}</td>'
+            f'</tr>'
+        )
+    # 합계 행
+    rows.append(
+        f'<tr style="background:#F8FAFC;">'
+        f'<td class="lv-file-td" style="font-weight:700;color:#0F172A;" colspan="2">'
+        f'합계&nbsp;&nbsp;{len(files)}개 파일</td>'
+        f'<td class="lv-file-td">'
+        f'<span class="lv-size-tag" style="background:#EFF6FF;color:#1D4ED8;">{total_str}</span>'
+        f'</td>'
+        f'<td class="lv-file-td"></td>'
+        f'</tr>'
+    )
+    head = (
+        '<thead><tr>'
+        '<th class="lv-file-th">모듈</th>'
+        '<th class="lv-file-th">날짜</th>'
+        '<th class="lv-file-th">크기</th>'
+        '<th class="lv-file-th">수정일</th>'
+        '</tr></thead>'
+    )
+    return f'<table class="lv-file-tbl">{head}<tbody>{"".join(rows)}</tbody></table>'
 
 
 def _pct_str(v: Optional[float]) -> str:
@@ -834,83 +1074,308 @@ def _tab_ops() -> None:
 #  탭 2 — 로그 뷰어
 # ══════════════════════════════════════════════════════════════════════════
 
-def _tab_logs() -> None:
-    topbar()
-    section_header("로그 뷰어", "모듈별 로그 파일 탐색 · 키워드 검색 · 다운로드")
+# ── 앱별 로그 모듈 분류 [2026-05-14] ────────────────────────────────────────
+# 각 카테고리에 해당하는 로그 모듈명 목록 (존재하지 않으면 자동 제외됨)
+_LOG_APP_GROUPS: List[Tuple[str, List[str]]] = [
+    ("💼 원무 대시보드", [
+        "finance_dashboard", "finance_panels",
+        "sql_dashboard", "sql_generator",
+        "data_dashboard", "data_explainer",
+        "oracle_client", "oracle_access_config",
+        "pii_masker", "query_audit",
+    ]),
+    ("🏥 간호·병동 대시보드", [
+        "hospital_dashboard", "ward_repository",
+        "data_dashboard",
+    ]),
+    ("💬 챗봇", [
+        "main", "context_builder",
+        "rag_pipeline", "hybrid_retriever", "retriever",
+        "embeddings", "llm", "query_rewriter",
+        "search_engine", "vector_store",
+        "document_loader", "sidebar", "feedback_store",
+    ]),
+    ("⚙️ 관리자", [
+        "admin_dashboard", "admin_rerun",
+        "auto_backup", "doc_manager", "dept_vector_store",
+        "file_sync", "pdf_to_markdown",
+        "vector_admin_service", "startup_optimizer",
+        "schema_oracle_loader", "schema_vector_store",
+    ]),
+]
 
-    modules = _list_log_modules()
-    if not modules:
-        st.info("로그 디렉토리에 파일이 없습니다.")
+
+def _render_log_browser(avail_modules: List[str], kp: str) -> None:
+    """
+    [2026-05-14] 특정 카테고리의 로그 브라우저 공통 렌더러.
+
+    Args:
+        avail_modules: 이 카테고리에 실제 존재하는 모듈명 목록
+        kp:            세션스테이트 키 충돌 방지용 접두사 (카테고리 인덱스 기반)
+    """
+    if not avail_modules:
+        _html(
+            '<div style="padding:32px 0;text-align:center;color:#94A3B8;font-size:13px;">'
+            '📭&nbsp; 이 분류에 해당하는 로그 파일이 없습니다.'
+            '</div>'
+        )
         return
 
-    c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 3], gap="small")
-    with c1:
-        sel_mod  = st.selectbox("모듈", modules, key="adm_log_mod")
-    with c2:
+    # ── 필터 행 ──────────────────────────────────────────────────
+    f1, f2, f3, f4, f5 = st.columns([2, 2, 2, 2, 3], gap="small")
+    with f1:
+        sel_mod = st.selectbox("모듈", avail_modules, key=f"lv_mod_{kp}")
+    with f2:
         dates    = ["(최신)"] + _available_log_dates(sel_mod)
-        sel_date = st.selectbox("날짜", dates, key="adm_log_date")
-    with c3:
-        sel_level = st.selectbox("레벨", ["전체", "ERROR", "WARNING", "INFO", "DEBUG"],
-                                 key="adm_log_level")
-    with c4:
-        tail_opts = {"최근 200줄": 200, "최근 500줄": 500, "최근 1000줄": 1000, "전체": 999999}
-        tail_lbl  = st.selectbox("표시 줄", list(tail_opts.keys()), key="adm_log_tail")
-        tail_n    = tail_opts[tail_lbl]
-    with c5:
-        kw = st.text_input("키워드", placeholder="ERROR / 함수명 / 텍스트...",
-                           key="adm_log_kw", label_visibility="collapsed")
+        sel_date = st.selectbox("날짜", dates, key=f"lv_date_{kp}")
+    with f3:
+        sel_level = st.selectbox(
+            "레벨", ["전체", "ERROR", "WARNING", "INFO", "DEBUG"],
+            key=f"lv_level_{kp}",
+        )
+    with f4:
+        pg_size_opt = st.selectbox(
+            "페이지 크기", [50, 100, 200, "전체"],
+            index=1, key=f"lv_pgsz_{kp}",
+        )
+    with f5:
+        kw = st.text_input(
+            "키워드 검색",
+            placeholder="오류 메시지 / 함수명 / 모듈명...",
+            key=f"lv_kw_{kp}",
+            label_visibility="collapsed",
+        )
 
-    date_arg = None if sel_date == "(최신)" else sel_date
-    raw = _read_log(sel_mod, date_arg)
-
+    # ── 데이터 로드 + 파싱 ──────────────────────────────────────
+    date_arg    = None if sel_date == "(최신)" else sel_date
+    raw         = _read_log(sel_mod, date_arg)
     if raw is None:
         st.warning(f"파일 없음: {sel_mod}.log{'.' + date_arg if date_arg else ''}")
         return
 
-    lines = raw.splitlines()
-    total = len(lines)
+    all_entries = _parse_log_entries(raw)
+    total_cnt   = len(all_entries)
 
+    # ── 필터 적용 ────────────────────────────────────────────────
+    entries = all_entries
     if sel_level != "전체":
-        lines = [l for l in lines if f" {sel_level} " in l.upper() or f"|{sel_level}|" in l.upper()]
+        _lv_up = sel_level.upper()
+        entries = [
+            e for e in entries
+            if e["level"] == _lv_up
+            or (_lv_up == "WARNING" and e["level"] == "WARN")
+        ]
     if kw.strip():
-        lines = [l for l in lines if kw.strip().lower() in l.lower()]
+        kw_lo   = kw.strip().lower()
+        entries = [
+            e for e in entries
+            if any(kw_lo in str(v).lower() for v in e.values())
+        ]
 
-    err_n  = sum(1 for l in lines if " ERROR "   in l.upper())
-    warn_n = sum(1 for l in lines if " WARNING " in l.upper() or " WARN " in l.upper())
-    info_n = sum(1 for l in lines if " INFO "    in l.upper())
+    filt_cnt = len(entries)
+    err_n    = sum(1 for e in entries if e["level"] == "ERROR")
+    warn_n   = sum(1 for e in entries if e["level"] in ("WARNING", "WARN"))
+    info_n   = sum(1 for e in entries if e["level"] == "INFO")
 
-    m1, m2, m3, m4, m5 = st.columns(5, gap="small")
-    m1.metric("전체 라인", f"{total:,}")
-    m2.metric("필터 결과", f"{len(lines):,}")
-    m3.metric("ERROR",     f"{err_n}")
-    m4.metric("WARNING",   f"{warn_n}")
-    m5.metric("INFO",      f"{info_n}")
+    # ── KPI 카드 ──────────────────────────────────────────────
+    gap(4)
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+    for _col, _kpi in zip(
+        [k1, k2, k3, k4, k5],
+        [
+            _adm_kpi("전체 엔트리", f"{total_cnt:,}", "",
+                     f"{sel_mod}.log", C["blue"]),
+            _adm_kpi("필터 결과",   f"{filt_cnt:,}", "",
+                     f"레벨: {sel_level} · 키워드: {kw or '—'}", C["indigo"]),
+            _adm_kpi("ERROR",       str(err_n),      "",
+                     "오류 · 예외 발생", C["danger"]),
+            _adm_kpi("WARNING",     str(warn_n),     "",
+                     "경고 · 주의 필요", C["warn"]),
+            _adm_kpi("INFO",        str(info_n),     "",
+                     "일반 동작 로그", C["ok"]),
+        ],
+    ):
+        with _col:
+            _html(_kpi)
 
-    show    = lines[-tail_n:] if len(lines) > tail_n else lines
-    colored = "\n".join(_colorize(l) for l in show)
-    _html(f'<div class="adm-log"><pre>{colored}</pre></div>')
+    gap(14)
 
-    gap(8)
-    dl_c, cl_c = st.columns([2, 4], gap="small")
-    with dl_c:
-        st.download_button(
-            "로그 다운로드",
-            data=raw.encode("utf-8"),
-            file_name=f"{sel_mod}_{date_arg or 'latest'}.log",
-            mime="text/plain",
-            key="adm_log_dl",
+    # ── 페이지네이션 ──────────────────────────────────────────
+    pg_key     = f"lv_page_{kp}"
+    pg_mod_key = f"lv_mod_prev_{kp}"
+
+    if pg_size_opt == "전체":
+        show_entries = entries
+    else:
+        pg_size = int(pg_size_opt)
+        # 모듈 또는 카테고리 변경 시 페이지 초기화
+        if st.session_state.get(pg_mod_key) != sel_mod:
+            st.session_state[pg_key]   = 0
+            st.session_state[pg_mod_key] = sel_mod
+        page     = st.session_state.get(pg_key, 0)
+        total_pg = max(1, (filt_cnt + pg_size - 1) // pg_size)
+        page     = min(page, total_pg - 1)
+        st.session_state[pg_key] = page
+
+        show_entries = entries[page * pg_size : (page + 1) * pg_size]
+
+        n1, n2, n3 = st.columns([1, 1, 5], gap="small")
+        with n1:
+            if st.button("◀ 이전", key=f"lv_prev_{kp}", disabled=(page == 0)):
+                st.session_state[pg_key] = page - 1
+                st.rerun()
+        with n2:
+            if st.button("다음 ▶", key=f"lv_next_{kp}", disabled=(page >= total_pg - 1)):
+                st.session_state[pg_key] = page + 1
+                st.rerun()
+        with n3:
+            st.caption(
+                f"페이지 **{page + 1}** / {total_pg}"
+                f"&nbsp;&nbsp;(표시 {len(show_entries):,}건 / 전체 {filt_cnt:,}건)"
+            )
+
+    # ── 로그 엔트리 테이블 ────────────────────────────────────
+    _html(_render_lv_table(show_entries))
+
+    # ── 다운로드 ──────────────────────────────────────────────
+    gap(10)
+    st.download_button(
+        "⬇  로그 다운로드",
+        data=raw.encode("utf-8"),
+        file_name=f"{sel_mod}_{date_arg or 'latest'}.log",
+        mime="text/plain",
+        key=f"lv_dl_{kp}",
+    )
+
+
+def _tab_logs() -> None:
+    """
+    로그 뷰어 관리 화면 v3 [2026-05-14]
+
+    [v3 변경 — 앱별 카테고리 분류]
+    · 4개 앱 카테고리 탭: 원무 대시보드 / 간호·병동 / 챗봇 / 관리자
+    · 각 탭 내부: 해당 앱 관련 모듈만 필터링된 로그 브라우저
+    · 파일 관리 탭 유지: 전체 파일 목록 + 보관 정책 + 정리 버튼
+    · _LOG_APP_GROUPS 상수로 카테고리-모듈 매핑 중앙 관리
+    · _render_log_browser() 공통 함수로 탭별 코드 중복 제거
+    """
+    topbar()
+    section_header("로그 뷰어", "앱별 로그 탐색 · 레벨 필터 · 파일 관리")
+
+    all_modules_set = set(_list_log_modules())
+    if not all_modules_set:
+        st.info("로그 디렉토리에 파일이 없습니다.")
+        return
+
+    # ── 탭 구성: 카테고리 4개 + 파일 관리 ────────────────────────
+    tab_labels = [label for label, _ in _LOG_APP_GROUPS] + ["📁  파일 관리"]
+    tabs        = st.tabs(tab_labels)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  앱별 로그 탐색 탭 (4개)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    for idx, ((_, group_modules), tab) in enumerate(
+        zip(_LOG_APP_GROUPS, tabs[:-1])
+    ):
+        with tab:
+            # 이 카테고리에 실제로 존재하는 모듈만 걸러냄
+            avail = [m for m in group_modules if m in all_modules_set]
+            _render_log_browser(avail_modules=avail, kp=str(idx))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  파일 관리 탭
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    with tabs[-1]:
+        all_files      = _log_file_stats()
+        total_size_kb  = sum(f["size_kb"] for f in all_files)
+        total_size_str = (
+            f"{total_size_kb:.1f} KB"
+            if total_size_kb < 1024
+            else f"{total_size_kb / 1024:.2f} MB"
         )
-    with cl_c:
-        if st.button("30일 이상 로그 정리", key="adm_log_clean"):
-            ld, cutoff, removed = _log_dir(), datetime.now() - timedelta(days=30), 0
-            for f in ld.iterdir():
-                if ".log." in f.name:
-                    try:
-                        if datetime.fromtimestamp(f.stat().st_mtime) < cutoff:
-                            f.unlink(); removed += 1
-                    except Exception:
-                        pass
-            st.success(f"{removed}개 파일 삭제 완료")
+        mod_count    = len(set(f["module"] for f in all_files))
+        oldest_mtime = min((f["mtime"] for f in all_files), default="—")
+
+        # ── 요약 KPI ──────────────────────────────
+        gap(4)
+        m1, m2, m3 = st.columns(3, gap="small")
+        for _col, _kpi in zip(
+            [m1, m2, m3],
+            [
+                _adm_kpi("로그 파일 수",    str(len(all_files)), "개",
+                         f"모듈 {mod_count}개", C["blue"]),
+                _adm_kpi("전체 크기",       total_size_str,      "",
+                         "logs/ 디렉토리 합계", C["indigo"]),
+                _adm_kpi("가장 오래된 파일",
+                         oldest_mtime[:10] if oldest_mtime != "—" else "—", "",
+                         "오래된 파일 정리 권장", C["warn"]),
+            ],
+        ):
+            with _col:
+                _html(_kpi)
+
+        gap(18)
+
+        # ── 파일 목록 테이블 ──────────────────────
+        _html(
+            '<div class="adm-info-card">'
+            '<div class="adm-info-title">📄 로그 파일 목록</div>'
+        )
+        _html(_render_file_table(all_files))
+        _html('</div>')
+
+        gap(18)
+
+        # ── 보관 정책 패널 ────────────────────────
+        _html(
+            '<div class="lv-policy-panel">'
+            '<div class="lv-policy-title">🗄️&nbsp; 보관 정책</div>'
+            '<div class="lv-policy-row">'
+            '  <span style="color:#475569;">보관 기간</span>'
+            '  <span style="font-weight:600;color:#0F172A;">'
+            '    30일 · TimedRotatingFileHandler 자동 롤오버</span>'
+            '</div>'
+            '<div class="lv-policy-row">'
+            '  <span style="color:#475569;">파일 네이밍</span>'
+            '  <span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#3B82F6;">'
+            '    {module}.log &nbsp;/&nbsp; {module}.log.<wbr>YYYY-MM-DD</span>'
+            '</div>'
+            '<div class="lv-policy-row">'
+            '  <span style="color:#475569;">감사 로그</span>'
+            '  <span style="font-weight:600;color:#0F172A;">'
+            '    query_audit.log · 90일 보관</span>'
+            '</div>'
+            '</div>'
+        )
+
+        gap(12)
+
+        # ── 정리 버튼 ────────────────────────────
+        cl1, cl2, _ = st.columns([2, 2, 4], gap="small")
+        with cl1:
+            if st.button("🗑  30일 이상 정리", key="adm_log_clean30", type="primary"):
+                ld, cutoff, removed = _log_dir(), datetime.now() - timedelta(days=30), 0
+                for _f in ld.iterdir():
+                    if ".log." in _f.name:
+                        try:
+                            if datetime.fromtimestamp(_f.stat().st_mtime) < cutoff:
+                                _f.unlink(); removed += 1
+                        except Exception:
+                            pass
+                st.success(f"{removed}개 파일 삭제 완료")
+                st.rerun()
+        with cl2:
+            if st.button("🗑  90일 이상 정리", key="adm_log_clean90"):
+                ld, cutoff, removed = _log_dir(), datetime.now() - timedelta(days=90), 0
+                for _f in ld.iterdir():
+                    if ".log." in _f.name:
+                        try:
+                            if datetime.fromtimestamp(_f.stat().st_mtime) < cutoff:
+                                _f.unlink(); removed += 1
+                        except Exception:
+                            pass
+                st.success(f"{removed}개 파일 삭제 완료")
+                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════
