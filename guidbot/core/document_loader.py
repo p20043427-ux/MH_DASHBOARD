@@ -1,5 +1,13 @@
 """
-core/document_loader.py ─ PDF 문서 로드·분할·전처리 파이프라인 (v3.0)
+core/document_loader.py ─ PDF 문서 로드·분할·전처리 파이프라인 (v3.1)
+
+[v3.1 추가 — 2026-05-14]
+5. Gemini Vision OCR 3차 폴백 (스캔 이미지 PDF 지원)
+   - PyPDF + pdfplumber 로 추출된 텍스트가 너무 짧을 때 OCR 자동 실행
+   - pypdfium2 로 각 페이지를 PNG 이미지로 렌더링
+   - Gemini Vision API(gemini-2.5-flash-lite)로 이미지에서 텍스트 추출
+   - 기존 패키지(pypdfium2, google-genai)만 사용 — 추가 설치 불필요
+   - settings.ocr_enabled=False 로 비활성화 가능 (기본값: True)
 
 [v3.0 고도화 내용]
 1. 조항 경계 인식 청킹 (ArticleBoundaryChunker)
@@ -23,18 +31,21 @@ core/document_loader.py ─ PDF 문서 로드·분할·전처리 파이프라인
 [처리 흐름]
 PDF 파일
   → ① PyPDFLoader 또는 pdfplumber 로 텍스트 추출
-  → ② text_cleaner.process() 로 정제 (헤더/푸터/결재란 제거)
-  → ③ 조항 경계 인식 청킹 (ArticleBoundaryChunker)
-  → ④ 컨텍스트 헤더 주입
-  → ⑤ MD5 중복 제거
+  → ② (텍스트 부족 시) Gemini Vision OCR 3차 폴백 [v3.1]
+  → ③ text_cleaner.process() 로 정제 (헤더/푸터/결재란 제거)
+  → ④ 조항 경계 인식 청킹 (ArticleBoundaryChunker)
+  → ⑤ 컨텍스트 헤더 주입
+  → ⑥ MD5 중복 제거
   → Document 리스트 반환
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import re
+import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,6 +69,18 @@ logging.getLogger("pypdf._reader").setLevel(logging.ERROR)
 
 # 조항 시작 패턴: "제1조", "제 1 조", "제1 조" 등 다양한 형태 처리
 _RE_ARTICLE_BOUNDARY = re.compile(r"(?=제\s*\d+\s*조)")
+
+# [v3.1 2026-05-14] Gemini Vision OCR 설정
+# OCR 폴백 트리거 임계값: PDF 전체 페이지당 평균 텍스트 < 이 값이면 OCR 실행
+_OCR_TRIGGER_CHARS_PER_PAGE = 50   # 페이지당 50자 미만 → 스캔 PDF 판정
+_OCR_RENDER_SCALE           = 2.0  # 렌더링 배율 (높을수록 선명, 느림)
+_OCR_PAGE_DELAY_SEC         = 0.3  # API 과부하 방지 페이지 간 딜레이(초)
+_OCR_MODEL                  = "gemini-2.5-flash-lite"  # Vision 모델
+_OCR_PROMPT = (
+    "이 이미지에서 보이는 텍스트를 줄바꿈을 유지하며 순서대로 추출해 주세요. "
+    "JSON이나 코드 형식 없이 텍스트만 반환하세요. "
+    "표나 양식의 내용도 빠짐없이 포함하세요."
+)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -110,6 +133,146 @@ def _extract_with_pypdf(pdf_path: Path) -> List[Document]:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")          # pypdf PdfReadWarning 포함 전체 억제
         return PyPDFLoader(str(pdf_path)).load()
+
+
+def _extract_with_ocr_gemini(pdf_path: Path) -> List[Document]:
+    """
+    [v3.1 2026-05-14] Gemini Vision API 를 이용한 스캔 PDF OCR 추출.
+
+    스캔 이미지 PDF(텍스트 레이어 없음)에서 텍스트를 추출하기 위한 3차 폴백.
+    pypdfium2 로 각 페이지를 고해상도 PNG 로 렌더링한 뒤
+    Gemini Vision (gemini-2.5-flash-lite) 에 전달하여 텍스트를 추출합니다.
+
+    [의존 패키지]
+    - pypdfium2 : PDF → 이미지 렌더링 (langchain-community 와 함께 설치됨)
+    - google-genai : Gemini Vision API 호출 (core/llm.py 에서 사용)
+
+    [동작 조건]
+    - settings.ocr_enabled = True (기본)
+    - pypdfium2, google-genai 설치됨
+    - GOOGLE_API_KEY 설정됨
+
+    Returns:
+        Document 리스트. 실패 시 빈 리스트 (조용히 실패).
+    """
+    # ── 사전 조건 확인 ─────────────────────────────────────────────────
+    ocr_enabled = getattr(settings, "ocr_enabled", True)
+    if not ocr_enabled:
+        logger.debug("OCR 비활성화(settings.ocr_enabled=False) — 건너뜀")
+        return []
+
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        logger.debug("pypdfium2 미설치 — OCR 건너뜀")
+        return []
+
+    try:
+        import google.genai as _genai
+        from google.genai import types as _gtypes
+    except ImportError:
+        logger.debug("google-genai 미설치 — OCR 건너뜀")
+        return []
+
+    api_keys = settings.get_api_key_pool() if hasattr(settings, "get_api_key_pool") else []
+    if not api_keys:
+        logger.debug("OCR: API 키 없음 — 건너뜀")
+        return []
+
+    # ── pypdfium2 로 각 페이지 렌더링 ──────────────────────────────────
+    import base64
+    docs: List[Document] = []
+    total_pages = 0
+
+    try:
+        pdf_doc = pdfium.PdfDocument(str(pdf_path))
+        total_pages = len(pdf_doc)
+    except Exception as exc:
+        logger.warning(f"OCR: pypdfium2 PDF 열기 실패 [{pdf_path.name}]: {exc}")
+        return []
+
+    logger.info(
+        f"  OCR 폴백 시작: {pdf_path.name} ({total_pages}페이지) "
+        f"모델={_OCR_MODEL}"
+    )
+
+    key_idx = 0
+    client = _genai.Client(api_key=api_keys[key_idx])
+
+    for page_num in range(total_pages):
+        # 이미지 렌더링
+        try:
+            bm  = pdf_doc[page_num].render(scale=_OCR_RENDER_SCALE)
+            pil = bm.to_pil()
+            buf = io.BytesIO()
+            pil.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+        except Exception as exc:
+            logger.debug(f"OCR: 페이지 {page_num+1} 렌더링 실패: {exc}")
+            continue
+
+        # Gemini Vision 호출 (키 순환 포함)
+        text = ""
+        for attempt in range(len(api_keys)):
+            try:
+                resp = client.models.generate_content(
+                    model=_OCR_MODEL,
+                    contents=[{"parts": [
+                        {"inline_data": {"mime_type": "image/png", "data": b64}},
+                        {"text": _OCR_PROMPT},
+                    ]}],
+                )
+                text = (resp.text or "").strip()
+                break  # 성공
+            except Exception as exc:
+                err_str = str(exc)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    # 다음 키로 전환
+                    key_idx = (key_idx + 1) % len(api_keys)
+                    if key_idx == 0:
+                        logger.warning("OCR: 모든 API 키 할당량 초과 — 남은 페이지 건너뜀")
+                        pdf_doc.close()
+                        return docs
+                    client = _genai.Client(api_key=api_keys[key_idx])
+                    logger.debug(f"OCR: 키 교체 → 키 {key_idx+1}")
+                    time.sleep(1.0)
+                else:
+                    logger.warning(f"OCR: 페이지 {page_num+1} Gemini 호출 실패: {exc}")
+                    break
+
+        # JSON 형식 응답 정제 (모델이 가끔 JSON 반환)
+        if text.startswith("{") or text.startswith("[") or text.startswith("```"):
+            import re as _re
+            # JSON/코드블록 내부 text_content 값만 추출
+            found = _re.findall(r'"text_content"\s*:\s*"([^"]+)"', text)
+            if found:
+                text = "\n".join(found)
+            else:
+                # 코드블록 제거 후 그대로 사용
+                text = _re.sub(r"```[a-z]*\n?", "", text).strip()
+
+        if text and len(text) >= settings.min_text_length:
+            docs.append(Document(
+                page_content=text,
+                metadata={
+                    "source": pdf_path.name,
+                    "page":   page_num,
+                    "ocr":    True,           # OCR 처리 여부 표시
+                },
+            ))
+            logger.debug(f"  OCR 페이지 {page_num+1}: {len(text)}자 추출")
+        else:
+            logger.debug(f"  OCR 페이지 {page_num+1}: 유효 텍스트 없음({len(text)}자)")
+
+        # 페이지 간 API 과부하 방지
+        if page_num < total_pages - 1:
+            time.sleep(_OCR_PAGE_DELAY_SEC)
+
+    pdf_doc.close()
+    logger.info(
+        f"  OCR 완료: {pdf_path.name} → {len(docs)}/{total_pages}페이지 유효 텍스트"
+    )
+    return docs
 
 
 def _extract_with_pdfplumber(pdf_path: Path) -> List[Document]:
@@ -185,6 +348,31 @@ def _load_single_pdf(pdf_path: Path) -> List[Document]:
         )
     else:
         raw_pages = pypdf_docs
+
+    # ── 3차 폴백: Gemini Vision OCR (스캔 이미지 PDF) [v3.1 2026-05-14] ─
+    # 전체 추출 텍스트가 페이지당 _OCR_TRIGGER_CHARS_PER_PAGE 미만이면
+    # 스캔 PDF로 판정하여 OCR 실행.
+    best_total = max(pypdf_total, plumber_total)
+    estimated_pages = max(len(pypdf_docs), len(plumber_docs), 1)
+    avg_chars_per_page = best_total / estimated_pages
+
+    if avg_chars_per_page < _OCR_TRIGGER_CHARS_PER_PAGE:
+        logger.info(
+            f"  스캔 PDF 감지 [{pdf_path.name}]: "
+            f"평균 {avg_chars_per_page:.0f}자/페이지 < {_OCR_TRIGGER_CHARS_PER_PAGE} "
+            f"→ OCR 폴백 실행"
+        )
+        ocr_docs = _extract_with_ocr_gemini(pdf_path)
+        if ocr_docs:
+            raw_pages = ocr_docs
+            logger.info(
+                f"  OCR 결과 사용: {sum(len(d.page_content) for d in ocr_docs):,}자"
+            )
+        else:
+            logger.warning(
+                f"  OCR 실패 또는 결과 없음 [{pdf_path.name}] — "
+                f"기존 추출 결과({best_total}자)로 계속 진행"
+            )
 
     # ── 전처리 (노이즈 제거·품질 필터) ──────────────────────────────
     valid_docs: List[Document] = []

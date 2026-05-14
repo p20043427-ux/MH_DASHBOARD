@@ -266,6 +266,17 @@ class AppSettings(BaseSettings):
         ),
     )
 
+    # [v3.1 2026-05-14] OCR 폴백 설정 ─────────────────────────────────
+    ocr_enabled: bool = Field(
+        default=True,
+        description=(
+            "스캔 이미지 PDF OCR 폴백 활성화 여부. "
+            "True: PyPDF+pdfplumber 추출 텍스트가 부족할 때 "
+            "Gemini Vision API(gemini-2.5-flash-lite)로 OCR 실행. "
+            "False: OCR 건너뜀 (API 키 소진 방지)."
+        ),
+    )
+
     # ──────────────────────────────────────────────────────────────────
     #  v4.0 신규: Query Rewriting 설정
     # ──────────────────────────────────────────────────────────────────

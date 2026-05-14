@@ -1,0 +1,27 @@
+=== PAGE 2 ===
+CONTENTS
+01 | 전자동의서 매뉴얼
+02 | 전자동의서 작성기 화면 구성
+2
+
+=== PAGE 3 ===
+01 | 전자동의서 매뉴얼
+3
+
+=== PAGE 4 ===
+```json
+[
+  {"box_2d": [41, 53, 84, 369], "text_content": "01 | 전자동의서 매뉴얼"},
+  {"box_2d": [133, 108, 162, 350], "text_content": "전자동의서 로그인 화면"},
+  {"box_2d": [218, 85, 232, 113], "text_content": "Login"},
+  {"box_2d": [218, 411, 231, 419], "text_content": "X"},
+  {"box_2d": [246, 463, 273, 757], "text_content": "EMR ID, 비밀번호를 통해 로그인"},
+  {"box_2d": [281, 78, 315, 374], "text_content": "Friendly Sign(전자동의서)"},
+  {"box_2d": [389, 322, 404, 335], "text_content": "≡"},
+  {"box_2d": [430, 328, 449, 338], "text_content": "🔒"},
+  {"box_2d": [508, 330, 524, 375], "text_content": "CANCEL"},
+  {"box_2d": [512, 235, 527, 272], "text_content": "LOGIN"},
+  {"box_2d": [971, 493, 990, 504], "text_content": "4"}
+]
+```
+

@@ -1450,6 +1450,40 @@ def _load_dept_file_list() -> Dict[str, List[Dict]]:
     return result
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_dept_chunks_by_file(dept_name: str) -> Dict[str, List[Dict]]:
+    """부서 FAISS 인덱스(index.pkl)에서 파일명 → 청크 목록 딕셔너리 반환.
+
+    [2026-05-14] 부서별 문서 브라우저 청크 미리보기·인덱싱 진단용.
+    ttl=120s: 재구축 직후 새로고침 시 최신 인덱스 반영.
+
+    Returns:
+        {파일명: [{"page": str, "text": str(앞300자)}, ...]}
+    """
+    import pickle as _pkl
+    from config.settings import settings as _s
+
+    dept_pkl = _s.dept_db_path / dept_name / "index.pkl"
+    if not dept_pkl.exists():
+        return {}
+    try:
+        store   = _pkl.load(open(dept_pkl, "rb"))
+        inner   = store[0]._dict        # InMemoryDocstore._dict
+        result: Dict[str, List[Dict]] = {}
+        for doc in inner.values():
+            src  = doc.metadata.get("source", "?")
+            page = doc.metadata.get("page", "")
+            text = (doc.page_content or "").strip()[:300]
+            result.setdefault(src, []).append({
+                "page": str(page) if page != "" else "—",
+                "text": text,
+            })
+        return result
+    except Exception as exc:
+        logger.warning(f"[_load_dept_chunks_by_file] {dept_name}: {exc}")
+        return {}
+
+
 def _run_dept_rebuild(dept_name: str, sync: bool = True) -> tuple[bool, str]:
     """부서 재구축 + 마스터 병합을 실행하고 (성공여부, 메시지) 반환."""
     try:
@@ -1935,11 +1969,78 @@ def _tab_vectordb() -> None:
                 if not matched:
                     st.caption("PDF 파일 없음")
                 else:
-                    rows_f = [
-                        [f["name"], f"{f['size_kb']} KB", f["mtime"]]
-                        for f in matched
-                    ]
-                    _html(_table(["파일명", "크기", "수정일"], rows_f, "12px"))
+                    # [2026-05-14] 청크 정보 로드 (캐시 120s) ──────────────
+                    chunks_map: Dict[str, List[Dict]] = (
+                        _load_dept_chunks_by_file(dept_name) if indexed else {}
+                    )
+
+                    # ── 파일 테이블 (청크 수 컬럼 추가) ──────────────────
+                    rows_f = []
+                    for f in matched:
+                        fc    = len(chunks_map.get(f["name"], []))
+                        if fc > 0:
+                            fc_html = (
+                                f'<span style="color:#16A34A;font-weight:600;">'
+                                f'{fc:,}청크</span>'
+                            )
+                        elif indexed:
+                            fc_html = badge_html("0청크", "warn")
+                        else:
+                            fc_html = '<span style="color:#94A3B8;">—</span>'
+                        rows_f.append([
+                            f["name"], f"{f['size_kb']} KB", f["mtime"], fc_html,
+                        ])
+                    _html(_table(["파일명", "크기", "수정일", "청크"], rows_f, "12px"))
+
+                    # ── 청크 미리보기 (파일 선택) ─────────────────────────
+                    if indexed:
+                        _dept_key = dept_name.replace(" ", "_")
+                        sel_file  = st.selectbox(
+                            "📄 청크 내용 미리보기",
+                            ["선택하세요..."] + [f["name"] for f in matched],
+                            key=f"adm_chk_{_dept_key}",
+                            label_visibility="visible",
+                        )
+                        if sel_file != "선택하세요...":
+                            file_chunks = chunks_map.get(sel_file, [])
+                            if not file_chunks:
+                                # 0청크 경고 — 스캔 PDF 진단 힌트
+                                _html(
+                                    '<div style="background:#FEF9C3;border:1px solid'
+                                    ' #FDE047;border-radius:8px;padding:10px 14px;'
+                                    'font-size:12.5px;color:#854D0E;margin-top:8px;">'
+                                    '⚠️ <b>이 파일은 인덱스에 없습니다.</b><br>'
+                                    '텍스트를 추출할 수 없는 <b>스캔 이미지 PDF</b>이거나, '
+                                    '재구축이 필요합니다.<br>'
+                                    '<span style="font-size:11px;color:#92400E;">'
+                                    '해결: PDF를 열어 텍스트 선택이 되는지 확인 → '
+                                    '안 되면 OCR 변환 후 재업로드</span>'
+                                    '</div>'
+                                )
+                            else:
+                                st.caption(
+                                    f"📄 {sel_file} — "
+                                    f"총 {len(file_chunks):,}개 청크"
+                                    + (" (최대 30개 표시)" if len(file_chunks) > 30 else "")
+                                )
+                                rows_c = [
+                                    [
+                                        str(i + 1),
+                                        c["page"],
+                                        c["text"].replace("\n", " "),
+                                    ]
+                                    for i, c in enumerate(file_chunks[:30])
+                                ]
+                                _html(_table(
+                                    ["#", "페이지", "내용 미리보기 (앞 300자)"],
+                                    rows_c,
+                                    "11.5px",
+                                ))
+                                if len(file_chunks) > 30:
+                                    st.caption(
+                                        f"… 나머지 {len(file_chunks)-30:,}개 청크는 "
+                                        "표시 생략"
+                                    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
