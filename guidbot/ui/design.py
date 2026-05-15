@@ -563,3 +563,55 @@ def ward_section_title(title: str, badge: str = "") -> None:
         f'{title}{badge_str}</div>',
         unsafe_allow_html=True,
     )
+
+
+# [2026-05-15] #13 에러 페이지 디자인 — 사용자 친화적 에러 카드
+def error_card(
+    title: str = "일시적 오류가 발생했습니다",
+    detail: str = "",
+    suggestion: str = "잠시 후 다시 시도하거나 관리자에게 문의해 주세요.",
+    icon: str = "",
+    severity: str = "warn",
+) -> None:
+    """
+    사용자 친화적 에러 카드.
+
+    스택 트레이스를 노출하지 않고 안내 메시지만 표시합니다.
+
+    Args:
+        title      : 에러 제목 (간결하게 — 사용자에게 보이는 문구)
+        detail     : 부가 설명 또는 에러 코드 (선택, monospace 블록으로 표시)
+        suggestion : 사용자 행동 안내
+        icon       : 커스텀 아이콘 이모지 (없으면 severity 기본값 사용)
+        severity   : "warn" | "error" | "info"
+    """
+    _configs = {
+        "warn":  (C["warn_l"],   C["warn"],   C["warn_bd"],   "⚠️"),
+        "error": (C["danger_l"], C["danger"], C["danger_bd"], "🚫"),
+        "info":  (C["sky_l"],    C["sky"],    "#7DD3FC",      "ℹ️"),
+    }
+    _bg, _fg, _bd, _default_icon = _configs.get(severity, _configs["warn"])
+    _display_icon = icon or _default_icon
+
+    # detail 블록 — 개발자 힌트용 (monospace, 배경 살짝 어둡게)
+    _detail_html = (
+        f'<div style="font-size:11.5px;color:{C["t3"]};margin-top:7px;'
+        f'padding:7px 10px;background:rgba(0,0,0,.04);border-radius:6px;'
+        f'font-family:Consolas,\'SF Mono\',monospace;word-break:break-all;">'
+        f'{detail}</div>'
+    ) if detail else ""
+
+    st.markdown(
+        f'<div style="background:{_bg};border:1px solid {_bd};'
+        f'border-left:4px solid {_fg};border-radius:10px;'
+        f'padding:16px 20px;margin:8px 0;">'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+        f'<span style="font-size:20px;line-height:1;">{_display_icon}</span>'
+        f'<span style="font-size:14px;font-weight:700;color:{_fg};">{title}</span>'
+        f'</div>'
+        f'{_detail_html}'
+        f'<div style="font-size:12.5px;color:{C["t2"]};margin-top:8px;line-height:1.6;">'
+        f'{suggestion}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )

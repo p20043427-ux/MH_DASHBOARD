@@ -1114,6 +1114,18 @@ def render_dept_analysis(monthly_opd_dept: List[Dict]) -> None:
 
     logger.info(f"[진료과 분석] 진료과 선택 → {selected_dept}")
 
+    # [2026-05-15] #07 진료과 분석 접근 감사 로그
+    try:
+        from utils.access_audit import log_access as _audit_dept
+        _audit_dept(
+            action="VIEW",
+            data_category="dept_analysis_region",
+            dept=selected_dept,
+            row_count=len(monthly_opd_dept),
+        )
+    except Exception:
+        pass  # 감사 로그 실패가 분석 탭 렌더를 중단시키지 않음
+
     # ── 분석 모드 탭 ───────────────────────────────────────────────
     mode_single, mode_compare = st.tabs([
         "📅 단일월 분석",

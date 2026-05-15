@@ -1339,6 +1339,18 @@ def render_ward_v2() -> None:
         f"재원={occupied}/{total_bed}bed | 입원={admit_cnt} | 퇴원={disc_cnt} | 수술={op_total}"
     )
 
+    # [2026-05-15] #07 병동 대시보드 접근 감사 로그
+    try:
+        from utils.access_audit import log_access as _audit_ward
+        _audit_ward(
+            action="VIEW",
+            data_category="patient_bed_detail",
+            dept=_g_ward if _g_ward != "전체" else "",
+            row_count=len(bed_detail_f),
+        )
+    except Exception:
+        pass  # 감사 로그 실패가 대시보드 렌더를 중단시키지 않음
+
     # ── KPI strip ─────────────────────────────────────────────────────
     _v2_kpi_strip(occ_rate, occupied, total_bed,
                   admit_cnt, disc_cnt, op_total,

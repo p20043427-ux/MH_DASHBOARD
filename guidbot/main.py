@@ -78,6 +78,32 @@ logger = get_logger(__name__, log_dir=settings.log_dir)
 
 _MAX_HISTORY = 15
 
+# [2026-05-15] #08 의료 면책 고지 — 이 키워드가 질문·답변에 포함되면 면책 배너 표시
+_MEDICAL_KEYWORDS: list[str] = [
+    "진단", "처방", "투약", "약물", "증상", "치료", "수술",
+    "질환", "병명", "검사", "혈압", "혈당", "당뇨", "고혈압",
+    "복용", "주사", "처치", "의료", "환자", "의사", "간호",
+    "입원", "퇴원", "응급", "약 ", " 약", "부작용", "의약품",
+]
+
+_DISCLAIMER_HTML: str = (
+    '<div style="margin-top:10px;padding:9px 13px;'
+    'background:#FFF7ED;border:1px solid #FED7AA;'
+    'border-left:3px solid #F59E0B;border-radius:8px;'
+    'font-size:11.5px;color:#92400E;line-height:1.65;">'
+    '⚕️ <b>의료 면책 고지</b> — '
+    '본 답변은 병원 내부 규정·지침 안내 목적으로만 제공됩니다. '
+    '의료 진단·치료·처방에 관한 전문적 의학 조언이 아니며, '
+    '구체적인 의학적 판단은 반드시 담당 의사와 상담하시기 바랍니다.'
+    '</div>'
+)
+
+
+def _has_medical_keyword(text: str) -> bool:
+    """질문 또는 답변 텍스트에 의료 관련 키워드가 포함되어 있으면 True."""
+    return any(kw in text for kw in _MEDICAL_KEYWORDS)
+
+
 _TIPS: list[str] = [
     "원내 와이파이 · moonhwa_free · 별도 설정 불필요합니다",
     "병원 내 전 구역 금연입니다. 흡연은 지정 구역에서만 가능합니다.",
@@ -336,6 +362,11 @@ def _stream_answer(
     msg_box.markdown(full_text)
     log.info(f"답변 완료: {len(full_text):,}자 / 스트림 {stream_elapsed:.1f}초")
 
+    # [2026-05-15] #08 의료 면책 고지 — 질문 or 답변에 의료 키워드 포함 시 표시
+    _show_disclaimer = _has_medical_keyword(prompt) or _has_medical_keyword(full_text)
+    if _show_disclaimer:
+        st.markdown(_DISCLAIMER_HTML, unsafe_allow_html=True)
+
     if settings.monitoring_enabled:
         try:
             get_metrics().record_stream(stream_elapsed, token_count=len(full_text))
@@ -372,6 +403,18 @@ def _stream_answer(
                 }
             )
 
+    # [2026-05-15] #07 챗봇 검색 접근 감사 로그
+    try:
+        from utils.access_audit import log_access as _log_access_chat
+        _log_access_chat(
+            action="SEARCH",
+            data_category="chatbot_query",
+            row_count=len(sources_data),
+            extra={"mode": search_mode, "q_len": len(prompt)},
+        )
+    except Exception:
+        pass
+
     st.session_state.messages.append(
         {
             "role": "assistant",
@@ -380,6 +423,8 @@ def _stream_answer(
             "mode": search_mode,
             "pipeline_label": pipeline_result.pipeline_label if pipeline_result else "",
             "question": prompt,
+            # [2026-05-15] #08 면책 고지 표시 여부 — 히스토리 재렌더 시 재사용
+            "has_disclaimer": _show_disclaimer,
         }
     )
 
@@ -624,26 +669,50 @@ def _render_chat_tab(vector_db, db_health: DBHealth) -> None:
     for i, msg in enumerate(st.session_state.messages[-_MAX_HISTORY:]):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg["role"] == "assistant" and msg.get("sources"):
-                with st.expander(
-                    f"📄 참고 문서 {len(msg['sources'])}건", expanded=False
-                ):
-                    for src in msg["sources"]:
-                        source_trust_card(
-                            rank=src["rank"],
-                            source=src["source"],
-                            page=src["page"],
-                            score=src["score"],
-                            article=src.get("article", ""),
-                            revision_date=src.get("revision_date", ""),
-                            chunk_text=src["chunk_text"],
-                            doc_path=(
-                                Path(src["doc_path_str"])
-                                if src.get("doc_path_str")
-                                else _resolve_doc_path(src["source"])
-                            ),
-                            card_ns=f"hist_{i}",
-                        )
+
+            if msg["role"] == "assistant":
+                # [2026-05-15] #08 면책 고지 — 저장된 has_disclaimer 기반 재표시
+                if msg.get("has_disclaimer"):
+                    st.markdown(_DISCLAIMER_HTML, unsafe_allow_html=True)
+
+                if msg.get("sources"):
+                    # [2026-05-15] #19 출처 이름 스트립 — expander 열기 전 파일명 미리 보기
+                    _src_stems = list(dict.fromkeys(
+                        Path(s["source"]).stem for s in msg["sources"]
+                    ))
+                    _chips_html = " ".join(
+                        f'<span style="background:#EFF6FF;border:1px solid #BFDBFE;'
+                        f'border-radius:4px;padding:1px 7px;font-size:10.5px;'
+                        f'color:#1D4ED8;font-weight:500;white-space:nowrap;">{n}</span>'
+                        for n in _src_stems[:5]
+                    )
+                    st.markdown(
+                        f'<div style="margin:5px 0 3px;display:flex;'
+                        f'flex-wrap:wrap;gap:4px;align-items:center;">'
+                        f'<span style="font-size:10.5px;color:#94A3B8;margin-right:2px;">'
+                        f'📄 출처:</span>{_chips_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    with st.expander(
+                        f"📄 참고 문서 상세 {len(msg['sources'])}건", expanded=False
+                    ):
+                        for src in msg["sources"]:
+                            source_trust_card(
+                                rank=src["rank"],
+                                source=src["source"],
+                                page=src["page"],
+                                score=src["score"],
+                                article=src.get("article", ""),
+                                revision_date=src.get("revision_date", ""),
+                                chunk_text=src["chunk_text"],
+                                doc_path=(
+                                    Path(src["doc_path_str"])
+                                    if src.get("doc_path_str")
+                                    else _resolve_doc_path(src["source"])
+                                ),
+                                card_ns=f"hist_{i}",
+                            )
 
     # 홈 화면 (첫 방문)
     if not st.session_state.messages:
