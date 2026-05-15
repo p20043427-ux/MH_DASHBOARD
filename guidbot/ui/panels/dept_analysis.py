@@ -1,6 +1,12 @@
 """
-ui/panels/dept_analysis.py  —  진료과 분석 탭 v1.0
+ui/panels/dept_analysis.py  —  진료과 분석 탭 v1.1  (2026-05-15)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v1.1 변경 — 2026-05-15]
+  · dept_analysis 전용 로거 추가 (finance_panels 로그와 분리)
+  · render_dept_analysis(): INFO — 렌더 시작, 진료과 선택, 데이터 건수
+  · _render_single(): INFO — 분석 시작/KPI; WARNING — 데이터 없음/VIEW 미생성
+  · _render_compare(): INFO — 비교 시작/KPI; WARNING — 데이터 없음/VIEW 미생성
+
 [기능]
   특정 진료과의 지역·성별·나이대·구분별 분포를 분석하는 탭.
 
@@ -54,10 +60,18 @@ import streamlit as st
 from utils.type_helpers import safe_int as _safe_int
 
 from ui.panels._shared import (
-    C, HAS_PLOTLY, go, logger,
+    C, HAS_PLOTLY, go,
     _kpi_card, _sec_hd, _gap, _PALETTE, _PLOTLY_LAYOUT,
     _plotly_empty,
 )
+
+# [2026-05-15] dept_analysis 전용 로거 — finance_panels와 분리하여 독립 로그 파일 생성
+try:
+    from utils.logger import get_logger as _get_logger
+    from config.settings import settings as _settings_da
+    logger = _get_logger("dept_analysis", log_dir=_settings_da.log_dir)
+except Exception:
+    from ui.panels._shared import logger  # 폴백: finance_panels logger 사용
 
 # ────────────────────────────────────────────────────────────────────
 # 상수
@@ -591,6 +605,7 @@ def _insight_box(items: List[Tuple[str, str, str]]):
 def _render_single(dept: str, avail_months: List[str]):
     """단일월 스냅샷 분석."""
     if not avail_months:
+        logger.warning(f"[단일 분석] 조회 가능한 월 없음 — 진료과={dept}")
         st.info("조회 가능한 월 데이터가 없습니다. Oracle 연결 상태를 확인하세요.")
         return
 
@@ -608,6 +623,8 @@ def _render_single(dept: str, avail_months: List[str]):
             label_visibility="collapsed",
             format_func=_fmt_ym,
         )
+
+    logger.info(f"[단일 분석] 시작 | 진료과={dept} | 월={sel_ym}")
 
     # ── 데이터 로드
     region_rows               = _dept_region(dept, sel_ym, sel_ym)
@@ -631,6 +648,25 @@ def _render_single(dept: str, avail_months: List[str]):
     new_ratio   = float(trend_this.get("신환비율", 0) or 0)
     total_region = sum(region_agg.values())
     total_gender = sum(gender_agg.values())
+
+    # [2026-05-15] 데이터 로드 결과 로깅
+    logger.debug(
+        f"[단일 분석] 데이터 로드 완료 | 진료과={dept} | 월={sel_ym} | "
+        f"지역={len(region_rows)}건 | 성별={len(gender_rows)}건 | "
+        f"연령={len(age_rows)}건 | 구분연령={len(cat_rows)}건 | 추세={len(trend_rows)}건"
+    )
+    if not region_rows:
+        logger.warning(f"[단일 분석] 지역 데이터 없음 | 진료과={dept} | 월={sel_ym}")
+    if not gender_rows and not has_gender:
+        logger.warning(f"[단일 분석] V_DEPT_GENDER_MONTHLY VIEW 미생성 — 진료과={dept}")
+    if not age_rows and not has_age:
+        logger.warning(f"[단일 분석] V_DEPT_AGE_MONTHLY VIEW 미생성 — 진료과={dept}")
+    if not trend_rows:
+        logger.warning(f"[단일 분석] 추세 데이터 없음 (V_MONTHLY_OPD_DEPT) | 진료과={dept}")
+    logger.info(
+        f"[단일 분석] KPI | 진료과={dept} | 월={sel_ym} | "
+        f"외래={total_opd:,} | 신환={new_pt:,} | 구환={old_pt:,} | 지역유입={total_region:,}"
+    )
 
     _gap(6)
 
@@ -811,6 +847,7 @@ def _render_single(dept: str, avail_months: List[str]):
 def _render_compare(dept: str, avail_months: List[str]):
     """두 월을 비교하는 분석."""
     if len(avail_months) < 2:
+        logger.warning(f"[비교 분석] 월 데이터 부족 (< 2개월) — 진료과={dept} | 가용월={len(avail_months)}개")
         st.info("비교를 위해 2개월 이상의 데이터가 필요합니다.")
         return
 
@@ -848,6 +885,8 @@ def _render_compare(dept: str, avail_months: List[str]):
     ym_min  = min(ym_a, ym_b)
     ym_max  = max(ym_a, ym_b)
 
+    logger.info(f"[비교 분석] 시작 | 진료과={dept} | 기준={ym_a} vs 비교={ym_b}")
+
     # ── 데이터 로드
     region_rows              = _dept_region(dept, ym_min, ym_max)
     gender_rows, has_gender  = _dept_gender(dept, ym_min, ym_max)
@@ -866,6 +905,18 @@ def _render_compare(dept: str, avail_months: List[str]):
     opd_diff = opd_b - opd_a
     new_diff = new_b - new_a
     diff_color = C["red"] if opd_diff > 0 else C["blue"] if opd_diff < 0 else C["t3"]
+
+    # [2026-05-15] 비교 분석 KPI 로깅
+    logger.info(
+        f"[비교 분석] KPI | 진료과={dept} | {ym_a}→{ym_b} | "
+        f"외래 {opd_a:,}→{opd_b:,} ({opd_diff:+,}) | 신환 {new_a:,}→{new_b:,} ({new_diff:+,})"
+    )
+    if not region_rows:
+        logger.warning(f"[비교 분석] 지역 데이터 없음 | 진료과={dept} | {ym_a}~{ym_b}")
+    if not gender_rows and not has_gender:
+        logger.warning(f"[비교 분석] V_DEPT_GENDER_MONTHLY VIEW 미생성 — 진료과={dept}")
+    if not age_rows and not has_age:
+        logger.warning(f"[비교 분석] V_DEPT_AGE_MONTHLY VIEW 미생성 — 진료과={dept}")
 
     _gap(6)
 
@@ -1023,6 +1074,9 @@ def render_dept_analysis(monthly_opd_dept: List[Dict]) -> None:
     Args:
         monthly_opd_dept: V_MONTHLY_OPD_DEPT 데이터 (기존 로드된 데이터 재사용)
     """
+    # [2026-05-15] 렌더 진입 로깅
+    logger.info(f"[진료과 분석] 탭 렌더 시작 | 입력 데이터={len(monthly_opd_dept)}건")
+
     # ── 진료과 선택 ────────────────────────────────────────────────
     dept_list = _get_dept_list(monthly_opd_dept)
     avail_months = sorted(
@@ -1030,6 +1084,14 @@ def render_dept_analysis(monthly_opd_dept: List[Dict]) -> None:
          for r in monthly_opd_dept
          if str(r.get("기준년월", ""))[:6].isdigit()},
         reverse=True,
+    )
+
+    if not monthly_opd_dept:
+        logger.warning("[진료과 분석] monthly_opd_dept 데이터 없음 — Oracle 연결 확인 필요")
+
+    logger.debug(
+        f"[진료과 분석] 진료과 목록={len(dept_list)}개 | 가용 월={len(avail_months)}개 "
+        f"({avail_months[-1] if avail_months else 'N/A'} ~ {avail_months[0] if avail_months else 'N/A'})"
     )
 
     lbl_col, sel_col, _ = st.columns([1, 3, 6], gap="small", vertical_alignment="center")
@@ -1049,6 +1111,8 @@ def render_dept_analysis(monthly_opd_dept: List[Dict]) -> None:
     if not selected_dept:
         st.info("분석할 진료과를 선택하세요.")
         return
+
+    logger.info(f"[진료과 분석] 진료과 선택 → {selected_dept}")
 
     # ── 분석 모드 탭 ───────────────────────────────────────────────
     mode_single, mode_compare = st.tabs([

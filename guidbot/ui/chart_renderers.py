@@ -24,6 +24,16 @@ from ui.design import (
     ward_layout as _layout,
 )
 
+# [2026-05-15] 로거 초기화 ─────────────────────────────────────────────
+try:
+    from utils.logger import get_logger as _get_logger
+    from config.settings import settings as _settings
+    logger = _get_logger(__name__, log_dir=_settings.log_dir)
+except Exception:
+    import logging as _logging
+    logger = _logging.getLogger(__name__)
+# ─────────────────────────────────────────────────────────────────────
+
 
 def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
     """
@@ -33,6 +43,7 @@ def _render_dept_chart(data: List[Dict], chart_type: str) -> None:
     """
     from collections import defaultdict as _ddc2
     if not data or not HAS_PLOTLY:
+        logger.debug(f"[차트] _render_dept_chart: 데이터 없음 (type={chart_type})")
         st.caption("데이터 없음")
         return
 
@@ -136,6 +147,7 @@ def _render_trend_chart(data: List[Dict], chart_type: str, occupied: int, occ_ra
     chart_type: "table"(기존 표) | "line" | "area" | "bar"
     """
     if not data:
+        logger.debug(f"[차트] _render_trend_chart: 추이 데이터 없음 (type={chart_type})")
         st.caption("추이 데이터 없음")
         return
 
@@ -260,6 +272,7 @@ def _render_ward_alt_chart(data: List[Dict], chart_type: str, ward_surg: Dict) -
     chart_type: "bar_h" | "heatmap"  (table은 기존 HTML 처리)
     """
     if not data or not HAS_PLOTLY:
+        logger.debug(f"[차트] _render_ward_alt_chart: 데이터 없음 (type={chart_type})")
         st.caption("데이터 없음")
         return
 
@@ -324,6 +337,7 @@ def _render_dx7_chart(data: List[Dict], chart_type: str) -> None:
     """
     from collections import defaultdict as _ddx7
     if not data:
+        logger.debug(f"[차트] _render_dx7_chart: 주상병 데이터 없음 (type={chart_type})")
         st.info("주상병 데이터 없음")
         return
 
@@ -424,6 +438,7 @@ def _render_dx_compare_chart(data: List[Dict], chart_type: str) -> None:
     """
     from collections import defaultdict as _ddcmp
     if not data:
+        logger.debug(f"[차트] _render_dx_compare_chart: 주상병 비교 데이터 없음 (type={chart_type})")
         st.info("주상병 분포 데이터 없음")
         return
 

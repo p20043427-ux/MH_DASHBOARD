@@ -50,6 +50,16 @@ from services.ward_service import (
 )
 from ui.design import C, APP_CSS, ward_kpi_card as _kpi_card, gap
 
+# [2026-05-15] 로거 초기화 ─────────────────────────────────────────────
+try:
+    from utils.logger import get_logger as _get_logger
+    from config.settings import settings as _settings
+    logger = _get_logger(__name__, log_dir=_settings.log_dir)
+except Exception:
+    import logging as _logging
+    logger = _logging.getLogger(__name__)
+# ─────────────────────────────────────────────────────────────────────
+
 
 # ════════════════════════════════════════════════════════════════════
 #  V2 전용 CSS — APP_CSS 위에 추가되는 규칙만
@@ -1244,6 +1254,8 @@ def render_ward_v2() -> None:
     st.markdown(APP_CSS + _V2_CSS, unsafe_allow_html=True)
 
     _oracle_ok = st.session_state.get("oracle_ok", False)
+    # [2026-05-15] 렌더 진입 로깅
+    logger.info(f"[병동 v2] 렌더 시작 | oracle_ok={_oracle_ok}")
 
     # ── 데이터 조회 ────────────────────────────────────────────────────
     dept_stay   = _qc("ward_dept_stay")
@@ -1254,6 +1266,14 @@ def render_ward_v2() -> None:
     dx_trend    = _qc("ward_dx_trend")
     yesterday   = _qc("ward_yesterday")
     admit_cands = _qc("admit_candidates")
+
+    # [2026-05-15] 데이터 조회 결과 로깅
+    logger.debug(
+        f"[병동 v2] 데이터 조회 — bed:{len(bed_detail)}, dept_stay:{len(dept_stay)}, "
+        f"op:{len(op_stat)}, trend:{len(trend)}, dx:{len(dx_today)}, cands:{len(admit_cands)}"
+    )
+    if not bed_detail:
+        logger.warning("[병동 v2] ward_bed_detail 데이터 없음 — Oracle 연결 확인 필요")
 
     # ── 병실현황: 탭 활성 여부 기반 조건부 로드 ──────────────────────
     # session_state로 탭 방문 여부 추적 — 첫 진입 시 1회 로드 후 캐시 유지
@@ -1312,6 +1332,12 @@ def render_ward_v2() -> None:
     total_ndc   = sum(_safe_int(r.get("익일퇴원예고")) for r in bed_detail_f)
     adm_total   = len(admit_cands)
     adm_done    = sum(1 for r in admit_cands if r.get("수속상태","") == "AD")
+
+    # [2026-05-15] KPI 핵심값 로깅
+    logger.info(
+        f"[병동 v2] KPI | 병동={_g_ward} | 가동률={occ_rate}% | "
+        f"재원={occupied}/{total_bed}bed | 입원={admit_cnt} | 퇴원={disc_cnt} | 수술={op_total}"
+    )
 
     # ── KPI strip ─────────────────────────────────────────────────────
     _v2_kpi_strip(occ_rate, occupied, total_bed,

@@ -1,6 +1,14 @@
 """
-ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.5  (2026-05-14)
+ui/admin_dashboard.py  ─  좋은문화병원 관리자 대시보드 v5.6  (2026-05-15)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[v5.6 변경 — 2026-05-15]
+  · 로그 모니터링 개선 (로그 뷰어 v3.1):
+    - _LOG_APP_GROUPS 간호·병동 그룹에 hospital_dashboard_v2, chart_renderers, dept_analysis 추가
+    - 상단 에러 요약 배너: 오늘 카테고리별 ERROR/WARNING 건수 한눈에 표시
+    - 탭 이름 배지: ERROR > 0인 카테고리 탭에 ⚠N 배지 자동 표시
+    - 수동 갱신 버튼 추가 (🔄 새로고침)
+    - _count_group_errors() 헬퍼: 최근 500줄 빠른 스캔으로 성능 최적화
+
 [v5.5 변경 — 2026-05-14]
   · 로그 뷰어 v3: 앱별 카테고리 분류
     - 탭: 💼 원무 대시보드 / 🏥 간호·병동 / 💬 챗봇 / ⚙️ 관리자 / 📁 파일 관리
@@ -1087,8 +1095,9 @@ _LOG_APP_GROUPS: List[Tuple[str, List[str]]] = [
         "pii_masker", "query_audit",
     ]),
     ("🏥 간호·병동 대시보드", [
-        "hospital_dashboard", "ward_repository",
-        "data_dashboard",
+        "hospital_dashboard", "hospital_dashboard_v2",  # [2026-05-15] v2 추가
+        "ward_repository", "data_dashboard",
+        "chart_renderers", "dept_analysis",             # [2026-05-15] 신규 로거 추가
     ]),
     ("💬 챗봇", [
         "main", "context_builder",
@@ -1105,6 +1114,32 @@ _LOG_APP_GROUPS: List[Tuple[str, List[str]]] = [
         "schema_oracle_loader", "schema_vector_store",
     ]),
 ]
+
+
+def _count_group_errors(modules: List[str], all_modules_set: set) -> Tuple[int, int]:
+    """
+    [2026-05-15] 카테고리 내 모듈들의 오늘 로그에서 ERROR/WARNING 건수 집계.
+
+    Returns:
+        (error_count, warn_count)
+    """
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    err_n = warn_n = 0
+    for mod in modules:
+        if mod not in all_modules_set:
+            continue
+        # 오늘 날짜 롤오버 파일 우선, 없으면 현재 파일
+        raw = _read_log(mod, today_str) or _read_log(mod)
+        if not raw:
+            continue
+        # 최근 500줄만 빠르게 스캔 (성능)
+        for line in raw.splitlines()[-500:]:
+            ul = line.upper()
+            if "| ERROR" in ul or "| CRITICAL" in ul:
+                err_n += 1
+            elif "| WARNING" in ul or "| WARN" in ul:
+                warn_n += 1
+    return err_n, warn_n
 
 
 def _render_log_browser(avail_modules: List[str], kp: str) -> None:
@@ -1252,7 +1287,7 @@ def _render_log_browser(avail_modules: List[str], kp: str) -> None:
 
 def _tab_logs() -> None:
     """
-    로그 뷰어 관리 화면 v3 [2026-05-14]
+    로그 뷰어 관리 화면 v3.1 [2026-05-15]
 
     [v3 변경 — 앱별 카테고리 분류]
     · 4개 앱 카테고리 탭: 원무 대시보드 / 간호·병동 / 챗봇 / 관리자
@@ -1260,6 +1295,11 @@ def _tab_logs() -> None:
     · 파일 관리 탭 유지: 전체 파일 목록 + 보관 정책 + 정리 버튼
     · _LOG_APP_GROUPS 상수로 카테고리-모듈 매핑 중앙 관리
     · _render_log_browser() 공통 함수로 탭별 코드 중복 제거
+
+    [v3.1 변경 — 2026-05-15]
+    · 에러 요약 배너: 상단에 카테고리별 오늘 ERROR/WARNING 건수 표시
+    · 탭 이름 배지: ERROR > 0 시 탭 레이블에 ⚠N 배지 표시
+    · 수동 갱신 버튼: 로그 실시간 새로고침
     """
     topbar()
     section_header("로그 뷰어", "앱별 로그 탐색 · 레벨 필터 · 파일 관리")
@@ -1269,9 +1309,75 @@ def _tab_logs() -> None:
         st.info("로그 디렉토리에 파일이 없습니다.")
         return
 
-    # ── 탭 구성: 카테고리 4개 + 파일 관리 ────────────────────────
-    tab_labels = [label for label, _ in _LOG_APP_GROUPS] + ["📁  파일 관리"]
-    tabs        = st.tabs(tab_labels)
+    # ── [2026-05-15] 카테고리별 오늘 ERROR/WARN 집계 ─────────────────
+    group_error_counts: List[Tuple[int, int]] = []
+    for _, group_modules in _LOG_APP_GROUPS:
+        avail = [m for m in group_modules if m in all_modules_set]
+        group_error_counts.append(_count_group_errors(avail, all_modules_set))
+
+    total_err  = sum(e for e, _ in group_error_counts)
+    total_warn = sum(w for _, w in group_error_counts)
+
+    # ── [2026-05-15] 에러 요약 배너 ────────────────────────────────
+    if total_err > 0 or total_warn > 0:
+        today_label = datetime.now().strftime("%Y-%m-%d")
+        banner_parts = []
+        for (label, _), (ec, wc) in zip(_LOG_APP_GROUPS, group_error_counts):
+            if ec > 0 or wc > 0:
+                cat_name = label.split(" ", 1)[-1]  # 이모지 뒤 텍스트만
+                badges = []
+                if ec > 0:
+                    badges.append(
+                        f'<span style="background:#FEE2E2;color:#B91C1C;'
+                        f'border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">'
+                        f'ERROR {ec}</span>'
+                    )
+                if wc > 0:
+                    badges.append(
+                        f'<span style="background:#FEF9C3;color:#92400E;'
+                        f'border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">'
+                        f'WARN {wc}</span>'
+                    )
+                banner_parts.append(
+                    f'<span style="font-size:12px;font-weight:600;color:#374151;">'
+                    f'{cat_name}</span> {" ".join(badges)}'
+                )
+
+        _sep = '<span style="color:#CBD5E1">|</span> '
+        _banner_body = _sep.join(banner_parts)
+        _html(
+            f'<div style="background:#FFF7F7;border:1px solid #FECACA;border-radius:8px;'
+            f'padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;'
+            f'flex-wrap:wrap;gap:12px;">'
+            f'<span style="font-size:13px;font-weight:700;color:#DC2626;">⚠ 오늘({today_label}) 이슈</span>'
+            f'{_sep}{_banner_body}'
+            f'</div>'
+        )
+    else:
+        _html(
+            f'<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;'
+            f'padding:8px 16px;margin-bottom:12px;font-size:12px;color:#166534;">'
+            f'✅ 오늘({datetime.now().strftime("%Y-%m-%d")}) ERROR/WARNING 없음</div>'
+        )
+
+    # ── 수동 갱신 버튼 ──────────────────────────────────────────
+    _r_col, _ = st.columns([1, 7], gap="small")
+    with _r_col:
+        if st.button("🔄 새로고침", key="lv_refresh_btn", help="로그 캐시 없이 즉시 재조회"):
+            st.rerun()
+
+    gap(4)
+
+    # ── 탭 구성: 카테고리별 배지 + 파일 관리 ──────────────────────
+    tab_labels = []
+    for (label, _), (ec, _wc) in zip(_LOG_APP_GROUPS, group_error_counts):
+        if ec > 0:
+            tab_labels.append(f"{label} ⚠{ec}")
+        else:
+            tab_labels.append(label)
+    tab_labels.append("📁  파일 관리")
+
+    tabs = st.tabs(tab_labels)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  앱별 로그 탐색 탭 (4개)
