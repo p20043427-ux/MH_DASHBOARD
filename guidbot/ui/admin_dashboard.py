@@ -327,6 +327,39 @@ _ADMIN_CSS: str = """
 [data-testid="stExpander"] details summary [data-testid="stMarkdownContainer"] p {
     font-size: 13px !important; font-weight: 600 !important; color: #0F172A !important;
 }
+
+/* ── [2026-05-15] 메인 탭바 가로 스크롤 — Streamlit 1.54 base-web 셀렉터 ─── */
+/* 탭 버튼 리스트 컨테이너 — base-web 실제 DOM 셀렉터 */
+[data-baseweb="tab-list"] {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E1 transparent;
+}
+[data-baseweb="tab-list"]::-webkit-scrollbar {
+    height: 3px;
+}
+[data-baseweb="tab-list"]::-webkit-scrollbar-track {
+    background: transparent;
+}
+[data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 9999px;
+}
+/* 개별 탭 버튼 — 줄바꿈·축소 금지, 좌우 패딩 조정 */
+[data-baseweb="tab"] {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    min-width: fit-content !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+}
+/* tab-highlight(하단 밑줄 인디케이터) — 스크롤 컨테이너 밖으로 밀리지 않게 */
+[data-baseweb="tab-highlight"] {
+    bottom: 0 !important;
+}
 </style>
 """
 
